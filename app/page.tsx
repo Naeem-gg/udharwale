@@ -88,7 +88,7 @@ export default function LandingPage() {
           <div className="lg:col-span-7 space-y-6 text-center lg:text-left">
             <div className="inline-flex items-center gap-1.5 bg-indigo-950/60 border border-indigo-900/60 rounded-full px-3.5 py-1.5 text-xs text-indigo-300 font-bold">
               <span>✨</span>
-              <span>Next-Gen Ledger Platform</span>
+              <span>Free Personal Khata Book</span>
             </div>
 
             <h2 className="text-4xl sm:text-5xl md:text-6xl font-black text-white leading-[1.08] tracking-tight">
@@ -142,7 +142,7 @@ export default function LandingPage() {
               </div>
               <div className="border-l border-zinc-900/60 pl-6">
                 <p className="text-2xl font-black text-indigo-400">100%</p>
-                <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">Atlas Secured</p>
+                <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">Private & Safe</p>
               </div>
             </div>
           </div>
@@ -215,7 +215,7 @@ export default function LandingPage() {
           <a href="#" className="hover:text-zinc-450 transition-colors">Terms of Service</a>
           <div className="flex items-center gap-1.5 text-emerald-500 font-bold">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>MongoDB Atlas Secured</span>
+            <span>Your data is safe</span>
           </div>
         </div>
       </footer>

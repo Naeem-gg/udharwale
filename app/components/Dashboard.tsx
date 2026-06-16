@@ -650,9 +650,50 @@ export default function Dashboard() {
       <div className="flex flex-1 flex-col md:flex-row overflow-hidden relative">
         
         {/* ==================================================== */}
+        {/* MOBILE TOP HEADER (visible on mobile only) */}
+        {/* ==================================================== */}
+        <header className="md:hidden flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-800 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+              <span className="text-white font-bold text-base">U</span>
+            </div>
+            <div>
+              <h1 className="font-extrabold text-sm tracking-tight text-white leading-none">UdharWale</h1>
+              <div className="flex items-center gap-1 mt-0.5">
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  dbStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : dbStatus === 'connecting' ? 'bg-amber-400 animate-pulse' : 'bg-rose-400'
+                }`} />
+                <span className={`text-[10px] font-semibold ${
+                  dbStatus === 'connected' ? 'text-emerald-400' : dbStatus === 'connecting' ? 'text-amber-400' : 'text-rose-400'
+                }`}>
+                  {dbStatus === 'connected' ? 'All saved' : dbStatus === 'connecting' ? 'Syncing...' : 'Offline'}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 bg-zinc-800/60 rounded-full px-2.5 py-1.5">
+              <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-indigo-500 to-indigo-600 flex items-center justify-center font-bold text-white text-[9px]">
+                {getInitials(userName)}
+              </div>
+              <span className="text-xs font-semibold text-zinc-300 max-w-[80px] truncate">{userName}</span>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="p-2 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+              title="Log Out"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+            </button>
+          </div>
+        </header>
+        
+        {/* ==================================================== */}
         {/* DESKTOP SIDEBAR / MOBILE NAVIGATION BRAND HEADER */}
         {/* ==================================================== */}
-        <aside className="w-full md:w-64 bg-zinc-900 border-b md:border-b-0 md:border-r border-zinc-800 flex flex-col justify-between shrink-0">
+        <aside className="hidden md:w-64 md:flex bg-zinc-900 border-r border-zinc-800 flex-col justify-between shrink-0">
           
           <div className="flex flex-col">
             {/* Brand Logo Header */}
@@ -769,7 +810,7 @@ export default function Dashboard() {
 
           {/* Footer Brand Info (Desktop Only) */}
           <div className="hidden md:flex flex-col p-4 border-t border-zinc-800 gap-1.5">
-            <div className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">DATABASE STATUS</div>
+            <div className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">SYNC STATUS</div>
             <div className={`flex items-center gap-2 text-xs font-bold py-1 px-2 rounded border ${
               dbStatus === 'connected'
                 ? 'bg-emerald-500/5 text-emerald-500 border-emerald-500/10'
@@ -781,10 +822,10 @@ export default function Dashboard() {
                 dbStatus === 'connected' ? 'bg-emerald-500 animate-pulse' : dbStatus === 'connecting' ? 'bg-amber-500' : 'bg-rose-500'
               }`} />
               {dbStatus === 'connected'
-                ? 'MongoDB Atlas Synced'
+                ? 'All saved'
                 : dbStatus === 'connecting'
-                ? 'Connecting to MongoDB...'
-                : 'Database Offline'}
+                ? 'Syncing...'
+                : 'Offline'}
             </div>
           </div>
         </aside>
@@ -792,7 +833,7 @@ export default function Dashboard() {
         {/* ==================================================== */}
         {/* MAIN DISPLAY CONTAINER */}
         {/* ==================================================== */}
-        <main className="flex-1 flex flex-col overflow-hidden bg-zinc-950">
+        <main className="flex-1 flex flex-col overflow-hidden bg-zinc-950 pb-16 md:pb-0">
           {dbStatus === 'connecting' ? (
             <div className="flex-1 flex flex-col items-center justify-center space-y-4">
               <div className="relative w-12 h-12">
@@ -800,8 +841,8 @@ export default function Dashboard() {
                 <div className="absolute inset-0 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin" />
               </div>
               <div className="text-center space-y-1">
-                <h3 className="text-sm font-bold text-zinc-200">Connecting to Database...</h3>
-                <p className="text-xs text-zinc-500">Establishing secure connection to MongoDB Atlas</p>
+                <h3 className="text-sm font-bold text-zinc-200">Loading your data...</h3>
+                <p className="text-xs text-zinc-500">Just a moment, hang tight</p>
               </div>
             </div>
           ) : dbStatus === 'error' ? (
@@ -810,9 +851,9 @@ export default function Dashboard() {
                 🔌
               </div>
               <div className="space-y-2">
-                <h3 className="text-lg font-extrabold text-zinc-200">Database Connection Failed</h3>
+                <h3 className="text-lg font-extrabold text-zinc-200">Couldn't load your data</h3>
                 <p className="text-sm text-zinc-500 leading-relaxed">
-                  We couldn't connect to your MongoDB Atlas database. Please verify that your IP address is whitelisted in Atlas and that your credentials in <code className="text-zinc-300 font-mono">.env.local</code> are correct.
+                  Something went wrong while loading. Please check your internet connection and try again.
                 </p>
               </div>
               <button
@@ -1319,26 +1360,26 @@ export default function Dashboard() {
             <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 scrollbar-thin scrollbar-thumb-zinc-800">
               
               <div className="space-y-2">
-                <h2 className="text-2xl font-black text-white">Insights & Flow Analysis</h2>
-                <p className="text-sm text-zinc-400">Deep visual breakdown of outstanding credits, debts, and transaction distributions.</p>
+                <h2 className="text-2xl font-black text-white">Overview</h2>
+                <p className="text-sm text-zinc-400">A summary of all your balances and spending patterns.</p>
               </div>
 
               {/* Financial Health Summary Widget */}
               <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800 grid grid-cols-1 md:grid-cols-3 gap-6 shadow-xl relative overflow-hidden">
                 <div className="space-y-2">
-                  <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider">TOTAL EXPECTED RECEIVABLES</p>
+                  <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider">TOTAL TO RECEIVE</p>
                   <h3 className="text-3xl font-black text-emerald-500">
                     {currency.symbol}{stats.totalCredit.toLocaleString('en-IN')}
                   </h3>
-                  <p className="text-xs text-zinc-500">Active credits from {contacts.filter(c => getContactBalance(c) > 0).length} contacts</p>
+                  <p className="text-xs text-zinc-500">From {contacts.filter(c => getContactBalance(c) > 0).length} people</p>
                 </div>
 
                 <div className="space-y-2 border-t md:border-t-0 md:border-l border-zinc-800 pt-4 md:pt-0 md:pl-6">
-                  <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider">TOTAL OUTSTANDING PAYABLES</p>
+                  <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider">TOTAL YOU OWE</p>
                   <h3 className="text-3xl font-black text-rose-500">
                     {currency.symbol}{stats.totalDebit.toLocaleString('en-IN')}
                   </h3>
-                  <p className="text-xs text-zinc-500">Pending debts to {contacts.filter(c => getContactBalance(c) < 0).length} contacts</p>
+                  <p className="text-xs text-zinc-500">To {contacts.filter(c => getContactBalance(c) < 0).length} people</p>
                 </div>
 
                 <div className="space-y-2 border-t md:border-t-0 md:border-l border-zinc-800 pt-4 md:pt-0 md:pl-6">
@@ -1490,23 +1531,23 @@ export default function Dashboard() {
             <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 max-w-3xl scrollbar-thin scrollbar-thumb-zinc-800">
               
               <div className="space-y-2">
-                <h2 className="text-2xl font-black text-white">Ledger Settings & Controls</h2>
-                <p className="text-sm text-zinc-400">Customize currency metrics, profile names, data backups, and mockup triggers.</p>
+                <h2 className="text-2xl font-black text-white">Settings</h2>
+                <p className="text-sm text-zinc-400">Manage your profile, currency, and data.</p>
               </div>
 
-              {/* 1. Profile customization card */}
+              {/* 1. Profile card */}
               <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4 shadow-lg">
-                <h3 className="font-extrabold text-sm text-zinc-200 uppercase tracking-wider">👤 User Profile Settings</h3>
+                <h3 className="font-extrabold text-sm text-zinc-200 uppercase tracking-wider">👤 Your Profile</h3>
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    alert('Profile information saved successfully!');
+                    alert('Profile saved!');
                   }}
                   className="space-y-4"
                 >
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-xs text-zinc-500 font-bold uppercase">SECURE USER NAME</label>
+                      <label className="text-xs text-zinc-500 font-bold uppercase">NAME</label>
                       <input
                         type="text"
                         readOnly
@@ -1515,7 +1556,7 @@ export default function Dashboard() {
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs text-zinc-500 font-bold uppercase">AUTHENTICATED EMAIL</label>
+                      <label className="text-xs text-zinc-500 font-bold uppercase">EMAIL</label>
                       <input
                         type="text"
                         readOnly
@@ -1527,10 +1568,10 @@ export default function Dashboard() {
                 </form>
               </div>
 
-              {/* 2. Global currency setup card */}
+              {/* 2. Currency setup card */}
               <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4 shadow-lg">
-                <h3 className="font-extrabold text-sm text-zinc-200 uppercase tracking-wider">🪙 Active Currency Unit</h3>
-                <p className="text-xs text-zinc-500">Select standard currency metrics for stats rendering.</p>
+                <h3 className="font-extrabold text-sm text-zinc-200 uppercase tracking-wider">🪙 Currency</h3>
+                <p className="text-xs text-zinc-500">Choose the currency used across all your balances.</p>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {CURRENCIES.map((c) => (
                     <button
@@ -1550,35 +1591,33 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* 3. Local database operations card */}
+              {/* 3. Data management card */}
               <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-5 shadow-lg">
-                <h3 className="font-extrabold text-sm text-zinc-200 uppercase tracking-wider text-rose-400">⚠️ Account & Data Operations</h3>
-                <p className="text-xs text-zinc-500">Manage your cloud database storage. All changes represent direct permanent state manipulation.</p>
+                <h3 className="font-extrabold text-sm text-zinc-200 uppercase tracking-wider text-rose-400">⚠️ Data Management</h3>
+                <p className="text-xs text-zinc-500">Clear all your saved data. This cannot be undone.</p>
                 
                 <div className="flex flex-wrap items-center gap-3">
                   {/* Wipe All Data completely */}
                   <button
                     onClick={() => {
-                      if (confirm('Wipe everything? This will clear all contacts and ledger history from your account.')) {
+                      if (confirm('Are you sure? This will permanently delete all your contacts and transaction history.')) {
                         handleWipeData();
-                        alert('All transactions and contacts have been wiped.');
+                        alert('Everything has been cleared.');
                       }
                     }}
                     className="px-4 py-2.5 bg-rose-950/20 hover:bg-rose-950/40 text-rose-400 font-bold rounded-xl text-xs border border-rose-500/20 transition-colors"
                   >
-                    🗑️ Wipe All Database (Clean Slate)
+                    🗑️ Clear All Data
                   </button>
                 </div>
               </div>
 
               {/* 4. App Information Sheet */}
               <div className="p-6 rounded-2xl bg-zinc-900/40 border border-zinc-800/80 space-y-3">
-                <h3 className="font-bold text-xs text-zinc-400 uppercase tracking-wider">UDHARWALE ENGINE PRO</h3>
+                <h3 className="font-bold text-xs text-zinc-400 uppercase tracking-wider">ABOUT UDHARWALE</h3>
                 <div className="space-y-1.5 text-xs text-zinc-500 leading-relaxed font-semibold">
-                  <p>Client Core Version: 1.2.0 (Next.js 16 + React 19 Client Engine)</p>
-                  <p>Database Connector: MongoDB Atlas Secure API</p>
-                  <p>Style Compiler: Tailwind CSS v4 custom compiler</p>
-                  <p className="text-indigo-400">Designed with absolute fluid responsive aesthetics for the premium ledger experience.</p>
+                  <p>Version 1.2.0</p>
+                  <p className="text-indigo-400">Your personal khata book — track who owes you, and who you owe, all in one place.</p>
                 </div>
               </div>
 
@@ -1853,6 +1892,48 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* ==================================================== */}
+      {/* MOBILE BOTTOM NAV BAR */}
+      {/* ==================================================== */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-zinc-900/95 border-t border-zinc-800 backdrop-blur-xl flex items-stretch">
+        <button
+          onClick={() => { setActiveTab('ledgers'); setMobileView('list'); }}
+          className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 transition-all ${
+            activeTab === 'ledgers' ? 'text-indigo-400' : 'text-zinc-500'
+          }`}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'ledgers' ? 2.5 : 2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <span className="text-[10px] font-bold">Friends</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('insights')}
+          className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 transition-all ${
+            activeTab === 'insights' ? 'text-indigo-400' : 'text-zinc-500'
+          }`}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'insights' ? 2.5 : 2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          <span className="text-[10px] font-bold">Overview</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('settings')}
+          className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 transition-all ${
+            activeTab === 'settings' ? 'text-indigo-400' : 'text-zinc-500'
+          }`}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'settings' ? 2.5 : 2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'settings' ? 2.5 : 2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <span className="text-[10px] font-bold">Settings</span>
+        </button>
+      </nav>
 
     </div>
   );

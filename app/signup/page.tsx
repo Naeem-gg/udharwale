@@ -8,6 +8,8 @@ export default function SignupPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [recoveryPin, setRecoveryPin] = useState('');
+  const [securityAnswer, setSecurityAnswer] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -27,7 +29,7 @@ export default function SignupPage() {
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password })
+        body: JSON.stringify({ name, email, password, recoveryPin, securityAnswer })
       });
 
       const data = await res.json();
@@ -131,6 +133,39 @@ export default function SignupPage() {
                 className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-indigo-500 transition-colors"
                 placeholder="••••••••"
               />
+            </div>
+          </div>
+
+          <div className="pt-2 border-t border-zinc-800/80 space-y-3">
+            <div className="space-y-1">
+              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider text-emerald-400">Account Recovery Backup</p>
+              <p className="text-[10px] text-zinc-500">Since we don't use email, set these up to recover your account if you forget your password.</p>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">4-Digit PIN</label>
+                <input
+                  type="text"
+                  maxLength={4}
+                  required
+                  value={recoveryPin}
+                  onChange={(e) => setRecoveryPin(e.target.value.replace(/[^0-9]/g, ''))}
+                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-indigo-500 transition-colors"
+                  placeholder="e.g. 1234"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Childhood Nickname?</label>
+                <input
+                  type="text"
+                  required
+                  value={securityAnswer}
+                  onChange={(e) => setSecurityAnswer(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-indigo-500 transition-colors"
+                  placeholder="Security Answer"
+                />
+              </div>
             </div>
           </div>
 
