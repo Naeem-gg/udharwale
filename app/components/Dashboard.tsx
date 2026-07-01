@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Contact, Transaction, CategoryType, CURRENCIES, CurrencyConfig, ActiveTab } from './types';
+import UpcomingFeatures from './UpcomingFeatures';
 
 // Custom CSS-based Confetti Particle component for settlements
 interface ConfettiParticle {
@@ -1521,6 +1522,10 @@ export default function Dashboard() {
                       })}
                   </div>
                 )}
+              </div>
+
+              <div className="mt-12 border-t border-zinc-800 pt-8">
+                <UpcomingFeatures />
               </div>
 
             </div>
