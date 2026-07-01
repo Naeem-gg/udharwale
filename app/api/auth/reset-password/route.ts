@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
 import User from '@/models/User';
-import { hashPassword, comparePassword } from '@/lib/auth';
+import { hashPassword, verifyPassword } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,12 +28,12 @@ export async function POST(req: NextRequest) {
     let isRecoveryValid = false;
 
     if (recoveryPin) {
-      isRecoveryValid = comparePassword(recoveryPin, user.recoveryPin);
+      isRecoveryValid = verifyPassword(recoveryPin, user.recoveryPin);
     } 
     
     if (!isRecoveryValid && securityAnswer) {
       const normalizedAnswer = securityAnswer.toLowerCase().trim();
-      isRecoveryValid = comparePassword(normalizedAnswer, user.securityAnswer);
+      isRecoveryValid = verifyPassword(normalizedAnswer, user.securityAnswer);
     }
 
     if (!isRecoveryValid) {
