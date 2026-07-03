@@ -44,7 +44,6 @@ export default function Dashboard() {
   const [isContactMenuOpen, setIsContactMenuOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [showBalances, setShowBalances] = useState(false);
-  const [peekingContactId, setPeekingContactId] = useState<string | null>(null);
 
   // --- Add Transaction Form State ---
   const [txAmount, setTxAmount] = useState('');
@@ -806,10 +805,10 @@ export default function Dashboard() {
               {/* Dynamic Connection Status badge in Header */}
               <div>
                 <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold flex items-center gap-1 ${dbStatus === 'connected'
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/10'
-                  : dbStatus === 'connecting'
-                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/10 animate-pulse'
-                    : 'bg-rose-500/10 text-rose-400 border-rose-500/10'
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/10'
+                    : dbStatus === 'connecting'
+                      ? 'bg-amber-500/10 text-amber-400 border-amber-500/10 animate-pulse'
+                      : 'bg-rose-500/10 text-rose-400 border-rose-500/10'
                   }`}>
                   <span className={`w-1 h-1 rounded-full ${dbStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : dbStatus === 'connecting' ? 'bg-amber-400 animate-pulse' : 'bg-rose-400'
                     }`} />
@@ -854,8 +853,8 @@ export default function Dashboard() {
               <button
                 onClick={() => { setActiveTab('ledgers'); setMobileView('list'); }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${activeTab === 'ledgers'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10'
-                  : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10'
+                    : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'
                   }`}
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -870,8 +869,8 @@ export default function Dashboard() {
               <button
                 onClick={() => setActiveTab('insights')}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${activeTab === 'insights'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10'
-                  : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10'
+                    : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'
                   }`}
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -883,8 +882,8 @@ export default function Dashboard() {
               <button
                 onClick={() => setActiveTab('settings')}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${activeTab === 'settings'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10'
-                  : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10'
+                    : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'
                   }`}
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -900,10 +899,10 @@ export default function Dashboard() {
           <div className="hidden md:flex flex-col p-4 border-t border-zinc-800 gap-1.5">
             <div className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">SYNC STATUS</div>
             <div className={`flex items-center gap-2 text-xs font-bold py-1 px-2 rounded border ${dbStatus === 'connected'
-              ? 'bg-emerald-500/5 text-emerald-500 border-emerald-500/10'
-              : dbStatus === 'connecting'
-                ? 'bg-amber-500/5 text-amber-500 border-amber-500/10 animate-pulse'
-                : 'bg-rose-500/5 text-rose-500 border-rose-500/10'
+                ? 'bg-emerald-500/5 text-emerald-500 border-emerald-500/10'
+                : dbStatus === 'connecting'
+                  ? 'bg-amber-500/5 text-amber-500 border-amber-500/10 animate-pulse'
+                  : 'bg-rose-500/5 text-rose-500 border-rose-500/10'
               }`}>
               <span className={`w-1.5 h-1.5 rounded-full ${dbStatus === 'connected' ? 'bg-emerald-500 animate-pulse' : dbStatus === 'connecting' ? 'bg-amber-500' : 'bg-rose-500'
                 }`} />
@@ -1067,8 +1066,8 @@ export default function Dashboard() {
                               key={filter}
                               onClick={() => setStatusFilter(filter)}
                               className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap capitalize transition-all border ${statusFilter === filter
-                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/10'
-                                : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+                                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/10'
+                                  : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'
                                 }`}
                             >
                               {filter === 'credit' ? "Get" : filter === 'debit' ? 'Owe' : filter}
@@ -1118,24 +1117,19 @@ export default function Dashboard() {
                           const initials = getInitials(contact.name);
                           const avatarGradient = getAvatarGradient(contact.name);
 
-                          const isRevealed = peekingContactId === contact.id;
-
                           return (
                             <div
                               key={contact.id}
-                              className={`p-4 flex items-center justify-between transition-all duration-150 ${isSelected
-                                ? 'bg-zinc-900 border-l-4 border-indigo-500'
-                                : 'hover:bg-zinc-900/40 active:bg-zinc-900/60'
+                              onClick={() => {
+                                setSelectedContactId(contact.id);
+                                setMobileView('ledger');
+                              }}
+                              className={`p-4 flex items-center justify-between cursor-pointer transition-all duration-150 ${isSelected
+                                  ? 'bg-zinc-900 border-l-4 border-indigo-500'
+                                  : 'hover:bg-zinc-900/40 active:bg-zinc-900/60'
                                 }`}
                             >
-                              {/* Left: avatar + name — click to open */}
-                              <div
-                                className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
-                                onClick={() => {
-                                  setSelectedContactId(contact.id);
-                                  setMobileView('ledger');
-                                }}
-                              >
+                              <div className="flex items-center gap-3 min-w-0">
                                 {/* Colorful Initials Avatar */}
                                 <div className={`w-11 h-11 rounded-full shrink-0 bg-gradient-to-tr ${avatarGradient} flex items-center justify-center font-black text-sm text-white border border-white/10 shadow`}>
                                   {initials}
@@ -1146,56 +1140,25 @@ export default function Dashboard() {
                                 </div>
                               </div>
 
-                              {/* Right: balance + peek button */}
-                              <div className="flex items-center gap-1.5 shrink-0 pl-2">
-                                <div className="text-right">
-                                  {balance > 0 ? (
-                                    <div>
-                                      <p className="text-[10px] text-zinc-500 font-bold leading-none uppercase">YOU&apos;LL GET</p>
-                                      <p className="text-sm font-extrabold text-emerald-500 mt-1">
-                                        {isRevealed ? `+${currency.symbol}${balance.toLocaleString('en-IN')}` : '+ ***'}
-                                      </p>
-                                    </div>
-                                  ) : balance < 0 ? (
-                                    <div>
-                                      <p className="text-[10px] text-zinc-500 font-bold leading-none uppercase">YOU OWE</p>
-                                      <p className="text-sm font-extrabold text-rose-500 mt-1">
-                                        {isRevealed ? `-${currency.symbol}${Math.abs(balance).toLocaleString('en-IN')}` : '- ***'}
-                                      </p>
-                                    </div>
-                                  ) : (
-                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-zinc-900 text-zinc-500 border border-zinc-800">
-                                      Settled
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Peek eye — hold to reveal, release to hide */}
-                                {balance !== 0 && (
-                                  <button
-                                    onMouseDown={(e) => { e.stopPropagation(); setPeekingContactId(contact.id); }}
-                                    onMouseUp={(e) => { e.stopPropagation(); setPeekingContactId(null); }}
-                                    onMouseLeave={() => setPeekingContactId(null)}
-                                    onTouchStart={(e) => { e.stopPropagation(); setPeekingContactId(contact.id); }}
-                                    onTouchEnd={(e) => { e.stopPropagation(); setPeekingContactId(null); }}
-                                    className={`p-1 rounded-md transition-all select-none cursor-pointer ${
-                                      peekingContactId === contact.id
-                                        ? 'text-indigo-300 scale-110'
-                                        : 'text-zinc-600 hover:text-zinc-400'
-                                    }`}
-                                    title="Hold to peek"
-                                  >
-                                    {peekingContactId === contact.id ? (
-                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                      </svg>
-                                    ) : (
-                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" />
-                                      </svg>
-                                    )}
-                                  </button>
+                              <div className="text-right shrink-0 pl-2">
+                                {balance > 0 ? (
+                                  <div>
+                                    <p className="text-[10px] text-zinc-500 font-bold leading-none uppercase">YOU&apos;LL GET</p>
+                                    <p className="text-sm font-extrabold text-emerald-500 mt-1">
+                                      {!showBalances ? '+ ***' : `+${currency.symbol}${balance.toLocaleString('en-IN')}`}
+                                    </p>
+                                  </div>
+                                ) : balance < 0 ? (
+                                  <div>
+                                    <p className="text-[10px] text-zinc-500 font-bold leading-none uppercase">YOU OWE</p>
+                                    <p className="text-sm font-extrabold text-rose-500 mt-1">
+                                      {!showBalances ? '- ***' : `-${currency.symbol}${Math.abs(balance).toLocaleString('en-IN')}`}
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-zinc-900 text-zinc-500 border border-zinc-800">
+                                    Settled
+                                  </span>
                                 )}
                               </div>
                             </div>
@@ -1316,17 +1279,17 @@ export default function Dashboard() {
                           </div>
                         </div>
 
-                        {/* Summary Balance Strip — always visible inside contact detail */}
+                        {/* Summary Balance Strip */}
                         <div className="px-4 py-3 bg-zinc-900/20 border-b border-zinc-900 flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-zinc-500 font-semibold uppercase tracking-wider">CURRENT POSITION:</span>
                             {getContactBalance(selectedContact) > 0 ? (
                               <span className="text-xs bg-emerald-500/10 text-emerald-400 font-bold px-2 py-0.5 rounded border border-emerald-500/20">
-                                {selectedContact.name} owes you {currency.symbol}{getContactBalance(selectedContact).toLocaleString('en-IN')}
+                                {selectedContact.name} owes you {!showBalances ? '***' : `${currency.symbol}${getContactBalance(selectedContact).toLocaleString('en-IN')}`}
                               </span>
                             ) : getContactBalance(selectedContact) < 0 ? (
                               <span className="text-xs bg-rose-500/10 text-rose-400 font-bold px-2 py-0.5 rounded border border-rose-500/20">
-                                You owe {selectedContact.name} {currency.symbol}{Math.abs(getContactBalance(selectedContact)).toLocaleString('en-IN')}
+                                You owe {selectedContact.name} {!showBalances ? '***' : `${currency.symbol}${Math.abs(getContactBalance(selectedContact)).toLocaleString('en-IN')}`}
                               </span>
                             ) : (
                               <span className="text-xs bg-zinc-900 text-zinc-400 font-bold px-2 py-0.5 rounded border border-zinc-800">
@@ -1335,8 +1298,26 @@ export default function Dashboard() {
                             )}
                           </div>
 
-                          {/* Small Search inside Ledger */}
-                          <div className="relative w-40 sm:w-56">
+                          <button
+                            onClick={() => setShowBalances(!showBalances)}
+                            className="p-1 rounded-md hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+                            title={showBalances ? "Hide balances" : "Show balances"}
+                          >
+                            {showBalances ? (
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                            ) : (
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" />
+                              </svg>
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Small Search inside Ledger */}
+                        <div className="relative w-40 sm:w-56">
                           <input
                             type="text"
                             placeholder="Search transactions..."
@@ -1352,7 +1333,7 @@ export default function Dashboard() {
                         </div>
                       </div>
 
-
+                    {/* Transaction Feed */}
                     <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 scrollbar-thin scrollbar-thumb-zinc-800">
                       {filteredTransactions.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-3">
@@ -1389,8 +1370,8 @@ export default function Dashboard() {
                             <div
                               key={tx.id}
                               className={`group relative flex items-start justify-between p-4 rounded-xl bg-zinc-900/40 hover:bg-zinc-900 border-y border-r transition-all duration-150 ${isCredit
-                                ? 'border-l-4 border-l-emerald-500 border-y-zinc-800/60 border-r-zinc-800/60 shadow-lg shadow-emerald-950/5'
-                                : 'border-l-4 border-l-rose-500 border-y-zinc-800/60 border-r-zinc-800/60 shadow-lg shadow-rose-950/5'
+                                  ? 'border-l-4 border-l-emerald-500 border-y-zinc-800/60 border-r-zinc-800/60 shadow-lg shadow-emerald-950/5'
+                                  : 'border-l-4 border-l-rose-500 border-y-zinc-800/60 border-r-zinc-800/60 shadow-lg shadow-rose-950/5'
                                 }`}
                             >
                               <div className="flex items-start gap-3.5 min-w-0">
@@ -1401,8 +1382,8 @@ export default function Dashboard() {
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-2">
                                     <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-extrabold ${isCredit
-                                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                      : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                        : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                                       }`}>
                                       {isCredit ? '↗️ GAVE (Lent)' : '↙️ GOT (Borrowed)'}
                                     </span>
@@ -1729,8 +1710,8 @@ export default function Dashboard() {
                       key={c.code}
                       onClick={() => handleCurrencyChange(c)}
                       className={`p-3 rounded-xl border text-center transition-all ${currency.code === c.code
-                        ? 'bg-indigo-600/15 border-indigo-500 text-indigo-400 font-bold'
-                        : 'bg-zinc-950 hover:bg-zinc-900 border-zinc-800 text-zinc-400'
+                          ? 'bg-indigo-600/15 border-indigo-500 text-indigo-400 font-bold'
+                          : 'bg-zinc-950 hover:bg-zinc-900 border-zinc-800 text-zinc-400'
                         }`}
                     >
                       <span className="block text-lg font-black">{c.symbol}</span>
@@ -1913,8 +1894,8 @@ export default function Dashboard() {
                       type="button"
                       onClick={() => setContactInitialType('credit')}
                       className={`text-xs font-semibold transition-all ${contactInitialType === 'credit'
-                        ? 'bg-emerald-600/20 text-emerald-400 font-bold'
-                        : 'text-zinc-500 hover:text-zinc-300'
+                          ? 'bg-emerald-600/20 text-emerald-400 font-bold'
+                          : 'text-zinc-500 hover:text-zinc-300'
                         }`}
                     >
                       You&apos;ll Get
@@ -1923,8 +1904,8 @@ export default function Dashboard() {
                       type="button"
                       onClick={() => setContactInitialType('debit')}
                       className={`text-xs font-semibold transition-all ${contactInitialType === 'debit'
-                        ? 'bg-rose-600/20 text-rose-400 font-bold'
-                        : 'text-zinc-500 hover:text-zinc-300'
+                          ? 'bg-rose-600/20 text-rose-400 font-bold'
+                          : 'text-zinc-500 hover:text-zinc-300'
                         }`}
                     >
                       You Owe
@@ -1987,8 +1968,8 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setTxType('got')}
                     className={`rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${txType === 'got'
-                      ? 'bg-rose-600 text-white shadow-md'
-                      : 'text-zinc-500 hover:text-zinc-300'
+                        ? 'bg-rose-600 text-white shadow-md'
+                        : 'text-zinc-500 hover:text-zinc-300'
                       }`}
                   >
                     <span>↙️ Got (Borrowed)</span>
@@ -1997,8 +1978,8 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setTxType('gave')}
                     className={`rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${txType === 'gave'
-                      ? 'bg-emerald-600 text-white shadow-md'
-                      : 'text-zinc-500 hover:text-zinc-300'
+                        ? 'bg-emerald-600 text-white shadow-md'
+                        : 'text-zinc-500 hover:text-zinc-300'
                       }`}
                   >
                     <span>↗️ Gave (Lent)</span>
@@ -2053,8 +2034,8 @@ export default function Dashboard() {
                       key={cat}
                       onClick={() => setTxCategory(cat)}
                       className={`py-2 px-1 rounded-xl border text-center transition-all ${txCategory === cat
-                        ? 'bg-indigo-600/15 border-indigo-500 text-indigo-400 font-bold'
-                        : 'bg-zinc-950 hover:bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-350'
+                          ? 'bg-indigo-600/15 border-indigo-500 text-indigo-400 font-bold'
+                          : 'bg-zinc-950 hover:bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-350'
                         }`}
                     >
                       <span className="block text-base leading-none">{icons[cat]}</span>
