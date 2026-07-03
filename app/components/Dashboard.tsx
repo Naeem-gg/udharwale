@@ -126,96 +126,6 @@ export default function Dashboard() {
     }
   }, []);
 
-  const handleImportContacts = async () => {
-    if (!contactsSupported) {
-      setImportStatus({
-        type: 'error',
-        message: 'Contact syncing is not supported on this browser. Please use Chrome on an Android device and make sure the app is opened over HTTPS.'
-      });
-      return;
-    }
-    setImportStatus(null);
-    try {
-      setIsImportingContacts(true);
-      // @ts-ignore
-      const imported = await navigator.contacts.select(['name', 'tel'], { multiple: true });
-      if (!imported || imported.length === 0) {
-        // User dismissed the picker without selecting — that's fine, no message needed
-        setIsImportingContacts(false);
-        return;
-      }
-
-      const newContactsPayload = imported.map((c: any) => ({
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        name: c.name?.[0] || 'Unknown',
-        phone: c.tel?.[0] || '',
-        email: '',
-        transactions: [],
-        createdAt: new Date().toISOString()
-      })).filter((c: any) => c.phone);
-
-      if (newContactsPayload.length === 0) {
-        setImportStatus({
-          type: 'info',
-          message: 'None of the contacts you selected had a phone number saved. Go back to your phone contacts app, add phone numbers, then try again.'
-        });
-        setIsImportingContacts(false);
-        return;
-      }
-
-      const res = await fetch('/api/contacts/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contacts: newContactsPayload })
-      });
-
-      if (res.ok) {
-        const result = await res.json();
-        await loadContacts();
-        setIsAddContactOpen(false);
-        setImportStatus(null);
-        triggerConfetti();
-      } else if (res.status === 401) {
-        setImportStatus({
-          type: 'error',
-          message: 'Your session has expired. Please log out and log back in, then try again.'
-        });
-      } else if (res.status >= 500) {
-        setImportStatus({
-          type: 'error',
-          message: `Server error — our backend couldn't save your contacts right now. Please wait a moment and try again. If it keeps failing, check your internet connection. (${res.status})`
-        });
-      } else {
-        const errData = await res.json().catch(() => ({}));
-        setImportStatus({
-          type: 'error',
-          message: `Couldn't save contacts: ${errData.error || res.statusText}. Try again or add contacts manually below.`
-        });
-      }
-    } catch (err: any) {
-      if (err?.name === 'AbortError' || err?.code === 20) {
-        // User cancelled the picker — no message needed
-      } else if (err?.message?.toLowerCase().includes('secure')) {
-        setImportStatus({
-          type: 'error',
-          message: 'Contact access requires a secure connection (HTTPS). This app must be opened via an https:// link — not http://. Contact your administrator.'
-        });
-      } else if (err?.message?.toLowerCase().includes('permission') || err?.message?.toLowerCase().includes('denied')) {
-        setImportStatus({
-          type: 'error',
-          message: 'Permission denied. Go to your phone Settings → Apps → Browser → Permissions and enable Contacts access, then try again.'
-        });
-      } else {
-        console.error('Error importing contacts:', err);
-        setImportStatus({
-          type: 'error',
-          message: `Something went wrong on your device: "${err?.message || 'Unknown error'}". Make sure you are using Chrome on Android over a secure HTTPS connection.`
-        });
-      }
-    } finally {
-      setIsImportingContacts(false);
-    }
-  };
 
   const handleLogout = async () => {
     try {
@@ -472,6 +382,81 @@ export default function Dashboard() {
     } catch (err) {
       console.error('Error adding contact to backend:', err);
       alert('An error occurred while communicating with the database.');
+    }
+  };
+
+  const handleImportContacts = async (multiple: boolean = false) => {
+    if (!('contacts' in navigator && 'ContactsManager' in window)) {
+      setImportStatus({ type: 'error', message: 'Not supported on this browser.' });
+      return;
+    }
+    
+    setIsImportingContacts(true);
+    setImportStatus(null);
+    
+    try {
+      const props = ['name', 'tel'];
+      const opts = { multiple };
+      
+      const supportedProps = await (navigator as any).contacts.getProperties();
+      if (!supportedProps.includes('name') || !supportedProps.includes('tel')) {
+        throw new Error("Required contact properties not supported");
+      }
+
+      const importedContacts = await (navigator as any).contacts.select(props, opts);
+      
+      if (!importedContacts || importedContacts.length === 0) {
+        setIsImportingContacts(false);
+        setImportStatus({ type: 'info', message: 'No contacts selected.' });
+        return;
+      }
+      
+      const newContacts = [];
+      for (const ic of importedContacts) {
+        const name = ic.name?.[0];
+        const phone = ic.tel?.[0];
+        if (name && phone) {
+          const newContactId = 'c_' + Date.now() + Math.random().toString(36).substr(2, 9);
+          newContacts.push({
+            id: newContactId,
+            name: name,
+            phone: phone.replace(/[^0-9+]/g, ''),
+            transactions: [],
+            createdAt: new Date().toISOString()
+          });
+        }
+      }
+      
+      if (newContacts.length > 0) {
+        let addedCount = 0;
+        for (const c of newContacts) {
+          const res = await fetch('/api/contacts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(c),
+          });
+          if (res.ok) addedCount++;
+        }
+        
+        saveContactsState([...newContacts, ...contacts]);
+        setImportStatus({ type: 'success', message: `Imported ${addedCount} contact(s) successfully!` });
+        if (addedCount > 0 && !multiple) {
+          setSelectedContactId(newContacts[0].id);
+          setIsAddContactOpen(false);
+          setMobileView('ledger');
+        }
+      } else {
+        setImportStatus({ type: 'error', message: 'Selected contacts must have a name and phone number.' });
+      }
+    } catch (err: any) {
+      console.error('Contact import error:', err);
+      if (err.name === 'SecurityError' || err.name === 'NotAllowedError') {
+        setImportStatus({ type: 'error', message: 'Permission denied or blocked. Enable contacts permission in browser settings.' });
+      } else {
+        setImportStatus({ type: 'error', message: err.message || 'Unknown error occurred during import.' });
+      }
+    } finally {
+      setIsImportingContacts(false);
     }
   };
 
@@ -769,593 +754,465 @@ export default function Dashboard() {
     return name.slice(0, 2).toUpperCase();
   };
 
+  // ─── Toast System ───────────────────────────────────────────────────────
+  const [toasts, setToasts] = React.useState<{id:number;type:'success'|'error'|'info'|'warn';msg:string;leaving?:boolean}[]>([]);
+  const toastCounter = React.useRef(0);
+  const showToast = React.useCallback((msg: string, type: 'success'|'error'|'info'|'warn' = 'info') => {
+    const id = ++toastCounter.current;
+    setToasts(prev => [...prev, { id, type, msg }]);
+    setTimeout(() => {
+      setToasts(prev => prev.map(t => t.id === id ? { ...t, leaving: true } : t));
+      setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 300);
+    }, 3800);
+  }, []);
+
   return (
-    <div className="flex flex-col flex-1 h-screen overflow-hidden bg-zinc-950 font-sans text-zinc-100 relative">
+    <div className="flex flex-col flex-1 h-screen overflow-hidden relative" style={{ background: 'var(--bg-base)', fontFamily: "'Inter', system-ui, sans-serif", color: 'var(--text-primary)' }}>
+
+      {/* ── Toast Container ─────────────────────────── */}
+      <div className="toast-container">
+        {toasts.map(t => (
+          <div key={t.id} className={`toast toast-${t.type}${t.leaving ? ' leaving' : ''}`}>
+            <span className="shrink-0 text-base">
+              {t.type === 'success' ? '✅' : t.type === 'error' ? '❌' : t.type === 'warn' ? '⚠️' : 'ℹ️'}
+            </span>
+            <span>{t.msg}</span>
+          </div>
+        ))}
+      </div>
 
       {/* CSS Confetti Canvas */}
+      {/* ── Confetti ─────────────────────────────── */}
       {particles.map((p) => (
-        <div
-          key={p.id}
-          className="fixed pointer-events-none z-50 rounded-sm"
-          style={{
-            left: p.x,
-            top: p.y,
-            width: p.size,
-            height: p.size,
-            backgroundColor: p.color,
-            transform: `rotate(${p.rotation}deg)`,
-            opacity: 0.95,
-            transition: 'transform 0.05s linear',
-          }}
-        />
+        <div key={p.id} className="fixed pointer-events-none z-[60] rounded-sm"
+          style={{ left: p.x, top: p.y, width: p.size, height: p.size, backgroundColor: p.color, transform: `rotate(${p.rotation}deg)`, opacity: 0.95 }} />
       ))}
 
-      {/* Main Container */}
-      <div className="flex flex-1 flex-col md:flex-row overflow-hidden relative">
+      {/* ══════════════════════════════════════════════════════════
+          MAIN SHELL
+      ══════════════════════════════════════════════════════════ */}
+      <div className="flex flex-1 overflow-hidden">
 
-        {/* ==================================================== */}
-        {/* MOBILE TOP HEADER (visible on mobile only) */}
-        {/* ==================================================== */}
-        <header className="md:hidden flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-800 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-              <span className="text-white font-bold text-base">U</span>
+        {/* ── Desktop Sidebar ──────────────────────────────────── */}
+        <aside className="hidden md:flex flex-col shrink-0 overflow-hidden"
+          style={{ width: '260px', background: 'var(--bg-surface)', borderRight: '1px solid var(--border-soft)' }}>
+
+          {/* Logo */}
+          <div className="flex items-center gap-3 px-5 py-5 shrink-0" style={{ borderBottom: '1px solid var(--border-soft)' }}>
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg font-black shrink-0"
+              style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', boxShadow: '0 4px 16px rgba(99,102,241,0.35)' }}>
+              🧾
             </div>
             <div>
-              <h1 className="font-extrabold text-sm tracking-tight text-white leading-none">UdharWale</h1>
-              <div className="flex items-center gap-1 mt-0.5">
-                <span className={`w-1.5 h-1.5 rounded-full ${dbStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : dbStatus === 'connecting' ? 'bg-amber-400 animate-pulse' : 'bg-rose-400'
-                  }`} />
-                <span className={`text-[10px] font-semibold ${dbStatus === 'connected' ? 'text-emerald-400' : dbStatus === 'connecting' ? 'text-amber-400' : 'text-rose-400'
-                  }`}>
-                  {dbStatus === 'connected' ? 'All saved' : dbStatus === 'connecting' ? 'Syncing...' : 'Offline'}
-                </span>
-              </div>
+              <h1 className="font-black text-sm tracking-tight" style={{ color: 'var(--text-primary)' }}>UdharWale</h1>
+              <p className="text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>Smart Debt Ledger</p>
+            </div>
+            {/* Sync dot */}
+            <div className="ml-auto">
+              <div className={`w-2 h-2 rounded-full ${dbStatus === 'connected' ? 'animate-pulse' : ''}`}
+                style={{ background: dbStatus === 'connected' ? '#10b981' : dbStatus === 'connecting' ? '#f59e0b' : '#f43f5e' }}
+                title={dbStatus === 'connected' ? 'Synced' : dbStatus === 'connecting' ? 'Syncing…' : 'Offline'} />
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 bg-zinc-800/60 rounded-full px-2.5 py-1.5">
-              <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-indigo-500 to-indigo-600 flex items-center justify-center font-bold text-white text-[9px]">
-                {getInitials(userName)}
-              </div>
-              <span className="text-xs font-semibold text-zinc-300 max-w-[80px] truncate">{userName}</span>
+
+          {/* User card */}
+          <div className="mx-3 mt-4 mb-1 flex items-center gap-3 p-3 rounded-xl"
+            style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>
+            <div className="w-9 h-9 rounded-full shrink-0 flex items-center justify-center font-black text-sm text-white"
+              style={{ background: 'linear-gradient(135deg,#6366f1,#818cf8)' }}>
+              {getInitials(userName)}
             </div>
-            <button
-              onClick={handleLogout}
-              className="p-2 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
-              title="Log Out"
-            >
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>{userName}</p>
+              <p className="text-[10px] truncate" style={{ color: 'var(--text-muted)' }}>{userEmail}</p>
+            </div>
+            <button onClick={handleLogout} title="Sign out"
+              className="p-1.5 rounded-lg transition-colors shrink-0"
+              style={{ color: 'var(--text-muted)' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color='#f43f5e'; (e.currentTarget as HTMLElement).style.background='rgba(244,63,94,0.08)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color='var(--text-muted)'; (e.currentTarget as HTMLElement).style.background=''; }}>
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
               </svg>
             </button>
           </div>
-        </header>
 
-        {/* ==================================================== */}
-        {/* DESKTOP SIDEBAR / MOBILE NAVIGATION BRAND HEADER */}
-        {/* ==================================================== */}
-        <aside className="hidden md:w-64 md:flex bg-zinc-900 border-r border-zinc-800 flex-col justify-between shrink-0">
+          {/* Nav */}
+          <nav className="px-3 py-3 space-y-1 flex-1">
+            {([
+              { tab: 'ledgers' as const, label: 'Friends & Khata', badge: contacts.length, icon: (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              )},
+              { tab: 'insights' as const, label: 'Insights & Flow', badge: null, icon: (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              )},
+              { tab: 'settings' as const, label: 'Ledger Settings', badge: null, icon: (
+                <>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </>
+              )},
+            ] as const).map(({ tab, label, badge, icon }) => (
+              <button key={tab} onClick={() => { setActiveTab(tab); setMobileView('list'); }}
+                className={`nav-item${activeTab === tab ? ' active' : ''}`}>
+                <svg className="w-[18px] h-[18px] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">{icon}</svg>
+                <span className="flex-1 text-left">{label}</span>
+                {badge !== null && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                    style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--text-muted)' }}>
+                    {badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </nav>
 
-          <div className="flex flex-col">
-            {/* Brand Logo Header */}
-            <div className="p-5 border-b border-zinc-800 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                  <span className="text-white font-bold text-lg">U</span>
-                </div>
-                <div className="flex flex-col">
-                  <h1 className="font-extrabold text-base tracking-tight text-white flex items-center gap-1.5 leading-none">
-                    UdharWale
-                  </h1>
-                  <p className="text-[10px] text-zinc-500 font-medium mt-1">Smart Debt Ledger</p>
-                </div>
-              </div>
+          {/* Sidebar footer */}
+          <div className="px-4 py-4 shrink-0" style={{ borderTop: '1px solid var(--border-soft)' }}>
+            <div className="flex items-center gap-2 text-[11px] font-semibold"
+              style={{ color: dbStatus === 'connected' ? '#10b981' : dbStatus === 'connecting' ? '#f59e0b' : '#f43f5e' }}>
+              <span className={`w-1.5 h-1.5 rounded-full ${dbStatus === 'connecting' ? 'animate-pulse' : ''}`}
+                style={{ background: 'currentColor' }} />
+              {dbStatus === 'connected' ? 'All data saved' : dbStatus === 'connecting' ? 'Syncing…' : 'Connection lost'}
+            </div>
+            <div className="flex items-center gap-1 mt-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>
+              <span>Crafted by</span>
+              <a href="https://github.com/Naeem-gg" target="_blank" rel="noreferrer" className="flex items-center gap-1 font-bold hover:text-indigo-400 transition-colors">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+                Naeem Navjivan
+              </a>
+            </div>
+          </div>
+        </aside>
 
-              {/* Dynamic Connection Status badge in Header */}
+        {/* ── Mobile Top Header ────────────────────────────────── */}
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <header className="md:hidden flex items-center justify-between px-4 py-3 shrink-0"
+            style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-soft)' }}>
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center font-black text-white text-sm"
+                style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}>🧾</div>
               <div>
-                <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold flex items-center gap-1 ${dbStatus === 'connected'
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/10'
-                  : dbStatus === 'connecting'
-                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/10 animate-pulse'
-                    : 'bg-rose-500/10 text-rose-400 border-rose-500/10'
-                  }`}>
-                  <span className={`w-1 h-1 rounded-full ${dbStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : dbStatus === 'connecting' ? 'bg-amber-400 animate-pulse' : 'bg-rose-400'
-                    }`} />
-                  {dbStatus === 'connected' ? 'LIVE' : dbStatus === 'connecting' ? 'SYNC...' : 'OFFLINE'}
-                </span>
-              </div>
-
-              {/* Currency Picker in Header for quick access */}
-              <div className="relative group md:hidden">
-                <button className="flex items-center gap-1 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold py-1 px-2 rounded border border-zinc-700">
-                  <span>{currency.symbol}</span>
-                  <span className="text-[10px] text-zinc-500">{currency.code}</span>
-                </button>
+                <h1 className="font-black text-sm tracking-tight" style={{ color: 'var(--text-primary)' }}>UdharWale</h1>
+                <div className="flex items-center gap-1">
+                  <span className={`w-1.5 h-1.5 rounded-full ${dbStatus === 'connecting' ? 'animate-pulse' : ''}`}
+                    style={{ background: dbStatus === 'connected' ? '#10b981' : dbStatus === 'connecting' ? '#f59e0b' : '#f43f5e' }} />
+                  <span className="text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>
+                    {dbStatus === 'connected' ? 'Saved' : dbStatus === 'connecting' ? 'Syncing…' : 'Offline'}
+                  </span>
+                </div>
               </div>
             </div>
-
-            {/* Profile Card */}
-            <div className="p-4 mx-3 my-4 bg-zinc-950/40 border border-zinc-800/80 rounded-xl flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 overflow-hidden">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-indigo-600 border border-indigo-400/25 flex items-center justify-center font-bold text-white shadow-inner shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-full"
+                style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>
+                <div className="w-5 h-5 rounded-full flex items-center justify-center font-black text-white text-[9px]"
+                  style={{ background: 'linear-gradient(135deg,#6366f1,#818cf8)' }}>
                   {getInitials(userName)}
                 </div>
-                <div className="overflow-hidden">
-                  <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">ACTIVE PROFILE</p>
-                  <h3 className="font-bold text-sm text-zinc-100 truncate">{userName}</h3>
-                  <p className="text-xs text-zinc-500 truncate">{userEmail}</p>
-                </div>
+                <span className="text-xs font-semibold max-w-[70px] truncate" style={{ color: 'var(--text-primary)' }}>{userName}</span>
               </div>
-              <button
-                onClick={handleLogout}
-                className="p-2 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors shrink-0"
-                title="Log Out"
-              >
+              <button onClick={handleLogout} className="p-2 rounded-xl transition-colors"
+                style={{ color: 'var(--text-muted)' }}>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                 </svg>
               </button>
             </div>
+          </header>
 
-            {/* Navigation Tabs */}
-            <nav className="px-3 space-y-1">
-              <button
-                onClick={() => { setActiveTab('ledgers'); setMobileView('list'); }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${activeTab === 'ledgers'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10'
-                  : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'
-                  }`}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-                <span>Friends & Khata</span>
-                <span className="ml-auto text-xs bg-zinc-950/60 text-zinc-400 px-2 py-0.5 rounded-full border border-zinc-850">
-                  {contacts.length}
-                </span>
-              </button>
+        {/* ══════════════════════════════════════════════════════
+            MAIN CONTENT
+        ══════════════════════════════════════════════════════ */}
+        <main className="flex-1 flex flex-col overflow-hidden pb-16 md:pb-0">
 
-              <button
-                onClick={() => setActiveTab('insights')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${activeTab === 'insights'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10'
-                  : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'
-                  }`}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                <span>Insights & Flow</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('settings')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${activeTab === 'settings'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10'
-                  : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200'
-                  }`}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <span>Ledger Settings</span>
-              </button>
-            </nav>
-          </div>
-
-          {/* Footer Brand Info (Desktop Only) */}
-          <div className="hidden md:flex flex-col p-4 border-t border-zinc-800 gap-1.5">
-            <div className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">SYNC STATUS</div>
-            <div className={`flex items-center gap-2 text-xs font-bold py-1 px-2 rounded border ${dbStatus === 'connected'
-              ? 'bg-emerald-500/5 text-emerald-500 border-emerald-500/10'
-              : dbStatus === 'connecting'
-                ? 'bg-amber-500/5 text-amber-500 border-amber-500/10 animate-pulse'
-                : 'bg-rose-500/5 text-rose-500 border-rose-500/10'
-              }`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${dbStatus === 'connected' ? 'bg-emerald-500 animate-pulse' : dbStatus === 'connecting' ? 'bg-amber-500' : 'bg-rose-500'
-                }`} />
-              {dbStatus === 'connected'
-                ? 'All saved'
-                : dbStatus === 'connecting'
-                  ? 'Syncing...'
-                  : 'Offline'}
+          {/* Loading skeleton */}
+          {dbStatus === 'connecting' && (
+            <div className="flex-1 flex flex-col p-6 space-y-4">
+              {[1,2,3].map(i => (
+                <div key={i} className="flex items-center gap-4 p-4 rounded-2xl" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
+                  <div className="skeleton w-11 h-11 rounded-full shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="skeleton h-3 rounded-full w-2/5" />
+                    <div className="skeleton h-2.5 rounded-full w-1/3" />
+                  </div>
+                  <div className="skeleton h-5 w-16 rounded-full" />
+                </div>
+              ))}
             </div>
-          </div>
-        </aside>
+          )}
 
-        {/* ==================================================== */}
-        {/* MAIN DISPLAY CONTAINER */}
-        {/* ==================================================== */}
-        <main className="flex-1 flex flex-col overflow-hidden bg-zinc-950 pb-16 md:pb-0">
-          {dbStatus === 'connecting' ? (
-            <div className="flex-1 flex flex-col items-center justify-center space-y-4">
-              <div className="relative w-12 h-12">
-                <div className="absolute inset-0 rounded-full border-4 border-zinc-800" />
-                <div className="absolute inset-0 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin" />
-              </div>
-              <div className="text-center space-y-1">
-                <h3 className="text-sm font-bold text-zinc-200">Loading your data...</h3>
-                <p className="text-xs text-zinc-500">Just a moment, hang tight</p>
-              </div>
-            </div>
-          ) : dbStatus === 'error' ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-6 max-w-md mx-auto">
-              <div className="w-16 h-16 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500 text-3xl shadow-lg shadow-rose-500/5">
-                🔌
-              </div>
+          {/* Error state */}
+          {dbStatus === 'error' && (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-6">
+              <div className="w-20 h-20 rounded-3xl flex items-center justify-center text-4xl"
+                style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.15)' }}>🔌</div>
               <div className="space-y-2">
-                <h3 className="text-lg font-extrabold text-zinc-200">Couldn't load your data</h3>
-                <p className="text-sm text-zinc-500 leading-relaxed">
-                  Something went wrong while loading. Please check your internet connection and try again.
-                </p>
+                <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Couldn't load your data</h3>
+                <p className="text-sm max-w-xs" style={{ color: 'var(--text-secondary)' }}>Check your internet connection and try again.</p>
               </div>
-              <button
-                onClick={loadContacts}
-                className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-6 rounded-xl text-sm transition-all duration-200 shadow-lg shadow-indigo-600/10 active:scale-[0.98]"
-              >
-                Retry Connection
-              </button>
+              <button onClick={loadContacts} className="btn-primary px-8">Retry</button>
             </div>
-          ) : (
-            <>
-              {/* LEDGERS TAB */}
-              {activeTab === 'ledgers' && (
-                <div className="flex-1 flex overflow-hidden relative">
+          )}
 
-                  {/* LEDGER SPLIT PANE: CONTACTS SIDEBAR */}
-                  <div className={`w-full md:w-96 border-r border-zinc-900 flex flex-col bg-zinc-950/60 overflow-hidden shrink-0 ${mobileView === 'ledger' && selectedContactId ? 'hidden md:flex' : 'flex'
-                    }`}>
+          {/* ── LEDGERS TAB ──────────────────────────────── */}
+          {dbStatus === 'connected' && activeTab === 'ledgers' && (
+            <div className="flex-1 flex overflow-hidden">
 
-                    {/* 1. Global Stat Summary Mini Hero */}
-                    <div className="p-4 border-b border-zinc-900 space-y-3">
+              {/* Left panel: contact list */}
+              <div className={`flex flex-col shrink-0 overflow-hidden ${mobileView === 'ledger' ? 'hidden md:flex' : 'flex'}`}
+                style={{ width: '100%', maxWidth: '100%', borderRight: '1px solid var(--border-soft)' }}
+                data-md-width="320px">
+                <style>{`.contact-list-panel { max-width: 100%; } @media(min-width:768px) { .contact-list-panel { width: 320px !important; max-width: 320px !important; } }`}</style>
+                <div className="contact-list-panel flex flex-col overflow-hidden flex-1 md:flex md:flex-col"
+                  style={{ width: '100%' }}>
 
-                      {/* Balance Widget Card */}
-                      <div className="p-4 rounded-2xl bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800 shadow-xl relative overflow-hidden">
-                        {/* Glowing highlight gradients */}
-                        <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 blur-2xl rounded-full pointer-events-none" />
-
-                        <div className="flex items-center justify-between relative z-10">
-                          <p className="text-xs text-zinc-500 font-semibold tracking-wider uppercase">NET WALLET BALANCE</p>
-                          <button
-                            onClick={() => setShowBalances(!showBalances)}
-                            className="p-1 rounded-md bg-zinc-950/50 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-800/60 transition-colors cursor-pointer"
-                            title={showBalances ? "Hide balances" : "Show balances"}
-                          >
-                            {showBalances ? (
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                              </svg>
-                            ) : (
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" />
-                              </svg>
-                            )}
-                          </button>
+                  {/* Search + filter bar */}
+                  <div className="p-4 space-y-3 shrink-0" style={{ borderBottom: '1px solid var(--border-soft)' }}>
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-muted)' }}>
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
                         </div>
-                        <div className="flex items-baseline gap-1.5 mt-1">
-                          <h2 className={`text-2xl font-black ${!showBalances ? 'text-zinc-400' : stats.netBalance > 0 ? 'text-emerald-500' : stats.netBalance < 0 ? 'text-rose-500' : 'text-zinc-300'
-                            }`}>
-                            {!showBalances ? '****' : (
-                              <>
-                                {stats.netBalance > 0 ? '+' : stats.netBalance < 0 ? '-' : ''}
-                                {currency.symbol}{Math.abs(stats.netBalance).toLocaleString('en-IN')}
-                              </>
-                            )}
-                          </h2>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-zinc-850">
-                          <div>
-                            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">YOU&apos;LL GET</p>
-                            <p className={`text-sm font-extrabold ${!showBalances ? 'text-zinc-400' : 'text-emerald-500'}`}>
-                              {!showBalances ? '****' : `${currency.symbol}${stats.totalCredit.toLocaleString('en-IN')}`}
-                            </p>
-                          </div>
-                          <div className="border-l border-zinc-850 pl-3">
-                            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">YOU OWE</p>
-                            <p className={`text-sm font-extrabold ${!showBalances ? 'text-zinc-400' : 'text-rose-500'}`}>
-                              {!showBalances ? '****' : `${currency.symbol}${stats.totalDebit.toLocaleString('en-IN')}`}
-                            </p>
-                          </div>
-                        </div>
+                        <input type="text" placeholder="Search contacts…" value={searchQuery}
+                          onChange={e => setSearchQuery(e.target.value)}
+                          className="w-full pl-8 pr-3 py-2 text-xs rounded-xl font-medium outline-none transition-all"
+                          style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }} />
                       </div>
-
-                      {/* Add Friend Trigger */}
-                      <button
-                        onClick={() => setIsAddContactOpen(true)}
-                        className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-4 rounded-xl text-sm transition-all duration-200 shadow-lg shadow-indigo-600/10 active:scale-[0.98]"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      <button onClick={() => { setIsAddContactOpen(true); setImportStatus(null); }}
+                        className="shrink-0 w-8 h-8 rounded-xl flex items-center justify-center text-white font-bold text-lg transition-all"
+                        style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', boxShadow: '0 2px 12px rgba(99,102,241,0.3)' }}
+                        title="Add contact">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
                         </svg>
-                        <span>Add New Friend / Ledger</span>
+                      </button>
+
+                      {/* Global balance toggle */}
+                      <button onClick={() => setShowBalances(!showBalances)}
+                        className="shrink-0 w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+                        style={{ background: showBalances ? 'rgba(99,102,241,0.15)' : 'var(--bg-raised)', border: `1px solid ${showBalances ? 'rgba(99,102,241,0.3)' : 'var(--border-soft)'}`, color: showBalances ? '#818cf8' : 'var(--text-muted)' }}
+                        title={showBalances ? 'Hide all balances' : 'Show all balances'}>
+                        {showBalances
+                          ? <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                          : <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" /></svg>
+                        }
                       </button>
                     </div>
 
-                    {/* 2. Contacts Search, Sort & Filters Toolbar */}
-                    <div className="px-4 py-3 border-b border-zinc-900 space-y-2.5 bg-zinc-950/90 sticky top-0 z-10">
-
-                      {/* Search Field & Sort Inline Row */}
-                      <div className="flex gap-2">
-                        <div className="relative flex-1">
-                          <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-500">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                            </svg>
-                          </span>
-                          <input
-                            type="text"
-                            placeholder="Search friend/phone..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-8 pr-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-colors"
-                          />
-                        </div>
-                        <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-xl px-2 shrink-0">
-                          <span className="text-[10px] text-zinc-500 font-medium">Sort:</span>
-                          <select
-                            value={sortBy}
-                            onChange={(e: any) => setSortBy(e.target.value)}
-                            className="bg-transparent text-zinc-300 font-bold border-none outline-none focus:ring-0 cursor-pointer text-[10px] p-0 pr-4"
-                          >
-                            <option value="recent">Active</option>
-                            <option value="name">Name</option>
-                            <option value="balance">Balance</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      {/* Category Status Filters & Counter Row */}
-                      <div className="flex items-center justify-between gap-2 pt-0.5">
-                        <div className="flex gap-1 overflow-x-auto scrollbar-none">
-                          {(['all', 'credit', 'debit', 'settled'] as const).map((filter) => (
-                            <button
-                              key={filter}
-                              onClick={() => setStatusFilter(filter)}
-                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap capitalize transition-all border ${statusFilter === filter
-                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/10'
-                                : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'
-                                }`}
-                            >
-                              {filter === 'credit' ? "Get" : filter === 'debit' ? 'Owe' : filter}
-                            </button>
-                          ))}
-                        </div>
-                        <span className="text-[10px] text-zinc-500 font-bold shrink-0 whitespace-nowrap">
-                          {filteredContacts.length} total
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* 3. Friend Cards List view scroll area */}
-                    <div className="flex-1 overflow-y-auto divide-y divide-zinc-900/60 scrollbar-thin scrollbar-thumb-zinc-800">
-                      {contacts.length === 0 ? (
-                        <div className="p-6 text-center space-y-4">
-                          <div className="w-12 h-12 rounded-2xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-center text-xl mx-auto shadow-inner">
-                            📖
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-sm font-extrabold text-zinc-200">No Friends Found</p>
-                            <p className="text-xs text-zinc-500 leading-relaxed">Add a friend to start tracking your ledgers and shared debts.</p>
-                          </div>
-                          <div className="flex flex-col gap-2 pt-1.5">
-                            <button
-                              onClick={() => setIsAddContactOpen(true)}
-                              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 rounded-xl text-xs transition-all duration-200 active:scale-[0.98] shadow-md shadow-indigo-600/10"
-                            >
-                              ➕ Add Friend / Ledger
-                            </button>
-                          </div>
-                        </div>
-                      ) : filteredContacts.length === 0 ? (
-                        <div className="p-8 text-center space-y-2">
-                          <p className="text-sm text-zinc-500 font-medium">No contacts match the criteria.</p>
-                          <button
-                            onClick={() => { setSearchQuery(''); setStatusFilter('all'); }}
-                            className="text-xs text-indigo-400 font-bold hover:underline"
-                          >
-                            Clear Filters
-                          </button>
-                        </div>
-                      ) : (
-                        filteredContacts.map((contact) => {
-                          const balance = getContactBalance(contact);
-                          const isSelected = selectedContactId === contact.id;
-                          const initials = getInitials(contact.name);
-                          const avatarGradient = getAvatarGradient(contact.name);
-
-                          const isRevealed = peekingContactId === contact.id;
-
-                          return (
-                            <div
-                              key={contact.id}
-                              className={`p-4 flex items-center justify-between transition-all duration-150 ${isSelected
-                                ? 'bg-zinc-900 border-l-4 border-indigo-500'
-                                : 'hover:bg-zinc-900/40 active:bg-zinc-900/60'
-                                }`}
-                            >
-                              {/* Left: avatar + name — click to open */}
-                              <div
-                                className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
-                                onClick={() => {
-                                  setSelectedContactId(contact.id);
-                                  setMobileView('ledger');
-                                }}
-                              >
-                                {/* Colorful Initials Avatar */}
-                                <div className={`w-11 h-11 rounded-full shrink-0 bg-gradient-to-tr ${avatarGradient} flex items-center justify-center font-black text-sm text-white border border-white/10 shadow`}>
-                                  {initials}
-                                </div>
-                                <div className="min-w-0">
-                                  <h4 className="font-bold text-sm text-zinc-100 truncate">{contact.name}</h4>
-                                  <p className="text-xs text-zinc-500 mt-0.5 truncate">{contact.phone}</p>
-                                </div>
-                              </div>
-
-                              {/* Right: balance + peek button */}
-                              <div className="flex items-center gap-1.5 shrink-0 pl-2">
-                                <div className="text-right">
-                                  {balance > 0 ? (
-                                    <div>
-                                      <p className="text-[10px] text-zinc-500 font-bold leading-none uppercase">YOU&apos;LL GET</p>
-                                      <p className="text-sm font-extrabold text-emerald-500 mt-1">
-                                        {isRevealed ? `+${currency.symbol}${balance.toLocaleString('en-IN')}` : '+ ***'}
-                                      </p>
-                                    </div>
-                                  ) : balance < 0 ? (
-                                    <div>
-                                      <p className="text-[10px] text-zinc-500 font-bold leading-none uppercase">YOU OWE</p>
-                                      <p className="text-sm font-extrabold text-rose-500 mt-1">
-                                        {isRevealed ? `-${currency.symbol}${Math.abs(balance).toLocaleString('en-IN')}` : '- ***'}
-                                      </p>
-                                    </div>
-                                  ) : (
-                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-zinc-900 text-zinc-500 border border-zinc-800">
-                                      Settled
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Peek eye — hold to reveal, release to hide */}
-                                {balance !== 0 && (
-                                  <button
-                                    onMouseDown={(e) => { e.stopPropagation(); setPeekingContactId(contact.id); }}
-                                    onMouseUp={(e) => { e.stopPropagation(); setPeekingContactId(null); }}
-                                    onMouseLeave={() => setPeekingContactId(null)}
-                                    onTouchStart={(e) => { e.stopPropagation(); setPeekingContactId(contact.id); }}
-                                    onTouchEnd={(e) => { e.stopPropagation(); setPeekingContactId(null); }}
-                                    className={`p-1 rounded-md transition-all select-none cursor-pointer ${
-                                      peekingContactId === contact.id
-                                        ? 'text-indigo-300 scale-110'
-                                        : 'text-zinc-600 hover:text-zinc-400'
-                                    }`}
-                                    title="Hold to peek"
-                                  >
-                                    {peekingContactId === contact.id ? (
-                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                      </svg>
-                                    ) : (
-                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" />
-                                      </svg>
-                                    )}
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
+                    {/* Filter chips */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5">
+                      {(['all','credit','debit','settled'] as const).map(f => (
+                        <button key={f} onClick={() => setStatusFilter(f)}
+                          className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all"
+                          style={{
+                            background: statusFilter === f
+                              ? f === 'credit' ? 'rgba(16,185,129,0.15)' : f === 'debit' ? 'rgba(244,63,94,0.15)' : f === 'settled' ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.15)'
+                              : 'var(--bg-raised)',
+                            color: statusFilter === f
+                              ? f === 'credit' ? '#6ee7b7' : f === 'debit' ? '#fda4af' : f === 'settled' ? '#a5b4fc' : '#a5b4fc'
+                              : 'var(--text-muted)',
+                            border: `1px solid ${statusFilter === f ? 'rgba(255,255,255,0.1)' : 'var(--border-muted)'}`,
+                          }}>
+                          {f === 'all' ? 'All' : f === 'credit' ? "You'll get" : f === 'debit' ? 'You owe' : 'Settled'}
+                        </button>
+                      ))}
+                      <div className="flex-1" />
+                      <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)}
+                        className="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full outline-none cursor-pointer"
+                        style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-muted)' }}>
+                        <option value="recent">Recent</option>
+                        <option value="name">Name</option>
+                        <option value="balance">Balance</option>
+                      </select>
                     </div>
                   </div>
 
-                  {/* LEDGER SPLIT PANE: DETAILED HISTORY SHEET */}
-                  <div className={`flex-1 flex flex-col bg-zinc-950 overflow-hidden ${mobileView === 'list' ? 'hidden md:flex' : 'flex'
-                    }`}>
-                    {selectedContact ? (
-                      <div className="flex-1 flex flex-col overflow-hidden relative">
+                  {/* Contact list */}
+                  <div className="flex-1 overflow-y-auto scrollbar-thin">
+                    {contacts.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-4">
+                        <div className="w-20 h-20 rounded-3xl flex items-center justify-center text-4xl animate-fade-slide-up"
+                          style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>📖</div>
+                        <div className="space-y-1 animate-fade-slide-up" style={{ animationDelay: '0.1s' }}>
+                          <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>No contacts yet</p>
+                          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Add a friend to start tracking shared balances</p>
+                        </div>
+                        <button onClick={() => setIsAddContactOpen(true)} className="btn-primary text-sm px-6 animate-fade-slide-up" style={{ animationDelay: '0.2s' }}>
+                          ➕ Add First Contact
+                        </button>
+                      </div>
+                    ) : (() => {
+                      const filtered = contacts.filter(c => {
+                        const bal = getContactBalance(c);
+                        if (statusFilter === 'credit' && bal <= 0) return false;
+                        if (statusFilter === 'debit' && bal >= 0) return false;
+                        if (statusFilter === 'settled' && bal !== 0) return false;
+                        if (searchQuery && !c.name.toLowerCase().includes(searchQuery.toLowerCase()) && !c.phone.includes(searchQuery)) return false;
+                        return true;
+                      }).sort((a, b) => {
+                        if (sortBy === 'name') return a.name.localeCompare(b.name);
+                        if (sortBy === 'balance') return Math.abs(getContactBalance(b)) - Math.abs(getContactBalance(a));
+                        const lastA = a.transactions.length ? new Date(a.transactions[a.transactions.length-1].date).getTime() : new Date(a.createdAt).getTime();
+                        const lastB = b.transactions.length ? new Date(b.transactions[b.transactions.length-1].date).getTime() : new Date(b.createdAt).getTime();
+                        return lastB - lastA;
+                      });
 
-                        {/* Header Panel */}
-                        <div className="p-4 md:p-6 bg-zinc-900/60 border-b border-zinc-900 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shrink-0">
+                      return filtered.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-3">
+                          <div className="text-3xl">🔍</div>
+                          <p className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>No contacts match your filter</p>
+                        </div>
+                      ) : (
+                        <div className="py-2">
+                          {filtered.map(contact => {
+                            const balance = getContactBalance(contact);
+                            const isSelected = selectedContactId === contact.id;
+                            const isPeekingThis = peekingContactId === contact.id;
+                            const revealed = showBalances || isPeekingThis;
+                            const avatarGradient = getAvatarGradient(contact.name);
+                            const balanceColor = balance > 0 ? '#10b981' : balance < 0 ? '#f43f5e' : 'var(--text-muted)';
+                            const borderColor = balance > 0 ? '#10b981' : balance < 0 ? '#f43f5e' : 'transparent';
 
-                          {/* Contact Info Detail */}
+                            return (
+                              <div key={contact.id}
+                                className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-all duration-150 ${isSelected ? 'md:block' : ''}`}
+                                style={{
+                                  background: isSelected ? 'rgba(99,102,241,0.08)' : 'transparent',
+                                  borderLeft: `3px solid ${isSelected ? '#6366f1' : borderColor}`,
+                                }}
+                                onClick={() => { setSelectedContactId(contact.id); setMobileView('ledger'); }}>
+
+                                {/* Avatar */}
+                                <div className={`w-11 h-11 rounded-full shrink-0 bg-gradient-to-tr ${avatarGradient} flex items-center justify-center font-black text-sm text-white`}
+                                  style={{ boxShadow: isSelected ? `0 0 0 2px #6366f1` : 'none' }}>
+                                  {getInitials(contact.name)}
+                                </div>
+
+                                {/* Info */}
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{contact.name}</p>
+                                  <p className="text-[11px] truncate" style={{ color: 'var(--text-muted)' }}>{contact.phone || 'No phone'}</p>
+                                </div>
+
+                                {/* Balance + peek */}
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <div className="text-right">
+                                    {balance !== 0 && (
+                                      <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                                        {balance > 0 ? "you'll get" : 'you owe'}
+                                      </p>
+                                    )}
+                                    <p className="text-sm font-black" style={{ color: balanceColor }}>
+                                      {balance === 0 ? (
+                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}>Settled</span>
+                                      ) : revealed ? (
+                                        `${balance > 0 ? '+' : '-'}${currency.symbol}${Math.abs(balance).toLocaleString('en-IN')}`
+                                      ) : '•••'}
+                                    </p>
+                                  </div>
+                                  {balance !== 0 && (
+                                    <button
+                                      onMouseDown={e => { e.stopPropagation(); setPeekingContactId(contact.id); }}
+                                      onMouseUp={e => { e.stopPropagation(); setPeekingContactId(null); }}
+                                      onMouseLeave={() => setPeekingContactId(null)}
+                                      onTouchStart={e => { e.stopPropagation(); setPeekingContactId(contact.id); }}
+                                      onTouchEnd={e => { e.stopPropagation(); setPeekingContactId(null); }}
+                                      className="p-1 rounded-md transition-all select-none"
+                                      title="Hold to peek"
+                                      style={{ color: isPeekingThis ? '#818cf8' : 'var(--text-muted)' }}>
+                                      {isPeekingThis
+                                        ? <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                        : <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" /></svg>
+                                      }
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right panel: ledger detail */}
+              <div className={`flex-1 flex flex-col overflow-hidden ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}
+                style={{ background: 'var(--bg-base)' }}>
+                {selectedContact ? (() => {
+                  const contactBal = getContactBalance(selectedContact);
+                  const filteredTxs = selectedContact.transactions
+                    .filter(t => !ledgerSearchQuery || t.description.toLowerCase().includes(ledgerSearchQuery.toLowerCase()))
+                    .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+                  return (
+                    <div className="flex-1 flex flex-col overflow-hidden animate-scale-in">
+                      {/* Contact header */}
+                      <div className="px-5 py-4 shrink-0" style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-soft)' }}>
+                        <div className="flex items-start justify-between gap-3">
                           <div className="flex items-center gap-3.5 min-w-0">
-                            {/* Mobile Back Button */}
-                            <button
-                              onClick={() => setMobileView('list')}
-                              className="md:hidden p-1 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200"
-                            >
-                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            {/* Mobile back */}
+                            <button onClick={() => setMobileView('list')} className="md:hidden p-1.5 rounded-xl shrink-0" style={{ color: 'var(--text-muted)' }}>
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
                               </svg>
                             </button>
-
-                            <div className={`w-12 h-12 rounded-full shrink-0 bg-gradient-to-tr ${getAvatarGradient(selectedContact.name)} flex items-center justify-center font-black text-base text-white shadow border border-white/10`}>
+                            <div className={`w-12 h-12 rounded-2xl shrink-0 bg-gradient-to-tr ${getAvatarGradient(selectedContact.name)} flex items-center justify-center font-black text-base text-white shadow-lg`}>
                               {getInitials(selectedContact.name)}
                             </div>
                             <div className="min-w-0">
-                              <h2 className="font-extrabold text-base text-white truncate">{selectedContact.name}</h2>
-                              <p className="text-xs text-zinc-400 mt-0.5 flex items-center gap-1.5">
-                                <span>{selectedContact.phone}</span>
-                                {selectedContact.email && (
-                                  <>
-                                    <span className="w-1 h-1 rounded-full bg-zinc-600" />
-                                    <span className="truncate">{selectedContact.email}</span>
-                                  </>
-                                )}
-                              </p>
+                              <h2 className="font-extrabold text-base truncate" style={{ color: 'var(--text-primary)' }}>{selectedContact.name}</h2>
+                              <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{selectedContact.phone}{selectedContact.email && ` · ${selectedContact.email}`}</p>
                             </div>
                           </div>
 
-                          {/* Header Main Actions Row */}
-                          <div className="flex flex-wrap items-center gap-2">
-                            {/* Settle Up Action */}
-                            {getContactBalance(selectedContact) !== 0 && (
-                              <button
-                                onClick={handleSettleFullBalance}
-                                className="flex items-center gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-bold py-1.5 px-3 rounded-xl text-xs border border-emerald-500/20 transition-all duration-200 cursor-pointer active:scale-95"
-                              >
-                                <span>🤝 Settle Balance</span>
+                          {/* Quick actions */}
+                          <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                            {contactBal !== 0 && (
+                              <button onClick={handleSettleFullBalance}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
+                                style={{ background: 'rgba(16,185,129,0.1)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.2)' }}>
+                                🤝 Settle
                               </button>
                             )}
-
-                            {/* WhatsApp reminder */}
-                            {getContactBalance(selectedContact) !== 0 && (
-                              <button
-                                onClick={handleWhatsAppReminder}
-                                className="flex items-center gap-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 font-bold py-1.5 px-3 rounded-xl text-xs border border-indigo-500/20 transition-all duration-200 cursor-pointer active:scale-95"
-                              >
-                                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
-                                  <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.825 1.451 5.436 0 9.86-4.37 9.864-9.799.002-2.63-1.023-5.101-2.885-6.965C16.59 1.977 14.113.953 11.999.953c-5.439 0-9.866 4.37-9.87 9.8a9.697 9.697 0 0 0 1.511 5.176l-.99 3.616 3.791-.977c1.554.896 3.12 1.39 4.606 1.39z" />
-                                </svg>
-                                <span>Send Reminder</span>
+                            {contactBal !== 0 && (
+                              <button onClick={handleWhatsAppReminder}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
+                                style={{ background: 'rgba(99,102,241,0.1)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.2)' }}>
+                                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.825 1.451 5.436 0 9.86-4.37 9.864-9.799.002-2.63-1.023-5.101-2.885-6.965C16.59 1.977 14.113.953 11.999.953c-5.439 0-9.866 4.37-9.87 9.8a9.697 9.697 0 0 0 1.511 5.176l-.99 3.616 3.791-.977z" /></svg>
+                                Remind
                               </button>
                             )}
-
-                            {/* Share Ledger */}
-                            <button
-                              onClick={() => setIsShareModalOpen(true)}
-                              className="flex items-center gap-1.5 bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 font-bold py-1.5 px-3 rounded-xl text-xs border border-violet-500/20 transition-all duration-200 cursor-pointer active:scale-95"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                              </svg>
-                              <span>Share Ledger</span>
+                            <button onClick={() => setIsShareModalOpen(true)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
+                              style={{ background: 'rgba(139,92,246,0.1)', color: '#c4b5fd', border: '1px solid rgba(139,92,246,0.2)' }}>
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+                              Share
                             </button>
-
-                            {/* More Actions Dropdown */}
+                            {/* More menu */}
                             <div className="relative">
-                              <button
-                                onClick={() => setIsContactMenuOpen(!isContactMenuOpen)}
-                                className="p-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-xl border border-zinc-800 transition-colors cursor-pointer active:scale-95"
-                                title="More Options"
-                              >
+                              <button onClick={() => setIsContactMenuOpen(!isContactMenuOpen)}
+                                className="p-2 rounded-xl transition-all"
+                                style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)', border: '1px solid var(--border-soft)' }}>
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
                                 </svg>
                               </button>
-
                               {isContactMenuOpen && (
                                 <>
-                                  {/* Backdrop click overlay to close dropdown */}
                                   <div className="fixed inset-0 z-10" onClick={() => setIsContactMenuOpen(false)} />
-
-                                  <div className="absolute right-0 mt-2 w-44 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl z-20 py-1.5 animate-in fade-in slide-in-from-top-2 duration-100">
-                                    <button
-                                      onClick={() => {
-                                        setIsContactMenuOpen(false);
-                                        handleDeleteContact(selectedContact.id);
-                                      }}
-                                      className="w-full text-left px-4 py-2 text-xs text-rose-400 hover:bg-rose-500/10 font-bold flex items-center gap-2 transition-colors cursor-pointer"
-                                    >
-                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                      </svg>
+                                  <div className="absolute right-0 mt-2 w-44 rounded-xl py-1.5 z-20 animate-fade-slide-down"
+                                    style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border-soft)', boxShadow: 'var(--shadow-card)' }}>
+                                    <button onClick={() => { setIsContactMenuOpen(false); handleDeleteContact(selectedContact.id); }}
+                                      className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                      style={{ color: '#f43f5e' }}
+                                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(244,63,94,0.08)'}
+                                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                       Delete Account
                                     </button>
                                   </div>
@@ -1365,128 +1222,97 @@ export default function Dashboard() {
                           </div>
                         </div>
 
-                        {/* Summary Balance Strip — always visible inside contact detail */}
-                        <div className="px-4 py-3 bg-zinc-900/20 border-b border-zinc-900 flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-zinc-500 font-semibold uppercase tracking-wider">CURRENT POSITION:</span>
-                            {getContactBalance(selectedContact) > 0 ? (
-                              <span className="text-xs bg-emerald-500/10 text-emerald-400 font-bold px-2 py-0.5 rounded border border-emerald-500/20">
-                                {selectedContact.name} owes you {currency.symbol}{getContactBalance(selectedContact).toLocaleString('en-IN')}
-                              </span>
-                            ) : getContactBalance(selectedContact) < 0 ? (
-                              <span className="text-xs bg-rose-500/10 text-rose-400 font-bold px-2 py-0.5 rounded border border-rose-500/20">
-                                You owe {selectedContact.name} {currency.symbol}{Math.abs(getContactBalance(selectedContact)).toLocaleString('en-IN')}
-                              </span>
+                        {/* Balance banner */}
+                        <div className="flex items-center justify-between mt-4 px-4 py-3 rounded-2xl"
+                          style={{
+                            background: contactBal > 0 ? 'rgba(16,185,129,0.07)' : contactBal < 0 ? 'rgba(244,63,94,0.07)' : 'var(--bg-raised)',
+                            border: `1px solid ${contactBal > 0 ? 'rgba(16,185,129,0.15)' : contactBal < 0 ? 'rgba(244,63,94,0.15)' : 'var(--border-soft)'}`,
+                          }}>
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Current Balance</p>
+                            {contactBal === 0 ? (
+                              <p className="text-sm font-bold mt-0.5" style={{ color: 'var(--text-secondary)' }}>All settled up 🤝</p>
                             ) : (
-                              <span className="text-xs bg-zinc-900 text-zinc-400 font-bold px-2 py-0.5 rounded border border-zinc-800">
-                                Ledger Fully Balanced 🤝
-                              </span>
+                              <p className="text-sm font-bold mt-0.5" style={{ color: contactBal > 0 ? '#6ee7b7' : '#fda4af' }}>
+                                {contactBal > 0
+                                  ? `${selectedContact.name} owes you ${currency.symbol}${contactBal.toLocaleString('en-IN')}`
+                                  : `You owe ${selectedContact.name} ${currency.symbol}${Math.abs(contactBal).toLocaleString('en-IN')}`}
+                              </p>
                             )}
                           </div>
 
-                          {/* Small Search inside Ledger */}
-                          <div className="relative w-40 sm:w-56">
-                          <input
-                            type="text"
-                            placeholder="Search transactions..."
-                            value={ledgerSearchQuery}
-                            onChange={(e) => setLedgerSearchQuery(e.target.value)}
-                            className="w-full pl-7 pr-2 py-1 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-colors"
-                          />
-                          <span className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-zinc-600">
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                            </svg>
-                          </span>
+                          {/* Search inside ledger */}
+                          <div className="relative w-36">
+                            <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-muted)' }}>
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                              </svg>
+                            </div>
+                            <input type="text" placeholder="Search…" value={ledgerSearchQuery}
+                              onChange={e => setLedgerSearchQuery(e.target.value)}
+                              className="w-full pl-7 pr-2 py-1.5 text-xs rounded-lg outline-none transition-all"
+                              style={{ background: 'var(--bg-base)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }} />
+                          </div>
                         </div>
                       </div>
 
-
-                    <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 scrollbar-thin scrollbar-thumb-zinc-800">
-                      {filteredTransactions.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-3">
-                          <div className="w-16 h-16 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-2xl">
-                            📖
+                      {/* Transaction timeline */}
+                      <div className="flex-1 overflow-y-auto scrollbar-thin px-5 py-4 space-y-3">
+                        {filteredTxs.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
+                            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>📭</div>
+                            <div>
+                              <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>No transactions yet</p>
+                              <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>Use the buttons below to record the first one</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-sm font-bold text-zinc-300">No transactions recorded.</p>
-                            <p className="text-xs text-zinc-500 mt-1">Use the big action buttons below to add payments.</p>
-                          </div>
-                        </div>
-                      ) : (
-                        filteredTransactions.map((tx) => {
-                          const isCredit = tx.type === 'gave';
-                          const dateObj = new Date(tx.date);
-                          const formattedDate = dateObj.toLocaleDateString('en-IN', {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                          });
-
-                          // Custom Category Icon mapping
-                          const catIcons: Record<CategoryType, string> = {
-                            Food: '🍔',
-                            Shopping: '🛒',
-                            Travel: '🚗',
-                            Rent: '🏠',
-                            Cash: '💵',
-                            Business: '💼',
-                            Other: '📦',
-                          };
+                        ) : filteredTxs.map((tx, idx) => {
+                          const isGave = tx.type === 'gave';
+                          const catIcons: Record<string, string> = { Food:'🍔', Shopping:'🛒', Travel:'🚗', Rent:'🏠', Cash:'💵', Business:'💼', Other:'📦' };
+                          const formattedDate = new Date(tx.date).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
 
                           return (
-                            <div
-                              key={tx.id}
-                              className={`group relative flex items-start justify-between p-4 rounded-xl bg-zinc-900/40 hover:bg-zinc-900 border-y border-r transition-all duration-150 ${isCredit
-                                ? 'border-l-4 border-l-emerald-500 border-y-zinc-800/60 border-r-zinc-800/60 shadow-lg shadow-emerald-950/5'
-                                : 'border-l-4 border-l-rose-500 border-y-zinc-800/60 border-r-zinc-800/60 shadow-lg shadow-rose-950/5'
-                                }`}
-                            >
-                              <div className="flex items-start gap-3.5 min-w-0">
-                                {/* Category Icon Wrapper */}
-                                <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-850 flex items-center justify-center text-lg shadow-inner shrink-0 mt-0.5">
-                                  {catIcons[tx.category] || '📦'}
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-extrabold ${isCredit
-                                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                      : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                                      }`}>
-                                      {isCredit ? '↗️ GAVE (Lent)' : '↙️ GOT (Borrowed)'}
-                                    </span>
-                                    <span className="text-[10px] text-zinc-500 font-semibold">{formattedDate}</span>
-                                  </div>
-                                  <h4 className="font-bold text-sm text-zinc-200 mt-1.5 break-words">
-                                    {tx.description}
-                                  </h4>
-                                  <p className="text-xs text-zinc-500 mt-1 font-medium italic">Category: {tx.category}</p>
-                                </div>
+                            <div key={tx.id} className="group flex items-start gap-3.5 p-4 rounded-2xl transition-all duration-150 animate-fade-slide-up"
+                              style={{
+                                animationDelay: `${Math.min(idx * 0.04, 0.3)}s`,
+                                background: 'var(--bg-surface)',
+                                border: `1px solid var(--border-soft)`,
+                                borderLeft: `3px solid ${isGave ? '#10b981' : '#f43f5e'}`,
+                              }}>
+                              {/* Icon */}
+                              <div className="w-10 h-10 rounded-xl shrink-0 flex items-center justify-center text-lg"
+                                style={{ background: isGave ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)' }}>
+                                {catIcons[tx.category] || '📦'}
                               </div>
-
-                              <div className="flex items-center gap-3 shrink-0 ml-3">
-                                <span className={`text-base font-black tracking-tight ${isCredit ? 'text-emerald-500' : 'text-rose-500'
-                                  }`}>
-                                  {isCredit ? '+' : '-'}{currency.symbol}{tx.amount.toLocaleString('en-IN')}
+                              {/* Details */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                                    style={{ background: isGave ? 'rgba(16,185,129,0.12)' : 'rgba(244,63,94,0.12)', color: isGave ? '#6ee7b7' : '#fda4af' }}>
+                                    {isGave ? '↗ Gave (Lent)' : '↙ Got (Borrowed)'}
+                                  </span>
+                                  <span className="text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>{formattedDate}</span>
+                                </div>
+                                <p className="font-bold text-sm mt-1.5" style={{ color: 'var(--text-primary)' }}>{tx.description}</p>
+                                <p className="text-[10px] mt-0.5 font-medium" style={{ color: 'var(--text-muted)' }}>{tx.category}</p>
+                              </div>
+                              {/* Amount + actions */}
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-base font-black tabular-nums" style={{ color: isGave ? '#10b981' : '#f43f5e' }}>
+                                  {isGave ? '+' : '-'}{currency.symbol}{tx.amount.toLocaleString('en-IN')}
                                 </span>
-
-                                {/* Edit/Delete actions: always visible on mobile/touch, hover only on desktop */}
-                                <div className="md:opacity-0 md:group-hover:opacity-100 flex items-center gap-1 transition-opacity duration-150">
-                                  <button
-                                    onClick={() => handleOpenEditTx(tx)}
-                                    className="p-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-md border border-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
-                                    title="Edit Transaction"
-                                  >
-                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                                  <button onClick={() => handleOpenEditTx(tx)}
+                                    className="p-1.5 rounded-lg transition-colors"
+                                    style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}>
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                                     </svg>
                                   </button>
-                                  <button
-                                    onClick={() => handleDeleteTransaction(tx.id)}
-                                    className="p-1.5 bg-zinc-800 hover:bg-rose-500/20 rounded-md border border-zinc-700 text-zinc-400 hover:text-rose-400 transition-colors cursor-pointer"
-                                    title="Delete Transaction"
-                                  >
-                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <button onClick={() => handleDeleteTransaction(tx.id)}
+                                    className="p-1.5 rounded-lg transition-colors"
+                                    style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}>
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                     </svg>
                                   </button>
@@ -1494,797 +1320,526 @@ export default function Dashboard() {
                               </div>
                             </div>
                           );
-                        })
-                      )}
-                    </div>
-
-                    {/* Bottom Action CTA Strip */}
-                    <div className="p-4 bg-zinc-900/80 border-t border-zinc-900 grid grid-cols-2 gap-3 shrink-0">
-                      <button
-                        onClick={() => handleOpenAddTx('got')}
-                        className="flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-500 text-white font-bold py-3 px-4 rounded-xl text-sm transition-all duration-150 active:scale-[0.98] shadow-lg shadow-rose-600/10"
-                      >
-                        <span className="text-base leading-none">↙️</span>
-                        <span>I GOT (Borrowed)</span>
-                      </button>
-
-                      <button
-                        onClick={() => handleOpenAddTx('gave')}
-                        className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-xl text-sm transition-all duration-150 active:scale-[0.98] shadow-lg shadow-emerald-600/10"
-                      >
-                        <span className="text-base leading-none">↗️</span>
-                        <span>I GAVE (Lent)</span>
-                      </button>
-                    </div>
-
-                  </div>
-                  ) : (
-                  // Select Friend Placeholder View
-                  <div className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-zinc-950">
-                    <div className="max-w-md space-y-4">
-                      <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-indigo-500/10 to-violet-500/10 border border-indigo-500/20 flex items-center justify-center text-5xl mx-auto shadow-2xl animate-bounce">
-                        {contacts.length === 0 ? '📖' : '📇'}
+                        })}
                       </div>
-                      <div className="space-y-2">
-                        <h3 className="text-lg font-extrabold text-zinc-200">
-                          {contacts.length === 0 ? 'Welcome to UdharWale!' : 'No Contact Selected'}
-                        </h3>
-                        <p className="text-sm text-zinc-500 leading-relaxed">
-                          {contacts.length === 0
-                            ? 'Get started by creating a new friend account to track shared bills, outstanding balances, and debts.'
-                            : 'Select a friend from the sidebar ledger list to view their transaction history, outstanding payments, send notifications, or record new items.'}
-                        </p>
-                      </div>
-                      <div className="pt-2 flex justify-center gap-3">
-                        <button
-                          onClick={() => setIsAddContactOpen(true)}
-                          className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-6 rounded-xl text-xs transition-colors shadow-md shadow-indigo-600/10"
-                        >
-                          ➕ Add Friend Account
+
+                      {/* Bottom CTA */}
+                      <div className="shrink-0 px-5 py-4 grid grid-cols-2 gap-3"
+                        style={{ background: 'var(--bg-surface)', borderTop: '1px solid var(--border-soft)' }}>
+                        <button onClick={() => handleOpenAddTx('got')}
+                          className="flex items-center justify-center gap-2.5 py-3.5 rounded-2xl font-bold text-sm text-white transition-all active:scale-[0.97]"
+                          style={{ background: 'linear-gradient(135deg,#f43f5e,#e11d48)', boxShadow: '0 4px 20px rgba(244,63,94,0.25)' }}>
+                          <span className="text-lg">↙️</span>
+                          <span>I GOT</span>
+                        </button>
+                        <button onClick={() => handleOpenAddTx('gave')}
+                          className="flex items-center justify-center gap-2.5 py-3.5 rounded-2xl font-bold text-sm text-white transition-all active:scale-[0.97]"
+                          style={{ background: 'linear-gradient(135deg,#10b981,#059669)', boxShadow: '0 4px 20px rgba(16,185,129,0.25)' }}>
+                          <span className="text-lg">↗️</span>
+                          <span>I GAVE</span>
                         </button>
                       </div>
                     </div>
+                  );
+                })() : (
+                  // No contact selected
+                  <div className="flex-1 flex flex-col items-center justify-center text-center p-8 space-y-5">
+                    <div className="w-24 h-24 rounded-3xl flex items-center justify-center text-5xl animate-fade-slide-up"
+                      style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.1))', border: '1px solid rgba(99,102,241,0.2)' }}>
+                      {contacts.length === 0 ? '📖' : '📇'}
+                    </div>
+                    <div className="space-y-2 animate-fade-slide-up" style={{ animationDelay: '0.1s' }}>
+                      <h3 className="text-lg font-extrabold" style={{ color: 'var(--text-primary)' }}>
+                        {contacts.length === 0 ? 'Welcome to UdharWale!' : 'Pick a contact'}
+                      </h3>
+                      <p className="text-sm max-w-xs" style={{ color: 'var(--text-secondary)' }}>
+                        {contacts.length === 0
+                          ? 'Start by adding a friend to track shared balances and transactions.'
+                          : 'Select someone from the list to see their full transaction history.'}
+                      </p>
+                    </div>
+                    {contacts.length === 0 && (
+                      <button onClick={() => setIsAddContactOpen(true)} className="btn-primary animate-fade-slide-up" style={{ animationDelay: '0.2s' }}>
+                        ➕ Add First Contact
+                      </button>
+                    )}
                   </div>
                 )}
-                </div>
-
+              </div>
             </div>
           )}
 
-          {/* INSIGHTS & ANALYTICS TAB */}
-          {activeTab === 'insights' && (
-            <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 scrollbar-thin scrollbar-thumb-zinc-800">
-
-              <div className="space-y-2">
-                <h2 className="text-2xl font-black text-white">Overview</h2>
-                <p className="text-sm text-zinc-400">A summary of all your balances and spending patterns.</p>
+          {/* ── INSIGHTS TAB ──────────────────────────────── */}
+          {dbStatus === 'connected' && activeTab === 'insights' && (
+            <div className="flex-1 overflow-y-auto scrollbar-thin p-5 md:p-8 space-y-6">
+              <div className="space-y-1">
+                <h2 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>Insights & Flow</h2>
+                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>A complete picture of your balances</p>
               </div>
 
-              {/* Financial Health Summary Widget */}
-              <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800 grid grid-cols-1 md:grid-cols-3 gap-6 shadow-xl relative overflow-hidden">
-                <div className="space-y-2">
-                  <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider">TOTAL TO RECEIVE</p>
-                  <h3 className="text-3xl font-black text-emerald-500">
-                    {currency.symbol}{stats.totalCredit.toLocaleString('en-IN')}
-                  </h3>
-                  <p className="text-xs text-zinc-500">From {contacts.filter(c => getContactBalance(c) > 0).length} people</p>
-                </div>
-
-                <div className="space-y-2 border-t md:border-t-0 md:border-l border-zinc-800 pt-4 md:pt-0 md:pl-6">
-                  <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider">TOTAL YOU OWE</p>
-                  <h3 className="text-3xl font-black text-rose-500">
-                    {currency.symbol}{stats.totalDebit.toLocaleString('en-IN')}
-                  </h3>
-                  <p className="text-xs text-zinc-500">To {contacts.filter(c => getContactBalance(c) < 0).length} people</p>
-                </div>
-
-                <div className="space-y-2 border-t md:border-t-0 md:border-l border-zinc-800 pt-4 md:pt-0 md:pl-6">
-                  <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider">NET CASHFLOW RATIO</p>
-
-                  {/* Ledger Progress ratio bar */}
-                  {stats.totalCredit + stats.totalDebit > 0 ? (
-                    <div className="space-y-2.5 pt-1">
-                      <div className="w-full h-3 rounded-full bg-zinc-800 overflow-hidden flex">
-                        <div
-                          className="h-full bg-emerald-500"
-                          style={{
-                            width: `${(stats.totalCredit / (stats.totalCredit + stats.totalDebit)) * 100}%`,
-                          }}
-                        />
-                        <div
-                          className="h-full bg-rose-500"
-                          style={{
-                            width: `${(stats.totalDebit / (stats.totalCredit + stats.totalDebit)) * 100}%`,
-                          }}
-                        />
+              {/* Main wallet card */}
+              <div className="relative p-6 rounded-3xl overflow-hidden"
+                style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(79,70,229,0.06) 100%)', border: '1px solid rgba(99,102,241,0.2)' }}>
+                <div className="absolute top-0 right-0 w-48 h-48 pointer-events-none"
+                  style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%)', transform: 'translate(20%,-20%)' }} />
+                <div className="relative z-10">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'rgba(165,180,252,0.7)' }}>NET WALLET BALANCE</p>
+                      <div className="flex items-baseline gap-2 mt-2">
+                        <h2 className="text-4xl font-black tabular-nums"
+                          style={{ color: showBalances ? (stats.netBalance >= 0 ? '#6ee7b7' : '#fda4af') : 'var(--text-primary)' }}>
+                          {showBalances
+                            ? `${stats.netBalance >= 0 ? '+' : '-'}${currency.symbol}${Math.abs(stats.netBalance).toLocaleString('en-IN')}`
+                            : '****'}
+                        </h2>
                       </div>
-                      <div className="flex justify-between text-[10px] text-zinc-400 font-extrabold leading-none">
-                        <span>{Math.round((stats.totalCredit / (stats.totalCredit + stats.totalDebit)) * 100)}% Recv</span>
-                        <span>{Math.round((stats.totalDebit / (stats.totalCredit + stats.totalDebit)) * 100)}% Pay</span>
-                      </div>
+                      <p className="text-xs mt-1" style={{ color: 'rgba(165,180,252,0.6)' }}>
+                        {stats.netBalance > 0 ? 'You are owed more than you owe' : stats.netBalance < 0 ? 'You owe more than you are owed' : 'Everything balanced'}
+                      </p>
                     </div>
-                  ) : (
-                    <p className="text-xs text-zinc-400">All balances are completely settled!</p>
-                  )}
+                    <button onClick={() => setShowBalances(!showBalances)}
+                      className="p-2 rounded-xl transition-all"
+                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', color: '#a5b4fc' }}>
+                      {showBalances
+                        ? <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                        : <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" /></svg>
+                      }
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mt-6">
+                    {[
+                      { label: 'You\'ll Receive', value: stats.totalCredit, color: '#10b981', glow: 'rgba(16,185,129,0.1)' },
+                      { label: 'You Owe', value: stats.totalDebit, color: '#f43f5e', glow: 'rgba(244,63,94,0.1)' },
+                    ].map(({ label, value, color, glow }) => (
+                      <div key={label} className="p-3 rounded-2xl" style={{ background: glow, border: `1px solid ${color}20` }}>
+                        <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: `${color}99` }}>{label}</p>
+                        <p className="text-xl font-black tabular-nums mt-1" style={{ color }}>
+                          {showBalances ? `${currency.symbol}${value.toLocaleString('en-IN')}` : '****'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              {/* Split Breakdown grids: Debtors & Creditors */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-                {/* 1. Top Debtors (Who owes you money) */}
-                <div className="p-5 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 flex flex-col gap-4">
-                  <div>
-                    <h3 className="font-extrabold text-sm text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                      Top Debtors (You&apos;ll Get From)
-                    </h3>
-                    <p className="text-xs text-zinc-500 mt-1">People with largest outstanding payments to you.</p>
-                  </div>
-
-                  <div className="divide-y divide-zinc-850">
-                    {contacts.filter(c => getContactBalance(c) > 0).length === 0 ? (
-                      <p className="text-xs text-zinc-500 py-6 text-center">Nobody currently owes you anything. Great!</p>
-                    ) : (
-                      contacts
-                        .filter(c => getContactBalance(c) > 0)
-                        .sort((a, b) => getContactBalance(b) - getContactBalance(a))
-                        .slice(0, 5)
-                        .map((contact) => {
-                          const bal = getContactBalance(contact);
-                          return (
-                            <div key={contact.id} className="py-3 flex items-center justify-between text-sm">
-                              <span className="font-bold text-zinc-300">{contact.name}</span>
-                              <span className="font-black text-emerald-500">
-                                {currency.symbol}{bal.toLocaleString('en-IN')}
-                              </span>
-                            </div>
-                          );
-                        })
-                    )}
-                  </div>
-                </div>
-
-                {/* 2. Top Creditors (Whom you owe money) */}
-                <div className="p-5 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 flex flex-col gap-4">
-                  <div>
-                    <h3 className="font-extrabold text-sm text-zinc-200 uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-                      Top Creditors (You Owe To)
-                    </h3>
-                    <p className="text-xs text-zinc-500 mt-1">People you borrowed the most money from.</p>
-                  </div>
-
-                  <div className="divide-y divide-zinc-850">
-                    {contacts.filter(c => getContactBalance(c) < 0).length === 0 ? (
-                      <p className="text-xs text-zinc-500 py-6 text-center">You don&apos;t owe money to anyone! Outstanding.</p>
-                    ) : (
-                      contacts
-                        .filter(c => getContactBalance(c) < 0)
-                        .sort((a, b) => getContactBalance(a) - getContactBalance(b)) // sorting negative balances
-                        .slice(0, 5)
-                        .map((contact) => {
-                          const bal = Math.abs(getContactBalance(contact));
-                          return (
-                            <div key={contact.id} className="py-3 flex items-center justify-between text-sm">
-                              <span className="font-bold text-zinc-300">{contact.name}</span>
-                              <span className="font-black text-rose-500">
-                                {currency.symbol}{bal.toLocaleString('en-IN')}
-                              </span>
-                            </div>
-                          );
-                        })
-                    )}
-                  </div>
-                </div>
-
-              </div>
-
-              {/* Category-wise Transaction Distribution insights */}
-              <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4">
-                <h3 className="font-extrabold text-sm text-zinc-200 uppercase tracking-wider">
-                  🛒 Distribution by Category
-                </h3>
-
-                {categoryDistribution.grandTotal === 0 ? (
-                  <p className="text-xs text-zinc-500 text-center py-4">Create some transactions to view distribution charts.</p>
-                ) : (
-                  <div className="space-y-4">
-                    {Object.entries(categoryDistribution.distribution)
-                      .filter(([_, value]) => value > 0)
-                      .sort((a, b) => b[1] - a[1])
-                      .map(([category, value]) => {
-                        const percentage = Math.round((value / categoryDistribution.grandTotal) * 100);
-                        const icons: Record<CategoryType, string> = {
-                          Food: '🍔', Shopping: '🛒', Travel: '🚗', Rent: '🏠', Cash: '💵', Business: '💼', Other: '📦'
-                        };
-                        return (
-                          <div key={category} className="space-y-1.5">
-                            <div className="flex justify-between text-xs font-semibold text-zinc-300">
-                              <span className="flex items-center gap-1.5">
-                                <span>{icons[category as CategoryType] || '📦'}</span>
-                                {category}
-                              </span>
-                              <span className="font-bold">
-                                {currency.symbol}{value.toLocaleString('en-IN')} ({percentage}%)
-                              </span>
-                            </div>
-                            <div className="w-full h-2 rounded-full bg-zinc-950 overflow-hidden">
-                              <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${percentage}%` }} />
-                            </div>
+              {/* Contact breakdown */}
+              {contacts.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Contact Breakdown</h3>
+                  <div className="space-y-2">
+                    {contacts
+                      .map(c => ({ c, bal: getContactBalance(c) }))
+                      .filter(({ bal }) => bal !== 0)
+                      .sort((a, b) => Math.abs(b.bal) - Math.abs(a.bal))
+                      .map(({ c, bal }) => (
+                        <button key={c.id} onClick={() => { setSelectedContactId(c.id); setActiveTab('ledgers'); setMobileView('ledger'); }}
+                          className="w-full flex items-center gap-3 p-4 rounded-2xl text-left transition-all hover:translate-x-1"
+                          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
+                          <div className={`w-9 h-9 rounded-xl shrink-0 bg-gradient-to-tr ${getAvatarGradient(c.name)} flex items-center justify-center font-black text-xs text-white`}>
+                            {getInitials(c.name)}
                           </div>
-                        );
-                      })}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{c.name}</p>
+                            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                              {c.transactions.length} transaction{c.transactions.length !== 1 ? 's' : ''}
+                            </p>
+                          </div>
+                          <p className="font-black text-sm tabular-nums shrink-0" style={{ color: bal > 0 ? '#10b981' : '#f43f5e' }}>
+                            {bal > 0 ? '+' : '-'}{currency.symbol}{Math.abs(bal).toLocaleString('en-IN')}
+                          </p>
+                          <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--text-muted)' }}>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      ))}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
-              <div className="mt-12 border-t border-zinc-800 pt-8">
-                <UpcomingFeatures />
-              </div>
-
+              {contacts.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+                  <div className="text-5xl">📊</div>
+                  <p className="font-bold" style={{ color: 'var(--text-secondary)' }}>No data yet — add your first contact to see insights</p>
+                </div>
+              )}
             </div>
           )}
 
-          {/* SETTINGS TAB */}
-          {activeTab === 'settings' && (
-            <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 max-w-3xl scrollbar-thin scrollbar-thumb-zinc-800">
-
-              <div className="space-y-2">
-                <h2 className="text-2xl font-black text-white">Settings</h2>
-                <p className="text-sm text-zinc-400">Manage your profile, currency, and data.</p>
+          {/* ── SETTINGS TAB ──────────────────────────────── */}
+          {dbStatus === 'connected' && activeTab === 'settings' && (
+            <div className="flex-1 overflow-y-auto scrollbar-thin p-5 md:p-8 space-y-6">
+              <div className="space-y-1">
+                <h2 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>Settings</h2>
+                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Manage your ledger preferences</p>
               </div>
 
-              {/* 1. Profile card */}
-              <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4 shadow-lg">
-                <h3 className="font-extrabold text-sm text-zinc-200 uppercase tracking-wider">👤 Your Profile</h3>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    alert('Profile saved!');
-                  }}
-                  className="space-y-4"
-                >
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs text-zinc-500 font-bold uppercase">NAME</label>
-                      <input
-                        type="text"
-                        readOnly
-                        value={userName}
-                        className="w-full px-3 py-2 bg-zinc-950/60 border border-zinc-900 rounded-xl text-sm text-zinc-400 cursor-not-allowed focus:outline-none"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs text-zinc-500 font-bold uppercase">EMAIL</label>
-                      <input
-                        type="text"
-                        readOnly
-                        value={userEmail}
-                        className="w-full px-3 py-2 bg-zinc-950/60 border border-zinc-900 rounded-xl text-sm text-zinc-400 cursor-not-allowed focus:outline-none"
-                      />
-                    </div>
+              {/* Currency */}
+              <div className="card p-5 space-y-4" style={{ background: 'var(--bg-surface)' }}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'rgba(99,102,241,0.1)' }}>💱</div>
+                  <div>
+                    <h3 className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Display Currency</h3>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Changes how amounts are displayed</p>
                   </div>
-                </form>
-              </div>
-
-              {/* 2. Currency setup card */}
-              <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-4 shadow-lg">
-                <h3 className="font-extrabold text-sm text-zinc-200 uppercase tracking-wider">🪙 Currency</h3>
-                <p className="text-xs text-zinc-500">Choose the currency used across all your balances.</p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {CURRENCIES.map((c) => (
-                    <button
-                      key={c.code}
-                      onClick={() => handleCurrencyChange(c)}
-                      className={`p-3 rounded-xl border text-center transition-all ${currency.code === c.code
-                        ? 'bg-indigo-600/15 border-indigo-500 text-indigo-400 font-bold'
-                        : 'bg-zinc-950 hover:bg-zinc-900 border-zinc-800 text-zinc-400'
-                        }`}
-                    >
-                      <span className="block text-lg font-black">{c.symbol}</span>
-                      <span className="block text-xs uppercase tracking-wider font-bold mt-1">{c.code}</span>
-                      <span className="block text-[10px] text-zinc-650 truncate mt-0.5">{c.name}</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {CURRENCIES.map(c => (
+                    <button key={c.code} onClick={() => handleCurrencyChange(c)}
+                      className="flex flex-col items-center py-3 rounded-xl transition-all"
+                      style={{
+                        background: currency.code === c.code ? 'rgba(99,102,241,0.15)' : 'var(--bg-raised)',
+                        border: `1px solid ${currency.code === c.code ? 'rgba(99,102,241,0.3)' : 'var(--border-soft)'}`,
+                        color: currency.code === c.code ? '#a5b4fc' : 'var(--text-secondary)',
+                      }}>
+                      <span className="text-xl font-black">{c.symbol}</span>
+                      <span className="text-[10px] font-bold mt-1">{c.code}</span>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* 3. Data management card */}
-              <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-5 shadow-lg">
-                <h3 className="font-extrabold text-sm text-zinc-200 uppercase tracking-wider text-rose-400">⚠️ Data Management</h3>
-                <p className="text-xs text-zinc-500">Clear all your saved data. This cannot be undone.</p>
-
-                <div className="flex flex-wrap items-center gap-3">
-                  {/* Wipe All Data completely */}
-                  <button
-                    onClick={() => {
-                      if (confirm('Are you sure? This will permanently delete all your contacts and transaction history.')) {
-                        handleWipeData();
-                        alert('Everything has been cleared.');
-                      }
-                    }}
-                    className="px-4 py-2.5 bg-rose-950/20 hover:bg-rose-950/40 text-rose-400 font-bold rounded-xl text-xs border border-rose-500/20 transition-colors"
-                  >
-                    🗑️ Clear All Data
-                  </button>
-                </div>
-              </div>
-
-              {/* 4. App Information Sheet */}
-              <div className="p-6 rounded-2xl bg-zinc-900/40 border border-zinc-800/80 space-y-3 relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 blur-2xl rounded-full transition-all duration-700 group-hover:bg-indigo-500/10" />
-                <h3 className="font-bold text-xs text-zinc-400 uppercase tracking-wider relative z-10">ABOUT UDHARWALE</h3>
-                <div className="space-y-1.5 text-xs text-zinc-500 leading-relaxed font-semibold relative z-10">
-                  <p>Version 1.2.0</p>
-                  <p className="text-indigo-400">Your personal khata book — track who owes you, and who you owe, all in one place.</p>
-                </div>
-
-                <div className="mt-6 pt-4 border-t border-zinc-800/50 relative z-10">
-                  <div className="flex items-center justify-between text-[10px] text-zinc-600 font-medium">
-                    <div className="flex items-center gap-1.5">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                      </svg>
-                      <span>Architected & Built</span>
-                    </div>
-                    <div className="font-mono px-2 py-1 bg-zinc-950/80 rounded border border-zinc-800/60 text-zinc-500 shadow-inner group-hover:text-indigo-400 group-hover:border-indigo-500/30 transition-colors duration-300">
-                      ~/naeem/navjivan
-                    </div>
+              {/* Account */}
+              <div className="card p-5 space-y-4" style={{ background: 'var(--bg-surface)' }}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'rgba(99,102,241,0.1)' }}>👤</div>
+                  <div>
+                    <h3 className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Account</h3>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{userEmail}</p>
                   </div>
                 </div>
+                <button onClick={handleLogout}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all"
+                  style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.15)', color: '#f43f5e' }}>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  Sign Out
+                </button>
               </div>
 
+              {/* Danger zone */}
+              <div className="card p-5 space-y-4" style={{ background: 'var(--bg-surface)', border: '1px solid rgba(244,63,94,0.15)' }}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'rgba(244,63,94,0.1)' }}>⚠️</div>
+                  <div>
+                    <h3 className="font-bold text-sm" style={{ color: '#f43f5e' }}>Danger Zone</h3>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Irreversible actions — proceed carefully</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (confirm('This will permanently delete ALL your contacts and transactions. This cannot be undone. Continue?')) {
+                      handleWipeData();
+                    }
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all"
+                  style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.15)', color: '#f43f5e' }}>
+                  🗑️ Wipe All Data
+                </button>
+              </div>
+
+              <UpcomingFeatures />
             </div>
           )}
-        </>
-          )}
-      </main>
-    </div>
+        </main>
+        </div>
+      </div>
 
-      {/* ==================================================== */ }
-  {/* ADD / EDIT CONTACT MODAL FORM */ }
-  {/* ==================================================== */ }
-  {
-    isAddContactOpen && (
-      <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl relative">
-          <div className="p-5 border-b border-zinc-850 flex items-center justify-between">
-            <h3 className="font-extrabold text-base text-white">Create New Ledger Account</h3>
-            <button
-              onClick={() => setIsAddContactOpen(false)}
-              className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+      {/* ══════════════════════════════════════════════════════
+          MOBILE BOTTOM NAV
+      ══════════════════════════════════════════════════════ */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-stretch"
+        style={{ background: 'rgba(13,17,23,0.95)', backdropFilter: 'blur(20px)', borderTop: '1px solid var(--border-soft)' }}>
+        {([
+          { tab: 'ledgers' as const, label: 'Friends', icon: (
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'ledgers' ? 2.5 : 2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+          )},
+          { tab: 'insights' as const, label: 'Overview', icon: (
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'insights' ? 2.5 : 2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          )},
+          { tab: 'settings' as const, label: 'Settings', icon: (
+            <>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'settings' ? 2.5 : 2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'settings' ? 2.5 : 2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </>
+          )},
+        ] as const).map(({ tab, label, icon }) => (
+          <button key={tab} onClick={() => { setActiveTab(tab); setMobileView('list'); }}
+            className="flex-1 flex flex-col items-center justify-center gap-1 py-2.5 transition-all"
+            style={{ color: activeTab === tab ? '#818cf8' : 'var(--text-muted)' }}>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">{icon}</svg>
+            <span className="text-[10px] font-bold">{label}</span>
+          </button>
+        ))}
+      </nav>
 
-          <form onSubmit={handleAddContactSubmit} className="p-5 space-y-4">
-            {/* --- Sync Contacts Section --- */}
-            <div className="mb-6 p-4 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
-                  📱
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-white">Import from Phone</h4>
-                  <p className="text-xs text-zinc-500">Sync your mobile contacts instantly</p>
-                </div>
-              </div>
+      {/* ══════════════════════════════════════════════════════
+          ADD CONTACT MODAL
+      ══════════════════════════════════════════════════════ */}
+      {isAddContactOpen && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+          <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
+            onClick={() => setIsAddContactOpen(false)} />
+          <div className="relative w-full md:max-w-md animate-slide-up md:animate-scale-in rounded-t-3xl md:rounded-2xl overflow-hidden"
+            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)', maxHeight: '90vh', overflowY: 'auto' }}>
 
-              {!isMobileDevice ? (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                  <p className="text-xs text-amber-500/90 font-medium leading-relaxed">
-                    Contact syncing only works on mobile. Open this app on your Android phone in Chrome to import your contacts automatically.
-                  </p>
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-5 py-4 shrink-0" style={{ borderBottom: '1px solid var(--border-soft)' }}>
+              <h3 className="font-extrabold text-base" style={{ color: 'var(--text-primary)' }}>Add Contact</h3>
+              <button onClick={() => setIsAddContactOpen(false)} className="p-1.5 rounded-xl transition-colors" style={{ color: 'var(--text-muted)' }}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <form onSubmit={handleAddContactSubmit} className="p-5 space-y-4">
+              {/* Mobile contact sync */}
+              <div className="p-4 rounded-2xl space-y-3" style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center text-lg" style={{ background: 'rgba(99,102,241,0.1)' }}>📱</div>
+                  <div>
+                    <h4 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Import from Phone</h4>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Sync your contacts instantly</p>
+                  </div>
                 </div>
-              ) : contactsSupported ? (
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    disabled={isImportingContacts}
-                    onClick={handleImportContacts}
-                    className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-colors shadow-lg shadow-indigo-600/10 flex items-center justify-center gap-2"
-                  >
-                    {isImportingContacts ? (
-                      <>
-                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                        </svg>
-                        <span>Opening contacts picker…</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>📱</span>
-                        <span>Sync Mobile Contacts</span>
-                      </>
+
+                {!isMobileDevice ? (
+                  <div className="p-3 rounded-xl" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                    <p className="text-xs font-medium" style={{ color: '#fcd34d' }}>Open on Android Chrome to import contacts automatically.</p>
+                  </div>
+                ) : contactsSupported ? (
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <button type="button" disabled={isImportingContacts} onClick={() => handleImportContacts(false)}
+                        className="btn-primary flex-1 text-xs px-2 py-2.5">
+                        {isImportingContacts ? (
+                          <>
+                            <svg className="w-3 h-3 animate-spin inline-block mr-1" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>
+                            Opening…
+                          </>
+                        ) : '👤 Select Single'}
+                      </button>
+                      <button type="button" disabled={isImportingContacts} onClick={() => handleImportContacts(true)}
+                        className="btn-primary flex-1 text-xs px-2 py-2.5" style={{ background: 'linear-gradient(135deg, #4f46e5, #4338ca)' }}>
+                        {isImportingContacts ? (
+                          <>
+                            <svg className="w-3 h-3 animate-spin inline-block mr-1" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>
+                            Opening…
+                          </>
+                        ) : '👥 Select Multiple'}
+                      </button>
+                    </div>
+                    {importStatus && (
+                      <div className="flex items-start gap-2 p-3 rounded-xl"
+                        style={{
+                          background: importStatus.type === 'success' ? 'rgba(16,185,129,0.08)' : importStatus.type === 'info' ? 'rgba(99,102,241,0.08)' : 'rgba(244,63,94,0.08)',
+                          border: `1px solid ${importStatus.type === 'success' ? 'rgba(16,185,129,0.2)' : importStatus.type === 'info' ? 'rgba(99,102,241,0.2)' : 'rgba(244,63,94,0.2)'}`,
+                        }}>
+                        <span className="shrink-0 text-sm">{importStatus.type === 'success' ? '✅' : importStatus.type === 'info' ? 'ℹ️' : '⚠️'}</span>
+                        <p className="text-xs font-medium leading-relaxed"
+                          style={{ color: importStatus.type === 'success' ? '#6ee7b7' : importStatus.type === 'info' ? '#a5b4fc' : '#fda4af' }}>
+                          {importStatus.message}
+                        </p>
+                      </div>
                     )}
-                  </button>
-
-                  {/* In-modal status message */}
-                  {importStatus && (
-                    <div className={`p-3 rounded-lg border flex gap-2.5 items-start ${
-                      importStatus.type === 'success'
-                        ? 'bg-emerald-500/10 border-emerald-500/20'
-                        : importStatus.type === 'info'
-                          ? 'bg-sky-500/10 border-sky-500/20'
-                          : 'bg-rose-500/10 border-rose-500/20'
-                    }`}>
-                      <span className="text-base shrink-0 mt-0.5">
-                        {importStatus.type === 'success' ? '✅' : importStatus.type === 'info' ? 'ℹ️' : '⚠️'}
-                      </span>
-                      <p className={`text-xs font-medium leading-relaxed ${
-                        importStatus.type === 'success'
-                          ? 'text-emerald-400'
-                          : importStatus.type === 'info'
-                            ? 'text-sky-400'
-                            : 'text-rose-400'
-                      }`}>
-                        {importStatus.message}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                  <p className="text-xs text-amber-500/90 font-medium leading-relaxed">
-                    Your browser doesn&apos;t support contact syncing. This feature works only in <strong>Chrome on Android</strong>. Use the manual form below to add contacts instead.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center gap-4 mb-6">
-              <div className="h-px bg-zinc-800 flex-1"></div>
-              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">OR ADD MANUALLY</span>
-              <div className="h-px bg-zinc-800 flex-1"></div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs text-zinc-500 font-bold uppercase">FRIEND&apos;S NAME *</label>
-              <input
-                type="text"
-                required
-                value={contactName}
-                onChange={(e) => setContactName(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-indigo-500 transition-colors"
-                placeholder="e.g. Aarav Sharma"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs text-zinc-500 font-bold uppercase">PHONE NUMBER *</label>
-              <input
-                type="tel"
-                required
-                value={contactPhone}
-                onChange={(e) => setContactPhone(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-indigo-500 transition-colors"
-                placeholder="e.g. +91 98765 43210"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs text-zinc-500 font-bold uppercase">EMAIL ADDRESS (OPTIONAL)</label>
-              <input
-                type="email"
-                value={contactEmail}
-                onChange={(e) => setContactEmail(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-indigo-500 transition-colors"
-                placeholder="e.g. aarav@gmail.com"
-              />
-            </div>
-
-            <div className="pt-2 border-t border-zinc-850 space-y-3">
-              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">OPTIONAL STARTING POSITION</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] text-zinc-500 font-bold">INITIAL BALANCE</label>
-                  <input
-                    type="number"
-                    value={contactInitialBalance}
-                    onChange={(e) => setContactInitialBalance(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-indigo-500"
-                    placeholder="0.00"
-                    min="0"
-                  />
-                </div>
-
-                {/* Select whether you owe or get */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] text-zinc-500 font-bold">POSITION TYPE</label>
-                  <div className="grid grid-cols-2 h-[38px] rounded-xl overflow-hidden bg-zinc-950 border border-zinc-800">
-                    <button
-                      type="button"
-                      onClick={() => setContactInitialType('credit')}
-                      className={`text-xs font-semibold transition-all ${contactInitialType === 'credit'
-                        ? 'bg-emerald-600/20 text-emerald-400 font-bold'
-                        : 'text-zinc-500 hover:text-zinc-300'
-                        }`}
-                    >
-                      You&apos;ll Get
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setContactInitialType('debit')}
-                      className={`text-xs font-semibold transition-all ${contactInitialType === 'debit'
-                        ? 'bg-rose-600/20 text-rose-400 font-bold'
-                        : 'text-zinc-500 hover:text-zinc-300'
-                        }`}
-                    >
-                      You Owe
-                    </button>
                   </div>
-                </div>
+                ) : (
+                  <div className="p-3 rounded-xl" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                    <p className="text-xs font-medium" style={{ color: '#fcd34d' }}>Contact syncing requires Chrome on Android. Use the manual form below.</p>
+                  </div>
+                )}
               </div>
-            </div>
 
-            <div className="pt-3 flex gap-3">
-              <button
-                type="button"
-                onClick={() => setIsAddContactOpen(false)}
-                className="flex-1 bg-zinc-800 hover:bg-zinc-750 text-zinc-300 font-bold py-2.5 rounded-xl text-sm border border-zinc-700 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 rounded-xl text-sm transition-colors"
-              >
-                Create Account
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    )
-  }
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1" style={{ background: 'var(--border-soft)' }} />
+                <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>or add manually</span>
+                <div className="h-px flex-1" style={{ background: 'var(--border-soft)' }} />
+              </div>
 
-  {/* ==================================================== */ }
-  {/* ADD / EDIT TRANSACTION MODAL FORM */ }
-  {/* ==================================================== */ }
-  {
-    isAddTransactionOpen && (
-      <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl relative">
-          <div className="p-5 border-b border-zinc-850 flex items-center justify-between">
-            <h3 className="font-extrabold text-base text-white">
-              {editingTransaction ? 'Edit Transaction Details' : `Record ${txType === 'gave' ? 'Money GAVE (Lent)' : 'Money GOT (Borrowed)'}`}
-            </h3>
-            <button
-              onClick={() => setIsAddTransactionOpen(false)}
-              className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-
-          <form onSubmit={handleTransactionSubmit} className="p-5 space-y-4">
-
-            {/* Type Switcher inside transaction */}
-            {!editingTransaction && (
               <div className="space-y-1.5">
-                <label className="text-[10px] text-zinc-500 font-bold uppercase">TRANSACTION DIRECTION</label>
-                <div className="grid grid-cols-2 h-11 bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden p-1 gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setTxType('got')}
-                    className={`rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${txType === 'got'
-                      ? 'bg-rose-600 text-white shadow-md'
-                      : 'text-zinc-500 hover:text-zinc-300'
-                      }`}
-                  >
-                    <span>↙️ Got (Borrowed)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTxType('gave')}
-                    className={`rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${txType === 'gave'
-                      ? 'bg-emerald-600 text-white shadow-md'
-                      : 'text-zinc-500 hover:text-zinc-300'
-                      }`}
-                  >
-                    <span>↗️ Gave (Lent)</span>
-                  </button>
+                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Friend&apos;s Name *</label>
+                <input type="text" required value={contactName} onChange={e => setContactName(e.target.value)}
+                  className="input-field" placeholder="e.g. Aarav Sharma" />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Phone Number *</label>
+                <input type="tel" required value={contactPhone} onChange={e => setContactPhone(e.target.value)}
+                  className="input-field" placeholder="+91 98765 43210" />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Email (optional)</label>
+                <input type="email" value={contactEmail} onChange={e => setContactEmail(e.target.value)}
+                  className="input-field" placeholder="friend@email.com" />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Opening Balance (optional)</label>
+                <div className="flex gap-2">
+                  <div className="flex rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-soft)' }}>
+                    {(['credit','debit'] as const).map(t => (
+                      <button key={t} type="button" onClick={() => setContactInitialType(t)}
+                        className="px-3 py-2 text-xs font-bold transition-all"
+                        style={{
+                          background: contactInitialType === t ? (t === 'credit' ? 'rgba(16,185,129,0.2)' : 'rgba(244,63,94,0.2)') : 'var(--bg-raised)',
+                          color: contactInitialType === t ? (t === 'credit' ? '#6ee7b7' : '#fda4af') : 'var(--text-muted)',
+                        }}>
+                        {t === 'credit' ? 'They owe you' : 'You owe them'}
+                      </button>
+                    ))}
+                  </div>
+                  <input type="number" min="0" step="0.01" value={contactInitialBalance}
+                    onChange={e => setContactInitialBalance(e.target.value)}
+                    className="input-field flex-1" placeholder={`${currency.symbol} 0.00`} />
                 </div>
               </div>
-            )}
 
-            {/* Amount Field (Giant Number Layout) */}
-            <div className="space-y-1.5 text-center">
-              <label className="text-xs text-zinc-500 font-bold uppercase block text-left">AMOUNT ({currency.code}) *</label>
-              <div className="relative flex items-center bg-zinc-950 border border-zinc-800 rounded-xl p-3.5 focus-within:border-indigo-500">
-                <span className="text-2xl font-black text-zinc-500 pr-2">{currency.symbol}</span>
-                <input
-                  type="number"
-                  required
-                  value={txAmount}
-                  onChange={(e) => setTxAmount(e.target.value)}
-                  className="w-full bg-transparent text-2xl font-black text-white focus:outline-none placeholder-zinc-700"
-                  placeholder="0.00"
-                  min="0.01"
-                  step="any"
-                  autoFocus
-                />
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setIsAddContactOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl font-bold text-sm transition-all"
+                  style={{ background: 'var(--bg-raised)', color: 'var(--text-secondary)', border: '1px solid var(--border-soft)' }}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary flex-1">Add Contact</button>
               </div>
-            </div>
-
-            {/* Description Input */}
-            <div className="space-y-1.5">
-              <label className="text-xs text-zinc-500 font-bold uppercase">DESCRIPTION / REMARKS *</label>
-              <input
-                type="text"
-                required
-                value={txDescription}
-                onChange={(e) => setTxDescription(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-indigo-500 transition-colors"
-                placeholder="e.g. Lunch sharing bill, advanced cash..."
-              />
-            </div>
-
-            {/* Category Pills Grid */}
-            <div className="space-y-2">
-              <label className="text-xs text-zinc-500 font-bold uppercase block">SELECT CATEGORY</label>
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                {(['Food', 'Shopping', 'Travel', 'Rent', 'Cash', 'Business', 'Other'] as CategoryType[]).map((cat) => {
-                  const icons: Record<CategoryType, string> = {
-                    Food: '🍔', Shopping: '🛒', Travel: '🚗', Rent: '🏠', Cash: '💵', Business: '💼', Other: '📦'
-                  };
-                  return (
-                    <button
-                      type="button"
-                      key={cat}
-                      onClick={() => setTxCategory(cat)}
-                      className={`py-2 px-1 rounded-xl border text-center transition-all ${txCategory === cat
-                        ? 'bg-indigo-600/15 border-indigo-500 text-indigo-400 font-bold'
-                        : 'bg-zinc-950 hover:bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-zinc-350'
-                        }`}
-                    >
-                      <span className="block text-base leading-none">{icons[cat]}</span>
-                      <span className="block text-[10px] mt-1 font-semibold">{cat}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Date Input */}
-            <div className="space-y-1.5">
-              <label className="text-xs text-zinc-500 font-bold uppercase">TRANSACTION DATE</label>
-              <input
-                type="date"
-                required
-                value={txDate}
-                onChange={(e) => setTxDate(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100 focus:outline-none focus:border-indigo-500 transition-colors"
-              />
-            </div>
-
-            {/* Actions Row */}
-            <div className="pt-3 flex gap-3">
-              <button
-                type="button"
-                onClick={() => setIsAddTransactionOpen(false)}
-                className="flex-1 bg-zinc-800 hover:bg-zinc-750 text-zinc-300 font-bold py-2.5 rounded-xl text-sm border border-zinc-700 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 rounded-xl text-sm transition-colors"
-              >
-                {editingTransaction ? 'Save Changes' : 'Record Transaction'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    )
-  }
-
-  {/* ==================================================== */ }
-  {/* SHARE LEDGER MODAL */ }
-  {/* ==================================================== */ }
-  {
-    isShareModalOpen && (
-      <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl relative">
-          <div className="p-5 border-b border-zinc-850 flex items-center justify-between">
-            <h3 className="font-extrabold text-base text-white">Share Ledger History</h3>
-            <button
-              onClick={() => setIsShareModalOpen(false)}
-              className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          <div className="p-5 space-y-3">
-            <p className="text-sm text-zinc-400 mb-4">Choose what you want to share with {selectedContact?.name}:</p>
-
-            <button
-              onClick={() => handleShareLedger('all')}
-              className="w-full flex items-center gap-3 p-3 bg-zinc-800/50 hover:bg-zinc-800 rounded-xl border border-zinc-700 transition-colors text-left"
-            >
-              <span className="text-xl">📜</span>
-              <div>
-                <h4 className="text-sm font-bold text-white">Share Complete Ledger</h4>
-                <p className="text-xs text-zinc-500 mt-0.5">Includes everything gave and got</p>
-              </div>
-            </button>
-
-            <button
-              onClick={() => handleShareLedger('gave')}
-              className="w-full flex items-center gap-3 p-3 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-xl border border-emerald-500/20 transition-colors text-left"
-            >
-              <span className="text-xl">↗️</span>
-              <div>
-                <h4 className="text-sm font-bold text-emerald-400">Only What You Gave</h4>
-                <p className="text-xs text-emerald-500/70 mt-0.5">Share only what you lent them</p>
-              </div>
-            </button>
-
-            <button
-              onClick={() => handleShareLedger('got')}
-              className="w-full flex items-center gap-3 p-3 bg-rose-500/10 hover:bg-rose-500/20 rounded-xl border border-rose-500/20 transition-colors text-left"
-            >
-              <span className="text-xl">↙️</span>
-              <div>
-                <h4 className="text-sm font-bold text-rose-400">Only What You Got</h4>
-                <p className="text-xs text-rose-500/70 mt-0.5">Share only what you borrowed</p>
-              </div>
-            </button>
+            </form>
           </div>
         </div>
-      </div>
-    )
-  }
+      )}
 
-  {/* ==================================================== */ }
-  {/* MOBILE BOTTOM NAV BAR */ }
-  {/* ==================================================== */ }
-  <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-zinc-900/95 border-t border-zinc-800 backdrop-blur-xl flex items-stretch">
-    <button
-      onClick={() => { setActiveTab('ledgers'); setMobileView('list'); }}
-      className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 transition-all ${activeTab === 'ledgers' ? 'text-indigo-400' : 'text-zinc-500'
-        }`}
-    >
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'ledgers' ? 2.5 : 2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-      </svg>
-      <span className="text-[10px] font-bold">Friends</span>
-    </button>
+      {/* ══════════════════════════════════════════════════════
+          ADD / EDIT TRANSACTION MODAL
+      ══════════════════════════════════════════════════════ */}
+      {isAddTransactionOpen && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+          <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
+            onClick={() => setIsAddTransactionOpen(false)} />
+          <div className="relative w-full md:max-w-md animate-slide-up md:animate-scale-in rounded-t-3xl md:rounded-2xl overflow-hidden"
+            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)', maxHeight: '90vh', overflowY: 'auto' }}>
 
-    <button
-      onClick={() => setActiveTab('insights')}
-      className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 transition-all ${activeTab === 'insights' ? 'text-indigo-400' : 'text-zinc-500'
-        }`}
-    >
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'insights' ? 2.5 : 2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-      </svg>
-      <span className="text-[10px] font-bold">Overview</span>
-    </button>
+            <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--border-soft)' }}>
+              <h3 className="font-extrabold text-base" style={{ color: 'var(--text-primary)' }}>
+                {editingTransaction ? 'Edit Transaction' : 'Record Transaction'}
+              </h3>
+              <button onClick={() => setIsAddTransactionOpen(false)} className="p-1.5 rounded-xl" style={{ color: 'var(--text-muted)' }}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
 
-    <button
-      onClick={() => setActiveTab('settings')}
-      className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 transition-all ${activeTab === 'settings' ? 'text-indigo-400' : 'text-zinc-500'
-        }`}
-    >
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'settings' ? 2.5 : 2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'settings' ? 2.5 : 2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-      </svg>
-      <span className="text-[10px] font-bold">Settings</span>
-    </button>
-  </nav>
+            <form onSubmit={handleTransactionSubmit} className="p-5 space-y-4">
+              {/* Type toggle */}
+              <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl" style={{ background: 'var(--bg-raised)' }}>
+                {([
+                  { val: 'got' as const, label: '↙️ I GOT (Borrowed)', color: '#f43f5e', bg: 'rgba(244,63,94,0.15)' },
+                  { val: 'gave' as const, label: '↗️ I GAVE (Lent)', color: '#10b981', bg: 'rgba(16,185,129,0.15)' },
+                ] as const).map(({ val, label, color, bg }) => (
+                  <button key={val} type="button" onClick={() => setTxType(val)}
+                    className="py-3 rounded-xl font-bold text-sm transition-all"
+                    style={{ background: txType === val ? bg : 'transparent', color: txType === val ? color : 'var(--text-muted)', border: txType === val ? `1px solid ${color}33` : '1px solid transparent' }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
 
-    </div >
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Amount *</label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-sm" style={{ color: 'var(--text-muted)' }}>{currency.symbol}</span>
+                  <input type="number" required min="0.01" step="0.01" value={txAmount}
+                    onChange={e => setTxAmount(e.target.value)}
+                    className="input-field pl-8 text-lg font-black" placeholder="0.00" />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Description *</label>
+                <input type="text" required value={txDescription} onChange={e => setTxDescription(e.target.value)}
+                  className="input-field" placeholder="e.g. Dinner at rooftop café" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Date</label>
+                  <input type="date" required value={txDate} onChange={e => setTxDate(e.target.value)}
+                    className="input-field" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Category</label>
+                  <select value={txCategory} onChange={e => setTxCategory(e.target.value as CategoryType)}
+                    className="input-field">
+                    {(['Cash','Food','Shopping','Travel','Rent','Business','Other'] as CategoryType[]).map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setIsAddTransactionOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl font-bold text-sm"
+                  style={{ background: 'var(--bg-raised)', color: 'var(--text-secondary)', border: '1px solid var(--border-soft)' }}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary flex-1">
+                  {editingTransaction ? 'Save Changes' : 'Record'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════
+          SHARE LEDGER MODAL
+      ══════════════════════════════════════════════════════ */}
+      {isShareModalOpen && selectedContact && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+          <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
+            onClick={() => setIsShareModalOpen(false)} />
+          <div className="relative w-full md:max-w-md animate-slide-up md:animate-scale-in rounded-t-3xl md:rounded-2xl overflow-hidden"
+            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
+
+            <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--border-soft)' }}>
+              <div>
+                <h3 className="font-extrabold text-base" style={{ color: 'var(--text-primary)' }}>Share Ledger</h3>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>with {selectedContact.name}</p>
+              </div>
+              <button onClick={() => setIsShareModalOpen(false)} className="p-1.5 rounded-xl" style={{ color: 'var(--text-muted)' }}>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-5 space-y-2.5">
+              {([
+                { opt: 'all' as const, icon: '📋', label: 'Full Ledger', desc: 'Complete history + net balance', color: '#818cf8', bg: 'rgba(99,102,241,0.08)', border: 'rgba(99,102,241,0.2)' },
+                { opt: 'gave' as const, icon: '↗️', label: 'Only What You Gave', desc: 'Share what you lent them', color: '#6ee7b7', bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.2)' },
+                { opt: 'got' as const, icon: '↙️', label: 'Only What You Got', desc: 'Share what you borrowed', color: '#fda4af', bg: 'rgba(244,63,94,0.08)', border: 'rgba(244,63,94,0.2)' },
+              ] as const).map(({ opt, icon, label, desc, color, bg, border }) => (
+                <button key={opt} onClick={() => handleShareLedger(opt)}
+                  className="w-full flex items-center gap-4 p-4 rounded-2xl text-left transition-all hover:scale-[1.01]"
+                  style={{ background: bg, border: `1px solid ${border}` }}>
+                  <span className="text-2xl">{icon}</span>
+                  <div className="flex-1">
+                    <p className="font-bold text-sm" style={{ color }}>{label}</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{desc}</p>
+                  </div>
+                  <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--text-muted)' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

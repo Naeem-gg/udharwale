@@ -35,19 +35,16 @@ export default function SignupPage() {
       });
 
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to register account');
-      }
+      if (!res.ok) throw new Error(data.error || 'Failed to register account');
 
       setSuccess(true);
-      
-      // Auto login user on signup success
+
       const loginRes = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
-      
+
       if (loginRes.ok) {
         window.location.href = '/dashboard';
       } else {
@@ -59,181 +56,171 @@ export default function SignupPage() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center p-4 selection:bg-indigo-500/30 relative">
-      {/* Background Gradients */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-indigo-600/10 blur-[120px] rounded-full pointer-events-none" />
+  const EyeButton = ({ show, toggle }: { show: boolean; toggle: () => void }) => (
+    <button type="button" onClick={toggle}
+      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md transition-colors"
+      style={{ color: 'var(--text-muted)' }}>
+      {show ? (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" />
+        </svg>
+      ) : (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+        </svg>
+      )}
+    </button>
+  );
 
-      <div className="w-full max-w-md bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl backdrop-blur-xl relative">
-        {/* Logo/Branding Header */}
-        <div className="p-6 border-b border-zinc-800/80 flex flex-col items-center text-center">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-600/20 mb-3">
-            <span className="text-white font-black text-sm">🧮</span>
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
+      style={{ background: 'var(--bg-base)' }}>
+
+      {/* Animated background */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="animate-orb absolute w-[500px] h-[500px] rounded-full"
+          style={{ top: '-10%', right: '-10%', background: 'radial-gradient(circle, rgba(99,102,241,0.1) 0%, transparent 70%)' }} />
+        <div className="animate-orb absolute w-[400px] h-[400px] rounded-full"
+          style={{ bottom: '-5%', left: '-10%', background: 'radial-gradient(circle, rgba(16,185,129,0.08) 0%, transparent 70%)', animationDelay: '4s' }} />
+        <div className="absolute inset-0 opacity-[0.025]"
+          style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)', backgroundSize: '48px 48px' }} />
+      </div>
+
+      <div className="w-full max-w-[440px] animate-fade-slide-up relative">
+
+        {/* Logo */}
+        <div className="flex flex-col items-center mb-8">
+          <div className="relative mb-4">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-black text-white"
+              style={{ background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', boxShadow: '0 8px 32px rgba(99,102,241,0.4)' }}>
+              🧾
+            </div>
+            <div className="absolute inset-0 rounded-2xl animate-ping opacity-20"
+              style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }} />
           </div>
-          <h2 className="font-extrabold text-lg text-white">Create your account</h2>
-          <p className="text-xs text-zinc-500 mt-1">Get started tracking shared balances securely</p>
+          <h1 className="text-2xl font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>UdharWale</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>Your smart debt ledger</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {error && (
-            <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-xs font-bold flex items-center gap-2">
-              <span>⚠️</span>
-              <span>{error}</span>
-            </div>
-          )}
-
-          {success && (
-            <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-xs font-bold flex items-center gap-2">
-              <span>🚀</span>
-              <span>Account created successfully! Logging you in...</span>
-            </div>
-          )}
-
-          <div className="space-y-1.5">
-            <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Your Name</label>
-            <input
-              type="text"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-indigo-500 transition-colors"
-              placeholder="e.g. Aarav Sharma"
-            />
+        {/* Card */}
+        <div className="card overflow-hidden" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
+          <div className="px-6 pt-6 pb-5 border-b" style={{ borderColor: 'var(--border-soft)' }}>
+            <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Create your account</h2>
+            <p className="text-sm mt-0.5" style={{ color: 'var(--text-secondary)' }}>Start tracking balances in seconds</p>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Email Address</label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-indigo-500 transition-colors"
-              placeholder="you@example.com"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Password</label>
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-3.5 pr-10 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-indigo-500 transition-colors"
-                  placeholder="••••••••"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
-                  title={showPassword ? "Hide password" : "Show password"}
-                >
-                  {showPassword ? (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" />
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                  )}
-                </button>
+          <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            {error && (
+              <div className="flex items-start gap-2.5 p-3 rounded-xl animate-fade-slide-down"
+                style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.2)' }}>
+                <span className="shrink-0">⚠️</span>
+                <p className="text-sm font-medium" style={{ color: '#fda4af' }}>{error}</p>
               </div>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Confirm Password</label>
-              <div className="relative">
-                <input
-                  type={showConfirmPassword ? "text" : "password"}
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full pl-3.5 pr-10 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-indigo-500 transition-colors"
-                  placeholder="••••••••"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
-                  title={showConfirmPassword ? "Hide password" : "Show password"}
-                >
-                  {showConfirmPassword ? (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" />
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-2 border-t border-zinc-800/80 space-y-3">
-            <div className="space-y-1">
-              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider text-emerald-400">Account Recovery Backup</p>
-              <p className="text-[10px] text-zinc-500">Since we don't use email, set these up to recover your account if you forget your password.</p>
-            </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">4-Digit PIN</label>
-                <input
-                  type="text"
-                  maxLength={4}
-                  required
-                  value={recoveryPin}
-                  onChange={(e) => setRecoveryPin(e.target.value.replace(/[^0-9]/g, ''))}
-                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-indigo-500 transition-colors"
-                  placeholder="e.g. 1234"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Childhood Nickname?</label>
-                <input
-                  type="text"
-                  required
-                  value={securityAnswer}
-                  onChange={(e) => setSecurityAnswer(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-indigo-500 transition-colors"
-                  placeholder="Security Answer"
-                />
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading || success}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-850 text-white font-extrabold py-3 rounded-xl text-sm transition-all duration-155 active:scale-[0.98] shadow-lg shadow-indigo-600/10 flex items-center justify-center gap-2"
-          >
-            {loading ? (
-              <>
-                <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                <span>Creating Account...</span>
-              </>
-            ) : (
-              <span>Sign Up</span>
             )}
-          </button>
 
-          <p className="text-center text-xs text-zinc-500 pt-2">
-            Already have an account?{' '}
-            <Link href="/login" className="text-indigo-400 hover:text-indigo-300 font-bold transition-colors">
-              Log In
-            </Link>
-          </p>
-        </form>
+            {success && (
+              <div className="flex items-center gap-2.5 p-3 rounded-xl animate-fade-slide-down"
+                style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
+                <span>🚀</span>
+                <p className="text-sm font-medium" style={{ color: '#6ee7b7' }}>Account created! Logging you in…</p>
+              </div>
+            )}
+
+            {/* Name */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Your Name</label>
+              <div className="relative">
+                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-muted)' }}>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </div>
+                <input type="text" required value={name} onChange={(e) => setName(e.target.value)}
+                  className="input-field pl-10" placeholder="e.g. Aarav Sharma" />
+              </div>
+            </div>
+
+            {/* Email */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Email Address</label>
+              <div className="relative">
+                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-muted)' }}>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                  className="input-field pl-10" placeholder="you@example.com" />
+              </div>
+            </div>
+
+            {/* Passwords */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Password</label>
+                <div className="relative">
+                  <input type={showPassword ? 'text' : 'password'} required value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="input-field pr-10" placeholder="••••••••" />
+                  <EyeButton show={showPassword} toggle={() => setShowPassword(!showPassword)} />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Confirm</label>
+                <div className="relative">
+                  <input type={showConfirmPassword ? 'text' : 'password'} required value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="input-field pr-10" placeholder="••••••••" />
+                  <EyeButton show={showConfirmPassword} toggle={() => setShowConfirmPassword(!showConfirmPassword)} />
+                </div>
+              </div>
+            </div>
+
+            {/* Recovery section */}
+            <div className="pt-3 mt-1 space-y-3 rounded-xl p-4" style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider" style={{ color: '#818cf8' }}>Account Recovery</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Set these up to recover your account if you forget your password.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>4-Digit PIN</label>
+                  <input type="text" maxLength={4} required value={recoveryPin}
+                    onChange={(e) => setRecoveryPin(e.target.value.replace(/[^0-9]/g, ''))}
+                    className="input-field" placeholder="e.g. 1234" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Childhood Nickname</label>
+                  <input type="text" required value={securityAnswer}
+                    onChange={(e) => setSecurityAnswer(e.target.value)}
+                    className="input-field" placeholder="Security answer" />
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" disabled={loading || success} className="btn-primary w-full" style={{ marginTop: '4px' }}>
+              {loading ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                  </svg>
+                  Creating account…
+                </>
+              ) : 'Create Account'}
+            </button>
+
+            <p className="text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
+              Already have an account?{' '}
+              <Link href="/login" className="font-semibold" style={{ color: '#818cf8' }}>Sign in</Link>
+            </p>
+          </form>
+        </div>
+
+        <p className="text-center text-xs mt-6" style={{ color: 'var(--text-muted)' }}>
+          Crafted with precision · Secure · Private
+        </p>
       </div>
     </div>
   );
