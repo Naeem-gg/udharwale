@@ -62,6 +62,7 @@ export default function Dashboard() {
   const [isImportingContacts, setIsImportingContacts] = useState(false);
   const [isMobileDevice, setIsMobileDevice] = useState(false);
   const [contactsSupported, setContactsSupported] = useState(false);
+  const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
   // --- Confetti Particle System ---
   const [particles, setParticles] = useState<ConfettiParticle[]>([]);
@@ -93,7 +94,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setIsMobileDevice(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent));
-      setContactsSupported('contacts' in navigator && 'ContactsManager' in window);
+      setContactsSupported('contacts' in navigator && typeof (navigator as any).contacts?.select === 'function');
       // Check session profile on mount
       fetch('/api/auth/me')
         .then((res) => {
@@ -127,14 +128,19 @@ export default function Dashboard() {
 
   const handleImportContacts = async () => {
     if (!contactsSupported) {
-      alert('Your browser does not support the Contacts API.');
+      setImportStatus({
+        type: 'error',
+        message: 'Contact syncing is not supported on this browser. Please use Chrome on an Android device and make sure the app is opened over HTTPS.'
+      });
       return;
     }
+    setImportStatus(null);
     try {
       setIsImportingContacts(true);
       // @ts-ignore
       const imported = await navigator.contacts.select(['name', 'tel'], { multiple: true });
       if (!imported || imported.length === 0) {
+        // User dismissed the picker without selecting — that's fine, no message needed
         setIsImportingContacts(false);
         return;
       }
@@ -148,6 +154,15 @@ export default function Dashboard() {
         createdAt: new Date().toISOString()
       })).filter((c: any) => c.phone);
 
+      if (newContactsPayload.length === 0) {
+        setImportStatus({
+          type: 'info',
+          message: 'None of the contacts you selected had a phone number saved. Go back to your phone contacts app, add phone numbers, then try again.'
+        });
+        setIsImportingContacts(false);
+        return;
+      }
+
       const res = await fetch('/api/contacts/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -155,14 +170,48 @@ export default function Dashboard() {
       });
 
       if (res.ok) {
+        const result = await res.json();
         await loadContacts();
         setIsAddContactOpen(false);
+        setImportStatus(null);
         triggerConfetti();
+      } else if (res.status === 401) {
+        setImportStatus({
+          type: 'error',
+          message: 'Your session has expired. Please log out and log back in, then try again.'
+        });
+      } else if (res.status >= 500) {
+        setImportStatus({
+          type: 'error',
+          message: `Server error — our backend couldn't save your contacts right now. Please wait a moment and try again. If it keeps failing, check your internet connection. (${res.status})`
+        });
       } else {
-        alert('Failed to import contacts to server.');
+        const errData = await res.json().catch(() => ({}));
+        setImportStatus({
+          type: 'error',
+          message: `Couldn't save contacts: ${errData.error || res.statusText}. Try again or add contacts manually below.`
+        });
       }
-    } catch (err) {
-      console.error('Error importing contacts:', err);
+    } catch (err: any) {
+      if (err?.name === 'AbortError' || err?.code === 20) {
+        // User cancelled the picker — no message needed
+      } else if (err?.message?.toLowerCase().includes('secure')) {
+        setImportStatus({
+          type: 'error',
+          message: 'Contact access requires a secure connection (HTTPS). This app must be opened via an https:// link — not http://. Contact your administrator.'
+        });
+      } else if (err?.message?.toLowerCase().includes('permission') || err?.message?.toLowerCase().includes('denied')) {
+        setImportStatus({
+          type: 'error',
+          message: 'Permission denied. Go to your phone Settings → Apps → Browser → Permissions and enable Contacts access, then try again.'
+        });
+      } else {
+        console.error('Error importing contacts:', err);
+        setImportStatus({
+          type: 'error',
+          message: `Something went wrong on your device: "${err?.message || 'Unknown error'}". Make sure you are using Chrome on Android over a secure HTTPS connection.`
+        });
+      }
     } finally {
       setIsImportingContacts(false);
     }
@@ -1828,22 +1877,61 @@ export default function Dashboard() {
               {!isMobileDevice ? (
                 <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
                   <p className="text-xs text-amber-500/90 font-medium leading-relaxed">
-                    Login from mobile once to see all your contacts listed.
+                    Contact syncing only works on mobile. Open this app on your Android phone in Chrome to import your contacts automatically.
                   </p>
                 </div>
               ) : contactsSupported ? (
-                <button
-                  type="button"
-                  disabled={isImportingContacts}
-                  onClick={handleImportContacts}
-                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-colors shadow-lg shadow-indigo-600/10 flex items-center justify-center gap-2"
-                >
-                  {isImportingContacts ? 'Importing...' : 'Sync Mobile Contacts'}
-                </button>
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    disabled={isImportingContacts}
+                    onClick={handleImportContacts}
+                    className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-colors shadow-lg shadow-indigo-600/10 flex items-center justify-center gap-2"
+                  >
+                    {isImportingContacts ? (
+                      <>
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                        </svg>
+                        <span>Opening contacts picker…</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>📱</span>
+                        <span>Sync Mobile Contacts</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* In-modal status message */}
+                  {importStatus && (
+                    <div className={`p-3 rounded-lg border flex gap-2.5 items-start ${
+                      importStatus.type === 'success'
+                        ? 'bg-emerald-500/10 border-emerald-500/20'
+                        : importStatus.type === 'info'
+                          ? 'bg-sky-500/10 border-sky-500/20'
+                          : 'bg-rose-500/10 border-rose-500/20'
+                    }`}>
+                      <span className="text-base shrink-0 mt-0.5">
+                        {importStatus.type === 'success' ? '✅' : importStatus.type === 'info' ? 'ℹ️' : '⚠️'}
+                      </span>
+                      <p className={`text-xs font-medium leading-relaxed ${
+                        importStatus.type === 'success'
+                          ? 'text-emerald-400'
+                          : importStatus.type === 'info'
+                            ? 'text-sky-400'
+                            : 'text-rose-400'
+                      }`}>
+                        {importStatus.message}
+                      </p>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
                   <p className="text-xs text-amber-500/90 font-medium leading-relaxed">
-                    Your browser does not support contact syncing. Use the fallback form below.
+                    Your browser doesn&apos;t support contact syncing. This feature works only in <strong>Chrome on Android</strong>. Use the manual form below to add contacts instead.
                   </p>
                 </div>
               )}
