@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Contact, Transaction, CategoryType, CURRENCIES, CurrencyConfig, ActiveTab } from './types';
+import { Contact, Transaction, ModeType, ActiveTab } from './types';
 import UpcomingFeatures from './UpcomingFeatures';
 
 // Custom CSS-based Confetti Particle component for settlements
@@ -19,7 +19,6 @@ interface ConfettiParticle {
 export default function Dashboard() {
   // --- Persistent State ---
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [currency, setCurrency] = useState<CurrencyConfig>(CURRENCIES[0]);
   const [userName, setUserName] = useState<string>('');
   const [userEmail, setUserEmail] = useState<string>('');
 
@@ -39,6 +38,7 @@ export default function Dashboard() {
 
   // --- Modals Toggle ---
   const [isAddContactOpen, setIsAddContactOpen] = useState(false);
+  const [isEditContactOpen, setIsEditContactOpen] = useState(false);
   const [isAddTransactionOpen, setIsAddTransactionOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [isContactMenuOpen, setIsContactMenuOpen] = useState(false);
@@ -49,8 +49,8 @@ export default function Dashboard() {
   // --- Add Transaction Form State ---
   const [txAmount, setTxAmount] = useState('');
   const [txType, setTxType] = useState<'gave' | 'got'>('gave');
-  const [txDescription, setTxDescription] = useState('');
-  const [txCategory, setTxCategory] = useState<CategoryType>('Cash');
+  const [txRemark, setTxRemark] = useState('');
+  const [txMode, setTxMode] = useState<ModeType>('Cash');
   const [txDate, setTxDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   // --- Add Contact Form State ---
@@ -117,12 +117,6 @@ export default function Dashboard() {
           window.location.href = '/login';
         });
 
-      const storedCurrency = localStorage.getItem('udhar_currency');
-      if (storedCurrency) {
-        try {
-          setCurrency(JSON.parse(storedCurrency));
-        } catch (e) { }
-      }
     }
   }, []);
 
@@ -148,10 +142,6 @@ export default function Dashboard() {
     setContacts(newContacts);
   };
 
-  const handleCurrencyChange = (curr: CurrencyConfig) => {
-    setCurrency(curr);
-    localStorage.setItem('udhar_currency', JSON.stringify(curr));
-  };
 
 
   // --- Confetti Blast Trigger ---
@@ -301,24 +291,24 @@ export default function Dashboard() {
         if (!ledgerSearchQuery) return true;
         const query = ledgerSearchQuery.toLowerCase();
         return (
-          t.description.toLowerCase().includes(query) ||
-          t.category.toLowerCase().includes(query) ||
+          t.remark.toLowerCase().includes(query) ||
+          t.mode.toLowerCase().includes(query) ||
           t.amount.toString().includes(query)
         );
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Newest first
   }, [selectedContact, ledgerSearchQuery]);
 
-  // --- Category-wise Transaction Distribution top-level hook ---
+  // --- Mode-wise Transaction Distribution top-level hook ---
   const categoryDistribution = useMemo(() => {
-    const distribution: Record<CategoryType, number> = {
-      Food: 0, Shopping: 0, Travel: 0, Rent: 0, Cash: 0, Business: 0, Other: 0
+    const distribution: Record<ModeType, number> = {
+      'Cash': 0, 'Online Transfer': 0
     };
     let grandTotal = 0;
 
     contacts.forEach(c => {
       c.transactions.forEach(t => {
-        distribution[t.category] += t.amount;
+        distribution[t.mode] += t.amount;
         grandTotal += t.amount;
       });
     });
@@ -341,9 +331,9 @@ export default function Dashboard() {
         id: 't_' + Date.now(),
         amount: initBal,
         type: contactInitialType === 'credit' ? 'gave' : 'got',
-        description: 'Starting Balance',
+        remark: 'Starting Balance',
         date: new Date().toISOString().split('T')[0],
-        category: 'Other',
+        mode: 'Cash',
       });
     }
 
@@ -385,32 +375,65 @@ export default function Dashboard() {
     }
   };
 
+  const handleEditContactSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedContactId || !contactName.trim() || !contactPhone.trim()) return;
+
+    try {
+      const res = await fetch(`/api/contacts/${selectedContactId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: contactName.trim(),
+          phone: contactPhone.trim(),
+          email: contactEmail.trim() || undefined,
+        }),
+      });
+
+      if (res.ok) {
+        const updatedContact = await res.json();
+        const updatedContacts = contacts.map(c =>
+          c.id === selectedContactId ? { ...c, name: updatedContact.name, phone: updatedContact.phone, email: updatedContact.email } : c
+        );
+        saveContactsState(updatedContacts);
+        setIsEditContactOpen(false);
+        showToast('Contact updated successfully', 'success');
+      } else {
+        const errorData = await res.json();
+        alert(`Failed to update contact: ${errorData.error || 'Server error'}`);
+      }
+    } catch (err) {
+      console.error('Error updating contact:', err);
+      alert('An error occurred while communicating with the database.');
+    }
+  };
+
   const handleImportContacts = async (multiple: boolean = false) => {
     if (!('contacts' in navigator && 'ContactsManager' in window)) {
       setImportStatus({ type: 'error', message: 'Not supported on this browser.' });
       return;
     }
-    
+
     setIsImportingContacts(true);
     setImportStatus(null);
-    
+
     try {
       const props = ['name', 'tel'];
       const opts = { multiple };
-      
+
       const supportedProps = await (navigator as any).contacts.getProperties();
       if (!supportedProps.includes('name') || !supportedProps.includes('tel')) {
         throw new Error("Required contact properties not supported");
       }
 
       const importedContacts = await (navigator as any).contacts.select(props, opts);
-      
+
       if (!importedContacts || importedContacts.length === 0) {
         setIsImportingContacts(false);
         setImportStatus({ type: 'info', message: 'No contacts selected.' });
         return;
       }
-      
+
       const newContacts = [];
       for (const ic of importedContacts) {
         const name = ic.name?.[0];
@@ -426,7 +449,7 @@ export default function Dashboard() {
           });
         }
       }
-      
+
       if (newContacts.length > 0) {
         let addedCount = 0;
         for (const c of newContacts) {
@@ -437,7 +460,7 @@ export default function Dashboard() {
           });
           if (res.ok) addedCount++;
         }
-        
+
         saveContactsState([...newContacts, ...contacts]);
         setImportStatus({ type: 'success', message: `Imported ${addedCount} contact(s) successfully!` });
         if (addedCount > 0 && !multiple) {
@@ -487,8 +510,8 @@ export default function Dashboard() {
   const handleOpenAddTx = (type: 'gave' | 'got') => {
     setTxType(type);
     setTxAmount('');
-    setTxDescription('');
-    setTxCategory('Cash');
+    setTxRemark('');
+    setTxMode('Cash');
     setTxDate(new Date().toISOString().split('T')[0]);
     setEditingTransaction(null);
     setIsAddTransactionOpen(true);
@@ -498,8 +521,8 @@ export default function Dashboard() {
     setEditingTransaction(tx);
     setTxAmount(tx.amount.toString());
     setTxType(tx.type);
-    setTxDescription(tx.description);
-    setTxCategory(tx.category);
+    setTxRemark(tx.remark);
+    setTxMode(tx.mode);
     setTxDate(tx.date);
     setIsAddTransactionOpen(true);
   };
@@ -511,7 +534,7 @@ export default function Dashboard() {
     const amt = parseFloat(txAmount);
     if (isNaN(amt) || amt <= 0) return;
 
-    const txDesc = txDescription.trim() || 'No description';
+    const txDesc = txRemark.trim() || 'No description';
 
     try {
       if (editingTransaction) {
@@ -522,8 +545,8 @@ export default function Dashboard() {
           body: JSON.stringify({
             amount: amt,
             type: txType,
-            description: txDesc,
-            category: txCategory,
+            remark: txDesc,
+            mode: txMode,
             date: txDate,
           }),
         });
@@ -559,8 +582,8 @@ export default function Dashboard() {
             id: newTxId,
             amount: amt,
             type: txType,
-            description: txDesc,
-            category: txCategory,
+            remark: txDesc,
+            mode: txMode,
             date: txDate,
           }),
         });
@@ -628,41 +651,14 @@ export default function Dashboard() {
 
     const settleAmount = Math.abs(balance);
     const settleType = balance > 0 ? 'got' : 'gave';
-    const settleTxId = 'tx_settle_' + Date.now();
 
-    try {
-      const res = await fetch(`/api/contacts/${selectedContact.id}/transactions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: settleTxId,
-          amount: settleAmount,
-          type: settleType,
-          description: '🤝 Fully Settled Account Balance',
-          date: new Date().toISOString().split('T')[0],
-          category: 'Cash',
-        }),
-      });
-
-      if (res.ok) {
-        const createdTx = await res.json();
-        const updatedContacts = contacts.map((c) => {
-          if (c.id !== selectedContact.id) return c;
-          return {
-            ...c,
-            transactions: [...c.transactions, createdTx],
-          };
-        });
-
-        saveContactsState(updatedContacts);
-        setTimeout(() => triggerConfetti(), 100);
-      } else {
-        alert('Failed to record settlement transaction on backend.');
-      }
-    } catch (err) {
-      console.error('Error recording settlement:', err);
-      alert('An error occurred during settlement.');
-    }
+    setTxAmount(settleAmount.toString());
+    setTxType(settleType);
+    setTxRemark('🤝 Settlement');
+    setTxMode('Cash');
+    setTxDate(new Date().toISOString().split('T')[0]);
+    setEditingTransaction(null);
+    setIsAddTransactionOpen(true);
   };
 
   // --- Share Ledger Template on WhatsApp ---
@@ -672,13 +668,13 @@ export default function Dashboard() {
     if (balance === 0) return;
 
     const cleanName = selectedContact.name;
-    const formattedAmt = `${currency.symbol}${Math.abs(balance).toLocaleString('en-IN')}`;
+    const formattedAmt = `$₹${Math.abs(balance).toLocaleString('en-IN')}`;
     let msg = '';
 
     if (balance > 0) {
-      msg = `Hi ${cleanName}, standard reminder that there is a pending balance of ${formattedAmt} to be paid to me on UdharWale. Let me know when you can settle it! Thank you.`;
+      msg = `Hi ${cleanName}, standard reminder that there is a pending balance of ${formattedAmt} to be paid to me on Udharwale by Naeem Navjivan. Let me know when you can settle it! Thank you.`;
     } else {
-      msg = `Hi ${cleanName}, I just wanted to let you know I owe you ${formattedAmt} as tracked on my UdharWale ledger. I will settle this with you as soon as possible!`;
+      msg = `Hi ${cleanName}, I just wanted to let you know I owe you ${formattedAmt} as tracked on my Udharwale by Naeem Navjivan ledger. I will settle this with you as soon as possible!`;
     }
 
     const whatsappUrl = `https://api.whatsapp.com/send?phone=${selectedContact.phone.replace(/[^0-9+]/g, '')}&text=${encodeURIComponent(msg)}`;
@@ -689,7 +685,7 @@ export default function Dashboard() {
     if (!selectedContact) return;
 
     let text = `Ledger with ${selectedContact.name}\n`;
-    text += `Current Position: ${getContactBalance(selectedContact) > 0 ? `They owe you ${currency.symbol}${getContactBalance(selectedContact).toLocaleString('en-IN')}` : getContactBalance(selectedContact) < 0 ? `You owe them ${currency.symbol}${Math.abs(getContactBalance(selectedContact)).toLocaleString('en-IN')}` : 'Settled'}\n\n`;
+    text += `Current Position: ${getContactBalance(selectedContact) > 0 ? `They owe you $₹${getContactBalance(selectedContact).toLocaleString('en-IN')}` : getContactBalance(selectedContact) < 0 ? `You owe them $₹${Math.abs(getContactBalance(selectedContact)).toLocaleString('en-IN')}` : 'Settled'}\n\n`;
     text += `Transaction History:\n`;
 
     const txsToShare = selectedContact.transactions.filter(t => {
@@ -703,13 +699,13 @@ export default function Dashboard() {
     txsToShare.forEach(t => {
       const isGave = t.type === 'gave';
       const formattedDate = new Date(t.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-      const amountStr = `${currency.symbol}${t.amount.toLocaleString('en-IN')}`;
+      const amountStr = `$₹${t.amount.toLocaleString('en-IN')}`;
       runningTotal += isGave ? t.amount : -t.amount;
-      text += `- ${formattedDate}: ${t.description} (${isGave ? 'You lent' : 'You borrowed'} ${amountStr})\n`;
+      text += `- ${formattedDate}: ${t.remark} (${isGave ? 'You lent' : 'You borrowed'} ${amountStr})\n`;
     });
 
     if (option === 'all') {
-      text += `\nNet Total: ${runningTotal > 0 ? `+${currency.symbol}${runningTotal.toLocaleString('en-IN')}` : `-${currency.symbol}${Math.abs(runningTotal).toLocaleString('en-IN')}`}`;
+      text += `\nNet Total: ${runningTotal > 0 ? `+$₹${runningTotal.toLocaleString('en-IN')}` : `-$₹${Math.abs(runningTotal).toLocaleString('en-IN')}`}`;
     }
 
     try {
@@ -755,9 +751,9 @@ export default function Dashboard() {
   };
 
   // ─── Toast System ───────────────────────────────────────────────────────
-  const [toasts, setToasts] = React.useState<{id:number;type:'success'|'error'|'info'|'warn';msg:string;leaving?:boolean}[]>([]);
+  const [toasts, setToasts] = React.useState<{ id: number; type: 'success' | 'error' | 'info' | 'warn'; msg: string; leaving?: boolean }[]>([]);
   const toastCounter = React.useRef(0);
-  const showToast = React.useCallback((msg: string, type: 'success'|'error'|'info'|'warn' = 'info') => {
+  const showToast = React.useCallback((msg: string, type: 'success' | 'error' | 'info' | 'warn' = 'info') => {
     const id = ++toastCounter.current;
     setToasts(prev => [...prev, { id, type, msg }]);
     setTimeout(() => {
@@ -804,7 +800,10 @@ export default function Dashboard() {
               🧾
             </div>
             <div>
-              <h1 className="font-black text-sm tracking-tight" style={{ color: 'var(--text-primary)' }}>UdharWale</h1>
+              <div className="flex flex-col">
+                <span className="font-black text-lg tracking-tight leading-none" style={{ color: 'var(--text-primary)' }}>Udharwale</span>
+                <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mt-1">By Naeem Navjivan</span>
+              </div>
               <p className="text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>Smart Debt Ledger</p>
             </div>
             {/* Sync dot */}
@@ -829,8 +828,8 @@ export default function Dashboard() {
             <button onClick={handleLogout} title="Sign out"
               className="p-1.5 rounded-lg transition-colors shrink-0"
               style={{ color: 'var(--text-muted)' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color='#f43f5e'; (e.currentTarget as HTMLElement).style.background='rgba(244,63,94,0.08)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color='var(--text-muted)'; (e.currentTarget as HTMLElement).style.background=''; }}>
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#f43f5e'; (e.currentTarget as HTMLElement).style.background = 'rgba(244,63,94,0.08)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'; (e.currentTarget as HTMLElement).style.background = ''; }}>
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
               </svg>
@@ -840,18 +839,24 @@ export default function Dashboard() {
           {/* Nav */}
           <nav className="px-3 py-3 space-y-1 flex-1">
             {([
-              { tab: 'ledgers' as const, label: 'Friends & Khata', badge: contacts.length, icon: (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-              )},
-              { tab: 'insights' as const, label: 'Insights & Flow', badge: null, icon: (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              )},
-              { tab: 'settings' as const, label: 'Ledger Settings', badge: null, icon: (
-                <>
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </>
-              )},
+              {
+                tab: 'ledgers' as const, label: 'Friends & Khata', badge: contacts.length, icon: (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                )
+              },
+              {
+                tab: 'insights' as const, label: 'Insights & Flow', badge: null, icon: (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                )
+              },
+              {
+                tab: 'settings' as const, label: 'Ledger Settings', badge: null, icon: (
+                  <>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </>
+                )
+              },
             ] as const).map(({ tab, label, badge, icon }) => (
               <button key={tab} onClick={() => { setActiveTab(tab); setMobileView('list'); }}
                 className={`nav-item${activeTab === tab ? ' active' : ''}`}>
@@ -893,7 +898,10 @@ export default function Dashboard() {
               <div className="w-8 h-8 rounded-xl flex items-center justify-center font-black text-white text-sm"
                 style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}>🧾</div>
               <div>
-                <h1 className="font-black text-sm tracking-tight" style={{ color: 'var(--text-primary)' }}>UdharWale</h1>
+                <div className="flex flex-col">
+                  <span className="font-black text-lg tracking-tight leading-none" style={{ color: 'var(--text-primary)' }}>Udharwale</span>
+                  <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mt-1">By Naeem Navjivan</span>
+                </div>
                 <div className="flex items-center gap-1">
                   <span className={`w-1.5 h-1.5 rounded-full ${dbStatus === 'connecting' ? 'animate-pulse' : ''}`}
                     style={{ background: dbStatus === 'connected' ? '#10b981' : dbStatus === 'connecting' ? '#f59e0b' : '#f43f5e' }} />
@@ -921,629 +929,621 @@ export default function Dashboard() {
             </div>
           </header>
 
-        {/* ══════════════════════════════════════════════════════
+          {/* ══════════════════════════════════════════════════════
             MAIN CONTENT
         ══════════════════════════════════════════════════════ */}
-        <main className="flex-1 flex flex-col overflow-hidden pb-16 md:pb-0">
+          <main className="flex-1 flex flex-col overflow-hidden pb-16 md:pb-0">
 
-          {/* Loading skeleton */}
-          {dbStatus === 'connecting' && (
-            <div className="flex-1 flex flex-col p-6 space-y-4">
-              {[1,2,3].map(i => (
-                <div key={i} className="flex items-center gap-4 p-4 rounded-2xl" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
-                  <div className="skeleton w-11 h-11 rounded-full shrink-0" />
-                  <div className="flex-1 space-y-2">
-                    <div className="skeleton h-3 rounded-full w-2/5" />
-                    <div className="skeleton h-2.5 rounded-full w-1/3" />
+            {/* Loading skeleton */}
+            {dbStatus === 'connecting' && (
+              <div className="flex-1 flex flex-col p-6 space-y-4">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="flex items-center gap-4 p-4 rounded-2xl" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
+                    <div className="skeleton w-11 h-11 rounded-full shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <div className="skeleton h-3 rounded-full w-2/5" />
+                      <div className="skeleton h-2.5 rounded-full w-1/3" />
+                    </div>
+                    <div className="skeleton h-5 w-16 rounded-full" />
                   </div>
-                  <div className="skeleton h-5 w-16 rounded-full" />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Error state */}
-          {dbStatus === 'error' && (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-6">
-              <div className="w-20 h-20 rounded-3xl flex items-center justify-center text-4xl"
-                style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.15)' }}>🔌</div>
-              <div className="space-y-2">
-                <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Couldn't load your data</h3>
-                <p className="text-sm max-w-xs" style={{ color: 'var(--text-secondary)' }}>Check your internet connection and try again.</p>
+                ))}
               </div>
-              <button onClick={loadContacts} className="btn-primary px-8">Retry</button>
-            </div>
-          )}
+            )}
 
-          {/* ── LEDGERS TAB ──────────────────────────────── */}
-          {dbStatus === 'connected' && activeTab === 'ledgers' && (
-            <div className="flex-1 flex overflow-hidden">
+            {/* Error state */}
+            {dbStatus === 'error' && (
+              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-6">
+                <div className="w-20 h-20 rounded-3xl flex items-center justify-center text-4xl"
+                  style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.15)' }}>🔌</div>
+                <div className="space-y-2">
+                  <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Couldn't load your data</h3>
+                  <p className="text-sm max-w-xs" style={{ color: 'var(--text-secondary)' }}>Check your internet connection and try again.</p>
+                </div>
+                <button onClick={loadContacts} className="btn-primary px-8">Retry</button>
+              </div>
+            )}
 
-              {/* Left panel: contact list */}
-              <div className={`flex flex-col shrink-0 overflow-hidden ${mobileView === 'ledger' ? 'hidden md:flex' : 'flex'}`}
-                style={{ width: '100%', maxWidth: '100%', borderRight: '1px solid var(--border-soft)' }}
-                data-md-width="320px">
-                <style>{`.contact-list-panel { max-width: 100%; } @media(min-width:768px) { .contact-list-panel { width: 320px !important; max-width: 320px !important; } }`}</style>
-                <div className="contact-list-panel flex flex-col overflow-hidden flex-1 md:flex md:flex-col"
-                  style={{ width: '100%' }}>
+            {/* ── LEDGERS TAB ──────────────────────────────── */}
+            {dbStatus === 'connected' && activeTab === 'ledgers' && (
+              <div className="flex-1 flex overflow-hidden">
 
-                  {/* Search + filter bar */}
-                  <div className="p-4 space-y-3 shrink-0" style={{ borderBottom: '1px solid var(--border-soft)' }}>
-                    <div className="flex items-center gap-2">
-                      <div className="relative flex-1">
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-muted)' }}>
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                          </svg>
+                {/* Left panel: contact list */}
+                <div className={`flex flex-col shrink-0 overflow-hidden ${mobileView === 'ledger' ? 'hidden md:flex' : 'flex'}`}
+                  style={{ width: '100%', maxWidth: '100%', borderRight: '1px solid var(--border-soft)' }}
+                  data-md-width="320px">
+                  <style>{`.contact-list-panel { max-width: 100%; } @media(min-width:768px) { .contact-list-panel { width: 320px !important; max-width: 320px !important; } }`}</style>
+                  <div className="contact-list-panel flex flex-col overflow-hidden flex-1 md:flex md:flex-col"
+                    style={{ width: '100%' }}>
+
+                    {/* Search + filter bar */}
+                    <div className="p-4 space-y-3 shrink-0" style={{ borderBottom: '1px solid var(--border-soft)' }}>
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-muted)' }}>
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                          </div>
+                          <input type="text" placeholder="Search contacts…" value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            className="w-full pl-8 pr-3 py-2 text-xs rounded-xl font-medium outline-none transition-all"
+                            style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }} />
                         </div>
-                        <input type="text" placeholder="Search contacts…" value={searchQuery}
-                          onChange={e => setSearchQuery(e.target.value)}
-                          className="w-full pl-8 pr-3 py-2 text-xs rounded-xl font-medium outline-none transition-all"
-                          style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }} />
-                      </div>
-                      <button onClick={() => { setIsAddContactOpen(true); setImportStatus(null); }}
-                        className="shrink-0 w-8 h-8 rounded-xl flex items-center justify-center text-white font-bold text-lg transition-all"
-                        style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', boxShadow: '0 2px 12px rgba(99,102,241,0.3)' }}
-                        title="Add contact">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                        </svg>
-                      </button>
+                        <button onClick={() => { setIsAddContactOpen(true); setImportStatus(null); }}
+                          className="shrink-0 w-8 h-8 rounded-xl flex items-center justify-center text-white font-bold text-lg transition-all"
+                          style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', boxShadow: '0 2px 12px rgba(99,102,241,0.3)' }}
+                          title="Add contact">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                          </svg>
+                        </button>
 
-                      {/* Global balance toggle */}
-                      <button onClick={() => setShowBalances(!showBalances)}
-                        className="shrink-0 w-8 h-8 rounded-xl flex items-center justify-center transition-all"
-                        style={{ background: showBalances ? 'rgba(99,102,241,0.15)' : 'var(--bg-raised)', border: `1px solid ${showBalances ? 'rgba(99,102,241,0.3)' : 'var(--border-soft)'}`, color: showBalances ? '#818cf8' : 'var(--text-muted)' }}
-                        title={showBalances ? 'Hide all balances' : 'Show all balances'}>
-                        {showBalances
-                          ? <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                          : <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" /></svg>
-                        }
-                      </button>
+                        {/* Global balance toggle */}
+                        <button onClick={() => setShowBalances(!showBalances)}
+                          className="shrink-0 w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+                          style={{ background: showBalances ? 'rgba(99,102,241,0.15)' : 'var(--bg-raised)', border: `1px solid ${showBalances ? 'rgba(99,102,241,0.3)' : 'var(--border-soft)'}`, color: showBalances ? '#818cf8' : 'var(--text-muted)' }}
+                          title={showBalances ? 'Hide all balances' : 'Show all balances'}>
+                          {showBalances
+                            ? <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                            : <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" /></svg>
+                          }
+                        </button>
+                      </div>
+
+                      {/* Filter chips */}
+                      <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5">
+                        {(['all', 'credit', 'debit', 'settled'] as const).map(f => (
+                          <button key={f} onClick={() => setStatusFilter(f)}
+                            className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all"
+                            style={{
+                              background: statusFilter === f
+                                ? f === 'credit' ? 'rgba(16,185,129,0.15)' : f === 'debit' ? 'rgba(244,63,94,0.15)' : f === 'settled' ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.15)'
+                                : 'var(--bg-raised)',
+                              color: statusFilter === f
+                                ? f === 'credit' ? '#6ee7b7' : f === 'debit' ? '#fda4af' : f === 'settled' ? '#a5b4fc' : '#a5b4fc'
+                                : 'var(--text-muted)',
+                              border: `1px solid ${statusFilter === f ? 'rgba(255,255,255,0.1)' : 'var(--border-muted)'}`,
+                            }}>
+                            {f === 'all' ? 'All' : f === 'credit' ? "You'll get" : f === 'debit' ? 'You owe' : 'Settled'}
+                          </button>
+                        ))}
+                        <div className="flex-1" />
+                        <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)}
+                          className="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full outline-none cursor-pointer"
+                          style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-muted)' }}>
+                          <option value="recent">Recent</option>
+                          <option value="name">Name</option>
+                          <option value="balance">Balance</option>
+                        </select>
+                      </div>
                     </div>
 
-                    {/* Filter chips */}
-                    <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5">
-                      {(['all','credit','debit','settled'] as const).map(f => (
-                        <button key={f} onClick={() => setStatusFilter(f)}
-                          className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all"
-                          style={{
-                            background: statusFilter === f
-                              ? f === 'credit' ? 'rgba(16,185,129,0.15)' : f === 'debit' ? 'rgba(244,63,94,0.15)' : f === 'settled' ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.15)'
-                              : 'var(--bg-raised)',
-                            color: statusFilter === f
-                              ? f === 'credit' ? '#6ee7b7' : f === 'debit' ? '#fda4af' : f === 'settled' ? '#a5b4fc' : '#a5b4fc'
-                              : 'var(--text-muted)',
-                            border: `1px solid ${statusFilter === f ? 'rgba(255,255,255,0.1)' : 'var(--border-muted)'}`,
-                          }}>
-                          {f === 'all' ? 'All' : f === 'credit' ? "You'll get" : f === 'debit' ? 'You owe' : 'Settled'}
-                        </button>
-                      ))}
-                      <div className="flex-1" />
-                      <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)}
-                        className="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full outline-none cursor-pointer"
-                        style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-muted)' }}>
-                        <option value="recent">Recent</option>
-                        <option value="name">Name</option>
-                        <option value="balance">Balance</option>
-                      </select>
+                    {/* Contact list */}
+                    <div className="flex-1 overflow-y-auto scrollbar-thin">
+                      {contacts.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-4">
+                          <div className="w-20 h-20 rounded-3xl flex items-center justify-center text-4xl animate-fade-slide-up"
+                            style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>📖</div>
+                          <div className="space-y-1 animate-fade-slide-up" style={{ animationDelay: '0.1s' }}>
+                            <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>No contacts yet</p>
+                            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Add a friend to start tracking shared balances</p>
+                          </div>
+                          <button onClick={() => setIsAddContactOpen(true)} className="btn-primary text-sm px-6 animate-fade-slide-up" style={{ animationDelay: '0.2s' }}>
+                            ➕ Add First Contact
+                          </button>
+                        </div>
+                      ) : (() => {
+                        const filtered = contacts.filter(c => {
+                          const bal = getContactBalance(c);
+                          if (statusFilter === 'credit' && bal <= 0) return false;
+                          if (statusFilter === 'debit' && bal >= 0) return false;
+                          if (statusFilter === 'settled' && bal !== 0) return false;
+                          if (searchQuery && !c.name.toLowerCase().includes(searchQuery.toLowerCase()) && !c.phone.includes(searchQuery)) return false;
+                          return true;
+                        }).sort((a, b) => {
+                          if (sortBy === 'name') return a.name.localeCompare(b.name);
+                          if (sortBy === 'balance') return Math.abs(getContactBalance(b)) - Math.abs(getContactBalance(a));
+                          const lastA = a.transactions.length ? new Date(a.transactions[a.transactions.length - 1].date).getTime() : new Date(a.createdAt).getTime();
+                          const lastB = b.transactions.length ? new Date(b.transactions[b.transactions.length - 1].date).getTime() : new Date(b.createdAt).getTime();
+                          return lastB - lastA;
+                        });
+
+                        return filtered.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-3">
+                            <div className="text-3xl">🔍</div>
+                            <p className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>No contacts match your filter</p>
+                          </div>
+                        ) : (
+                          <div className="py-2">
+                            {filtered.map(contact => {
+                              const balance = getContactBalance(contact);
+                              const isSelected = selectedContactId === contact.id;
+                              const isPeekingThis = peekingContactId === contact.id;
+                              const revealed = showBalances || isPeekingThis;
+                              const avatarGradient = getAvatarGradient(contact.name);
+                              const balanceColor = balance > 0 ? '#10b981' : balance < 0 ? '#f43f5e' : 'var(--text-muted)';
+                              const borderColor = balance > 0 ? '#10b981' : balance < 0 ? '#f43f5e' : 'transparent';
+
+                              return (
+                                <div key={contact.id}
+                                  className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-all duration-150 ${isSelected ? 'md:block' : ''}`}
+                                  style={{
+                                    background: isSelected ? 'rgba(99,102,241,0.08)' : 'transparent',
+                                    borderLeft: `3px solid ${isSelected ? '#6366f1' : borderColor}`,
+                                  }}
+                                  onClick={() => { setSelectedContactId(contact.id); setMobileView('ledger'); }}>
+
+                                  {/* Avatar */}
+                                  <div className={`w-11 h-11 rounded-full shrink-0 bg-gradient-to-tr ${avatarGradient} flex items-center justify-center font-black text-sm text-white`}
+                                    style={{ boxShadow: isSelected ? `0 0 0 2px #6366f1` : 'none' }}>
+                                    {getInitials(contact.name)}
+                                  </div>
+
+                                  {/* Info */}
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{contact.name}</p>
+                                    <p className="text-[11px] truncate" style={{ color: 'var(--text-muted)' }}>{contact.phone || 'No phone'}</p>
+                                  </div>
+
+                                  {/* Balance + peek */}
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <div className="text-right">
+                                      {balance !== 0 && (
+                                        <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                                          {balance > 0 ? "you'll get" : 'you owe'}
+                                        </p>
+                                      )}
+                                      <p className="text-sm font-black" style={{ color: balanceColor }}>
+                                        {balance === 0 ? (
+                                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}>Settled</span>
+                                        ) : revealed ? (
+                                          `${balance > 0 ? '+' : '-'}$₹${Math.abs(balance).toLocaleString('en-IN')}`
+                                        ) : '•••'}
+                                      </p>
+                                    </div>
+                                    {balance !== 0 && (
+                                      <button
+                                        onMouseDown={e => { e.stopPropagation(); setPeekingContactId(contact.id); }}
+                                        onMouseUp={e => { e.stopPropagation(); setPeekingContactId(null); }}
+                                        onMouseLeave={() => setPeekingContactId(null)}
+                                        onTouchStart={e => { e.stopPropagation(); setPeekingContactId(contact.id); }}
+                                        onTouchEnd={e => { e.stopPropagation(); setPeekingContactId(null); }}
+                                        className="p-1 rounded-md transition-all select-none"
+                                        title="Hold to peek"
+                                        style={{ color: isPeekingThis ? '#818cf8' : 'var(--text-muted)' }}>
+                                        {isPeekingThis
+                                          ? <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                          : <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" /></svg>
+                                        }
+                                      </button>
+                                    )}
+                                  </div>
+
+                                </div>
+                              );
+                            })}
+
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
+                </div>
 
-                  {/* Contact list */}
-                  <div className="flex-1 overflow-y-auto scrollbar-thin">
-                    {contacts.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-4">
-                        <div className="w-20 h-20 rounded-3xl flex items-center justify-center text-4xl animate-fade-slide-up"
-                          style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>📖</div>
-                        <div className="space-y-1 animate-fade-slide-up" style={{ animationDelay: '0.1s' }}>
-                          <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>No contacts yet</p>
-                          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Add a friend to start tracking shared balances</p>
-                        </div>
-                        <button onClick={() => setIsAddContactOpen(true)} className="btn-primary text-sm px-6 animate-fade-slide-up" style={{ animationDelay: '0.2s' }}>
-                          ➕ Add First Contact
-                        </button>
-                      </div>
-                    ) : (() => {
-                      const filtered = contacts.filter(c => {
-                        const bal = getContactBalance(c);
-                        if (statusFilter === 'credit' && bal <= 0) return false;
-                        if (statusFilter === 'debit' && bal >= 0) return false;
-                        if (statusFilter === 'settled' && bal !== 0) return false;
-                        if (searchQuery && !c.name.toLowerCase().includes(searchQuery.toLowerCase()) && !c.phone.includes(searchQuery)) return false;
-                        return true;
-                      }).sort((a, b) => {
-                        if (sortBy === 'name') return a.name.localeCompare(b.name);
-                        if (sortBy === 'balance') return Math.abs(getContactBalance(b)) - Math.abs(getContactBalance(a));
-                        const lastA = a.transactions.length ? new Date(a.transactions[a.transactions.length-1].date).getTime() : new Date(a.createdAt).getTime();
-                        const lastB = b.transactions.length ? new Date(b.transactions[b.transactions.length-1].date).getTime() : new Date(b.createdAt).getTime();
-                        return lastB - lastA;
-                      });
+                {/* Right panel: ledger detail */}
+                <div className={`flex-1 flex flex-col overflow-hidden ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}
+                  style={{ background: 'var(--bg-base)' }}>
+                  {selectedContact ? (() => {
+                    const contactBal = getContactBalance(selectedContact);
+                    const filteredTxs = selectedContact.transactions
+                      .filter(t => !ledgerSearchQuery || t.remark.toLowerCase().includes(ledgerSearchQuery.toLowerCase()))
+                      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-                      return filtered.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-3">
-                          <div className="text-3xl">🔍</div>
-                          <p className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>No contacts match your filter</p>
+                    return (
+                      <div className="flex-1 flex flex-col overflow-hidden animate-scale-in">
+                        {/* Contact header */}
+                        <div className="px-5 py-4 shrink-0" style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-soft)' }}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3.5 min-w-0">
+                              {/* Mobile back */}
+                              <button onClick={() => setMobileView('list')} className="md:hidden p-1.5 rounded-xl shrink-0" style={{ color: 'var(--text-muted)' }}>
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+                                </svg>
+                              </button>
+                              <div className={`w-12 h-12 rounded-2xl shrink-0 bg-gradient-to-tr ${getAvatarGradient(selectedContact.name)} flex items-center justify-center font-black text-base text-white shadow-lg`}>
+                                {getInitials(selectedContact.name)}
+                              </div>
+                              <div className="min-w-0">
+                                <h2 className="font-extrabold text-base truncate" style={{ color: 'var(--text-primary)' }}>{selectedContact.name}</h2>
+                                <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{selectedContact.phone}{selectedContact.email && ` · ${selectedContact.email}`}</p>
+                              </div>
+                            </div>
+
+                            {/* Quick actions */}
+                            <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                              {contactBal !== 0 && (
+                                <button onClick={handleSettleFullBalance}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
+                                  style={{ background: 'rgba(16,185,129,0.1)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.2)' }}>
+                                  🤝 Settle
+                                </button>
+                              )}
+                              {contactBal !== 0 && (
+                                <button onClick={handleWhatsAppReminder}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
+                                  style={{ background: 'rgba(99,102,241,0.1)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.2)' }}>
+                                  <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.825 1.451 5.436 0 9.86-4.37 9.864-9.799.002-2.63-1.023-5.101-2.885-6.965C16.59 1.977 14.113.953 11.999.953c-5.439 0-9.866 4.37-9.87 9.8a9.697 9.697 0 0 0 1.511 5.176l-.99 3.616 3.791-.977z" /></svg>
+                                  Remind
+                                </button>
+                              )}
+                              <button onClick={() => setIsShareModalOpen(true)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
+                                style={{ background: 'rgba(139,92,246,0.1)', color: '#c4b5fd', border: '1px solid rgba(139,92,246,0.2)' }}>
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+                                Share
+                              </button>
+                              {/* More menu */}
+                              <div className="relative">
+                                <button onClick={() => setIsContactMenuOpen(!isContactMenuOpen)}
+                                  className="p-2 rounded-xl transition-all"
+                                  style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)', border: '1px solid var(--border-soft)' }}>
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                                  </svg>
+                                </button>
+                                {isContactMenuOpen && (
+                                  <>
+                                    <div className="fixed inset-0 z-10" onClick={() => setIsContactMenuOpen(false)} />
+                                    <div className="absolute right-0 mt-2 w-44 rounded-xl py-1.5 z-20 animate-fade-slide-down"
+                                      style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border-soft)', boxShadow: 'var(--shadow-card)' }}>
+                                      
+
+                                      <button onClick={() => {
+                                        setIsContactMenuOpen(false);
+                                        setContactName(selectedContact.name);
+                                        setContactPhone(selectedContact.phone);
+                                        setContactEmail(selectedContact.email || '');
+                                        setIsEditContactOpen(true);
+                                      }}
+                                        className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                        style={{ color: 'var(--text-primary)' }}
+                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-raised)'}
+                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                        Edit Contact
+                                      </button>
+                                      <button onClick={() => { setIsContactMenuOpen(false); handleDeleteContact(selectedContact.id); }}
+                                        className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                        style={{ color: '#f43f5e' }}
+                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(244,63,94,0.08)'}
+                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                        Delete Account
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Balance banner */}
+                          <div className="flex items-center justify-between mt-4 px-4 py-3 rounded-2xl"
+                            style={{
+                              background: contactBal > 0 ? 'rgba(16,185,129,0.07)' : contactBal < 0 ? 'rgba(244,63,94,0.07)' : 'var(--bg-raised)',
+                              border: `1px solid ${contactBal > 0 ? 'rgba(16,185,129,0.15)' : contactBal < 0 ? 'rgba(244,63,94,0.15)' : 'var(--border-soft)'}`,
+                            }}>
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Current Balance</p>
+                              {contactBal === 0 ? (
+                                <p className="text-sm font-bold mt-0.5" style={{ color: 'var(--text-secondary)' }}>All settled up 🤝</p>
+                              ) : (
+                                <p className="text-sm font-bold mt-0.5" style={{ color: contactBal > 0 ? '#6ee7b7' : '#fda4af' }}>
+                                  {contactBal > 0
+                                    ? `${selectedContact.name} owes you ₹${contactBal.toLocaleString('en-IN')}`
+                                    : `You owe ${selectedContact.name} $₹${Math.abs(contactBal).toLocaleString('en-IN')}`}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Search inside ledger */}
+                            <div className="relative w-36">
+                              <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-muted)' }}>
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                              </div>
+                              <input type="text" placeholder="Search…" value={ledgerSearchQuery}
+                                onChange={e => setLedgerSearchQuery(e.target.value)}
+                                className="w-full pl-7 pr-2 py-1.5 text-xs rounded-lg outline-none transition-all"
+                                style={{ background: 'var(--bg-base)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }} />
+                            </div>
+                          </div>
                         </div>
-                      ) : (
-                        <div className="py-2">
-                          {filtered.map(contact => {
-                            const balance = getContactBalance(contact);
-                            const isSelected = selectedContactId === contact.id;
-                            const isPeekingThis = peekingContactId === contact.id;
-                            const revealed = showBalances || isPeekingThis;
-                            const avatarGradient = getAvatarGradient(contact.name);
-                            const balanceColor = balance > 0 ? '#10b981' : balance < 0 ? '#f43f5e' : 'var(--text-muted)';
-                            const borderColor = balance > 0 ? '#10b981' : balance < 0 ? '#f43f5e' : 'transparent';
+
+                        {/* Transaction timeline */}
+                        <div className="flex-1 overflow-y-auto scrollbar-thin px-5 py-4 space-y-3">
+                          {filteredTxs.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
+                              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>📭</div>
+                              <div>
+                                <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>No transactions yet</p>
+                                <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>Use the buttons below to record the first one</p>
+                              </div>
+                            </div>
+                          ) : filteredTxs.map((tx, idx) => {
+                            const isGave = tx.type === 'gave';
+                            const catIcons: Record<string, string> = {
+                              'Cash': '💵',
+                              'Online Transfer': '🏦'
+                            };
+                            const formattedDate = new Date(tx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
                             return (
-                              <div key={contact.id}
-                                className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-all duration-150 ${isSelected ? 'md:block' : ''}`}
+                              <div key={tx.id} className="group flex items-start gap-3.5 p-4 rounded-2xl transition-all duration-150 animate-fade-slide-up"
                                 style={{
-                                  background: isSelected ? 'rgba(99,102,241,0.08)' : 'transparent',
-                                  borderLeft: `3px solid ${isSelected ? '#6366f1' : borderColor}`,
-                                }}
-                                onClick={() => { setSelectedContactId(contact.id); setMobileView('ledger'); }}>
-
-                                {/* Avatar */}
-                                <div className={`w-11 h-11 rounded-full shrink-0 bg-gradient-to-tr ${avatarGradient} flex items-center justify-center font-black text-sm text-white`}
-                                  style={{ boxShadow: isSelected ? `0 0 0 2px #6366f1` : 'none' }}>
-                                  {getInitials(contact.name)}
+                                  animationDelay: `${Math.min(idx * 0.04, 0.3)}s`,
+                                  background: 'var(--bg-surface)',
+                                  border: `1px solid var(--border-soft)`,
+                                  borderLeft: `3px solid ${isGave ? '#10b981' : '#f43f5e'}`,
+                                }}>
+                                {/* Icon */}
+                                <div className="w-10 h-10 rounded-xl shrink-0 flex items-center justify-center text-lg"
+                                  style={{ background: isGave ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)' }}>
+                                  {catIcons[tx.mode] || '📦'}
                                 </div>
-
-                                {/* Info */}
+                                {/* Details */}
                                 <div className="flex-1 min-w-0">
-                                  <p className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{contact.name}</p>
-                                  <p className="text-[11px] truncate" style={{ color: 'var(--text-muted)' }}>{contact.phone || 'No phone'}</p>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                                      style={{ background: isGave ? 'rgba(16,185,129,0.12)' : 'rgba(244,63,94,0.12)', color: isGave ? '#6ee7b7' : '#fda4af' }}>
+                                      {isGave ? '↗ Gave (Lent)' : '↙ Got (Borrowed)'}
+                                    </span>
+                                    <span className="text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>{formattedDate}</span>
+                                  </div>
+                                  <p className="font-bold text-sm mt-1.5" style={{ color: 'var(--text-primary)' }}>{tx.remark}</p>
+                                  <p className="text-[10px] mt-0.5 font-medium" style={{ color: 'var(--text-muted)' }}>{tx.mode}</p>
+                                </div>
+                                {/* Amount + actions */}
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="text-base font-black tabular-nums" style={{ color: isGave ? '#10b981' : '#f43f5e' }}>
+                                    {isGave ? '+' : '-'}₹{tx.amount.toLocaleString('en-IN')}
+                                  </span>
+                                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                                    <button onClick={() => handleOpenEditTx(tx)}
+                                      className="p-1.5 rounded-lg transition-colors"
+                                      style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}>
+                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                      </svg>
+                                    </button>
+                                    <button onClick={() => handleDeleteTransaction(tx.id)}
+                                      className="p-1.5 rounded-lg transition-colors"
+                                      style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}>
+                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                      </svg>
+                                    </button>
+                                  </div>
                                 </div>
 
-                                {/* Balance + peek */}
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <div className="text-right">
-                                    {balance !== 0 && (
-                                      <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-                                        {balance > 0 ? "you'll get" : 'you owe'}
-                                      </p>
-                                    )}
-                                    <p className="text-sm font-black" style={{ color: balanceColor }}>
-                                      {balance === 0 ? (
-                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}>Settled</span>
-                                      ) : revealed ? (
-                                        `${balance > 0 ? '+' : '-'}${currency.symbol}${Math.abs(balance).toLocaleString('en-IN')}`
-                                      ) : '•••'}
-                                    </p>
-                                  </div>
-                                  {balance !== 0 && (
-                                    <button
-                                      onMouseDown={e => { e.stopPropagation(); setPeekingContactId(contact.id); }}
-                                      onMouseUp={e => { e.stopPropagation(); setPeekingContactId(null); }}
-                                      onMouseLeave={() => setPeekingContactId(null)}
-                                      onTouchStart={e => { e.stopPropagation(); setPeekingContactId(contact.id); }}
-                                      onTouchEnd={e => { e.stopPropagation(); setPeekingContactId(null); }}
-                                      className="p-1 rounded-md transition-all select-none"
-                                      title="Hold to peek"
-                                      style={{ color: isPeekingThis ? '#818cf8' : 'var(--text-muted)' }}>
-                                      {isPeekingThis
-                                        ? <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                                        : <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" /></svg>
-                                      }
-                                    </button>
-                                  )}
-                                </div>
                               </div>
                             );
                           })}
                         </div>
-                      );
-                    })()}
-                  </div>
+
+                        {/* Bottom CTA */}
+                        <div className="shrink-0 px-5 py-4 grid grid-cols-2 gap-3"
+                          style={{ background: 'var(--bg-surface)', borderTop: '1px solid var(--border-soft)' }}>
+                          <button onClick={() => handleOpenAddTx('gave')}
+                            className="w-full py-4 px-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all shadow-sm text-white"
+                            style={{ background: 'var(--primary-color)' }}>
+                            <span className="text-lg">➕</span>
+                            <span>ADD RECORD</span>
+                          </button>
+                        </div>
+
+                      </div>
+                    );
+                  })() : (
+                    // No contact selected
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-8 space-y-5">
+                      <div className="w-24 h-24 rounded-3xl flex items-center justify-center text-5xl animate-fade-slide-up"
+                        style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.1))', border: '1px solid rgba(99,102,241,0.2)' }}>
+                        {contacts.length === 0 ? '📖' : '📇'}
+                      </div>
+                      <div className="space-y-2 animate-fade-slide-up" style={{ animationDelay: '0.1s' }}>
+                        <h3 className="text-lg font-extrabold" style={{ color: 'var(--text-primary)' }}>
+                          {contacts.length === 0 ? 'Welcome to Udharwale by Naeem Navjivan!' : 'Pick a contact'}
+                        </h3>
+                        <p className="text-sm max-w-xs" style={{ color: 'var(--text-secondary)' }}>
+                          {contacts.length === 0
+                            ? 'Start by adding a friend to track shared balances and transactions.'
+                            : 'Select someone from the list to see their full transaction history.'}
+                        </p>
+                      </div>
+                      {contacts.length === 0 && (
+                        <button onClick={() => setIsAddContactOpen(true)} className="btn-primary animate-fade-slide-up" style={{ animationDelay: '0.2s' }}>
+                          ➕ Add First Contact
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
+            )}
 
-              {/* Right panel: ledger detail */}
-              <div className={`flex-1 flex flex-col overflow-hidden ${mobileView === 'list' ? 'hidden md:flex' : 'flex'}`}
-                style={{ background: 'var(--bg-base)' }}>
-                {selectedContact ? (() => {
-                  const contactBal = getContactBalance(selectedContact);
-                  const filteredTxs = selectedContact.transactions
-                    .filter(t => !ledgerSearchQuery || t.description.toLowerCase().includes(ledgerSearchQuery.toLowerCase()))
-                    .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            {/* ── INSIGHTS TAB ──────────────────────────────── */}
+            {dbStatus === 'connected' && activeTab === 'insights' && (
+              <div className="flex-1 overflow-y-auto scrollbar-thin p-5 md:p-8 space-y-6">
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>Insights & Flow</h2>
+                  <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>A complete picture of your balances</p>
+                </div>
 
-                  return (
-                    <div className="flex-1 flex flex-col overflow-hidden animate-scale-in">
-                      {/* Contact header */}
-                      <div className="px-5 py-4 shrink-0" style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-soft)' }}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-center gap-3.5 min-w-0">
-                            {/* Mobile back */}
-                            <button onClick={() => setMobileView('list')} className="md:hidden p-1.5 rounded-xl shrink-0" style={{ color: 'var(--text-muted)' }}>
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
-                              </svg>
-                            </button>
-                            <div className={`w-12 h-12 rounded-2xl shrink-0 bg-gradient-to-tr ${getAvatarGradient(selectedContact.name)} flex items-center justify-center font-black text-base text-white shadow-lg`}>
-                              {getInitials(selectedContact.name)}
-                            </div>
-                            <div className="min-w-0">
-                              <h2 className="font-extrabold text-base truncate" style={{ color: 'var(--text-primary)' }}>{selectedContact.name}</h2>
-                              <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{selectedContact.phone}{selectedContact.email && ` · ${selectedContact.email}`}</p>
-                            </div>
-                          </div>
-
-                          {/* Quick actions */}
-                          <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-                            {contactBal !== 0 && (
-                              <button onClick={handleSettleFullBalance}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
-                                style={{ background: 'rgba(16,185,129,0.1)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.2)' }}>
-                                🤝 Settle
-                              </button>
-                            )}
-                            {contactBal !== 0 && (
-                              <button onClick={handleWhatsAppReminder}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
-                                style={{ background: 'rgba(99,102,241,0.1)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.2)' }}>
-                                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.825 1.451 5.436 0 9.86-4.37 9.864-9.799.002-2.63-1.023-5.101-2.885-6.965C16.59 1.977 14.113.953 11.999.953c-5.439 0-9.866 4.37-9.87 9.8a9.697 9.697 0 0 0 1.511 5.176l-.99 3.616 3.791-.977z" /></svg>
-                                Remind
-                              </button>
-                            )}
-                            <button onClick={() => setIsShareModalOpen(true)}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
-                              style={{ background: 'rgba(139,92,246,0.1)', color: '#c4b5fd', border: '1px solid rgba(139,92,246,0.2)' }}>
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
-                              Share
-                            </button>
-                            {/* More menu */}
-                            <div className="relative">
-                              <button onClick={() => setIsContactMenuOpen(!isContactMenuOpen)}
-                                className="p-2 rounded-xl transition-all"
-                                style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)', border: '1px solid var(--border-soft)' }}>
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                                </svg>
-                              </button>
-                              {isContactMenuOpen && (
-                                <>
-                                  <div className="fixed inset-0 z-10" onClick={() => setIsContactMenuOpen(false)} />
-                                  <div className="absolute right-0 mt-2 w-44 rounded-xl py-1.5 z-20 animate-fade-slide-down"
-                                    style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border-soft)', boxShadow: 'var(--shadow-card)' }}>
-                                    <button onClick={() => { setIsContactMenuOpen(false); handleDeleteContact(selectedContact.id); }}
-                                      className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                      style={{ color: '#f43f5e' }}
-                                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(244,63,94,0.08)'}
-                                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                      Delete Account
-                                    </button>
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          </div>
+                {/* Main wallet card */}
+                <div className="relative p-6 rounded-3xl overflow-hidden"
+                  style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(79,70,229,0.06) 100%)', border: '1px solid rgba(99,102,241,0.2)' }}>
+                  <div className="absolute top-0 right-0 w-48 h-48 pointer-events-none"
+                    style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%)', transform: 'translate(20%,-20%)' }} />
+                  <div className="relative z-10">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'rgba(165,180,252,0.7)' }}>NET WALLET BALANCE</p>
+                        <div className="flex items-baseline gap-2 mt-2">
+                          <h2 className="text-4xl font-black tabular-nums"
+                            style={{ color: showBalances ? (stats.netBalance >= 0 ? '#6ee7b7' : '#fda4af') : 'var(--text-primary)' }}>
+                            {showBalances
+                              ? `${stats.netBalance >= 0 ? '+' : '-'}$₹${Math.abs(stats.netBalance).toLocaleString('en-IN')}`
+                              : '****'}
+                          </h2>
                         </div>
-
-                        {/* Balance banner */}
-                        <div className="flex items-center justify-between mt-4 px-4 py-3 rounded-2xl"
-                          style={{
-                            background: contactBal > 0 ? 'rgba(16,185,129,0.07)' : contactBal < 0 ? 'rgba(244,63,94,0.07)' : 'var(--bg-raised)',
-                            border: `1px solid ${contactBal > 0 ? 'rgba(16,185,129,0.15)' : contactBal < 0 ? 'rgba(244,63,94,0.15)' : 'var(--border-soft)'}`,
-                          }}>
-                          <div>
-                            <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Current Balance</p>
-                            {contactBal === 0 ? (
-                              <p className="text-sm font-bold mt-0.5" style={{ color: 'var(--text-secondary)' }}>All settled up 🤝</p>
-                            ) : (
-                              <p className="text-sm font-bold mt-0.5" style={{ color: contactBal > 0 ? '#6ee7b7' : '#fda4af' }}>
-                                {contactBal > 0
-                                  ? `${selectedContact.name} owes you ${currency.symbol}${contactBal.toLocaleString('en-IN')}`
-                                  : `You owe ${selectedContact.name} ${currency.symbol}${Math.abs(contactBal).toLocaleString('en-IN')}`}
-                              </p>
-                            )}
-                          </div>
-
-                          {/* Search inside ledger */}
-                          <div className="relative w-36">
-                            <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-muted)' }}>
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                              </svg>
-                            </div>
-                            <input type="text" placeholder="Search…" value={ledgerSearchQuery}
-                              onChange={e => setLedgerSearchQuery(e.target.value)}
-                              className="w-full pl-7 pr-2 py-1.5 text-xs rounded-lg outline-none transition-all"
-                              style={{ background: 'var(--bg-base)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }} />
-                          </div>
-                        </div>
+                        <p className="text-xs mt-1" style={{ color: 'rgba(165,180,252,0.6)' }}>
+                          {stats.netBalance > 0 ? 'You are owed more than you owe' : stats.netBalance < 0 ? 'You owe more than you are owed' : 'Everything balanced'}
+                        </p>
                       </div>
-
-                      {/* Transaction timeline */}
-                      <div className="flex-1 overflow-y-auto scrollbar-thin px-5 py-4 space-y-3">
-                        {filteredTxs.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
-                            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>📭</div>
-                            <div>
-                              <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>No transactions yet</p>
-                              <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>Use the buttons below to record the first one</p>
-                            </div>
-                          </div>
-                        ) : filteredTxs.map((tx, idx) => {
-                          const isGave = tx.type === 'gave';
-                          const catIcons: Record<string, string> = { Food:'🍔', Shopping:'🛒', Travel:'🚗', Rent:'🏠', Cash:'💵', Business:'💼', Other:'📦' };
-                          const formattedDate = new Date(tx.date).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
-
-                          return (
-                            <div key={tx.id} className="group flex items-start gap-3.5 p-4 rounded-2xl transition-all duration-150 animate-fade-slide-up"
-                              style={{
-                                animationDelay: `${Math.min(idx * 0.04, 0.3)}s`,
-                                background: 'var(--bg-surface)',
-                                border: `1px solid var(--border-soft)`,
-                                borderLeft: `3px solid ${isGave ? '#10b981' : '#f43f5e'}`,
-                              }}>
-                              {/* Icon */}
-                              <div className="w-10 h-10 rounded-xl shrink-0 flex items-center justify-center text-lg"
-                                style={{ background: isGave ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)' }}>
-                                {catIcons[tx.category] || '📦'}
-                              </div>
-                              {/* Details */}
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full"
-                                    style={{ background: isGave ? 'rgba(16,185,129,0.12)' : 'rgba(244,63,94,0.12)', color: isGave ? '#6ee7b7' : '#fda4af' }}>
-                                    {isGave ? '↗ Gave (Lent)' : '↙ Got (Borrowed)'}
-                                  </span>
-                                  <span className="text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>{formattedDate}</span>
-                                </div>
-                                <p className="font-bold text-sm mt-1.5" style={{ color: 'var(--text-primary)' }}>{tx.description}</p>
-                                <p className="text-[10px] mt-0.5 font-medium" style={{ color: 'var(--text-muted)' }}>{tx.category}</p>
-                              </div>
-                              {/* Amount + actions */}
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className="text-base font-black tabular-nums" style={{ color: isGave ? '#10b981' : '#f43f5e' }}>
-                                  {isGave ? '+' : '-'}{currency.symbol}{tx.amount.toLocaleString('en-IN')}
-                                </span>
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-                                  <button onClick={() => handleOpenEditTx(tx)}
-                                    className="p-1.5 rounded-lg transition-colors"
-                                    style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}>
-                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                    </svg>
-                                  </button>
-                                  <button onClick={() => handleDeleteTransaction(tx.id)}
-                                    className="p-1.5 rounded-lg transition-colors"
-                                    style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}>
-                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* Bottom CTA */}
-                      <div className="shrink-0 px-5 py-4 grid grid-cols-2 gap-3"
-                        style={{ background: 'var(--bg-surface)', borderTop: '1px solid var(--border-soft)' }}>
-                        <button onClick={() => handleOpenAddTx('got')}
-                          className="flex items-center justify-center gap-2.5 py-3.5 rounded-2xl font-bold text-sm text-white transition-all active:scale-[0.97]"
-                          style={{ background: 'linear-gradient(135deg,#f43f5e,#e11d48)', boxShadow: '0 4px 20px rgba(244,63,94,0.25)' }}>
-                          <span className="text-lg">↙️</span>
-                          <span>I GOT</span>
-                        </button>
-                        <button onClick={() => handleOpenAddTx('gave')}
-                          className="flex items-center justify-center gap-2.5 py-3.5 rounded-2xl font-bold text-sm text-white transition-all active:scale-[0.97]"
-                          style={{ background: 'linear-gradient(135deg,#10b981,#059669)', boxShadow: '0 4px 20px rgba(16,185,129,0.25)' }}>
-                          <span className="text-lg">↗️</span>
-                          <span>I GAVE</span>
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })() : (
-                  // No contact selected
-                  <div className="flex-1 flex flex-col items-center justify-center text-center p-8 space-y-5">
-                    <div className="w-24 h-24 rounded-3xl flex items-center justify-center text-5xl animate-fade-slide-up"
-                      style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.1))', border: '1px solid rgba(99,102,241,0.2)' }}>
-                      {contacts.length === 0 ? '📖' : '📇'}
-                    </div>
-                    <div className="space-y-2 animate-fade-slide-up" style={{ animationDelay: '0.1s' }}>
-                      <h3 className="text-lg font-extrabold" style={{ color: 'var(--text-primary)' }}>
-                        {contacts.length === 0 ? 'Welcome to UdharWale!' : 'Pick a contact'}
-                      </h3>
-                      <p className="text-sm max-w-xs" style={{ color: 'var(--text-secondary)' }}>
-                        {contacts.length === 0
-                          ? 'Start by adding a friend to track shared balances and transactions.'
-                          : 'Select someone from the list to see their full transaction history.'}
-                      </p>
-                    </div>
-                    {contacts.length === 0 && (
-                      <button onClick={() => setIsAddContactOpen(true)} className="btn-primary animate-fade-slide-up" style={{ animationDelay: '0.2s' }}>
-                        ➕ Add First Contact
+                      <button onClick={() => setShowBalances(!showBalances)}
+                        className="p-2 rounded-xl transition-all"
+                        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', color: '#a5b4fc' }}>
+                        {showBalances
+                          ? <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                          : <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" /></svg>
+                        }
                       </button>
-                    )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mt-6">
+                      {[
+                        { label: 'You\'ll Receive', value: stats.totalCredit, color: '#10b981', glow: 'rgba(16,185,129,0.1)' },
+                        { label: 'You Owe', value: stats.totalDebit, color: '#f43f5e', glow: 'rgba(244,63,94,0.1)' },
+                      ].map(({ label, value, color, glow }) => (
+                        <div key={label} className="p-3 rounded-2xl" style={{ background: glow, border: `1px solid ${color}20` }}>
+                          <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: `${color}99` }}>{label}</p>
+                          <p className="text-xl font-black tabular-nums mt-1" style={{ color }}>
+                            {showBalances ? `$₹${value.toLocaleString('en-IN')}` : '****'}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contact breakdown */}
+                {contacts.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Contact Breakdown</h3>
+                    <div className="space-y-2">
+                      {contacts
+                        .map(c => ({ c, bal: getContactBalance(c) }))
+                        .filter(({ bal }) => bal !== 0)
+                        .sort((a, b) => Math.abs(b.bal) - Math.abs(a.bal))
+                        .map(({ c, bal }) => (
+                          <button key={c.id} onClick={() => { setSelectedContactId(c.id); setActiveTab('ledgers'); setMobileView('ledger'); }}
+                            className="w-full flex items-center gap-3 p-4 rounded-2xl text-left transition-all hover:translate-x-1"
+                            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
+                            <div className={`w-9 h-9 rounded-xl shrink-0 bg-gradient-to-tr ${getAvatarGradient(c.name)} flex items-center justify-center font-black text-xs text-white`}>
+                              {getInitials(c.name)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{c.name}</p>
+                              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                                {c.transactions.length} transaction{c.transactions.length !== 1 ? 's' : ''}
+                              </p>
+                            </div>
+                            <p className="font-black text-sm tabular-nums shrink-0" style={{ color: bal > 0 ? '#10b981' : '#f43f5e' }}>
+                              {bal > 0 ? '+' : '-'}₹{Math.abs(bal).toLocaleString('en-IN')}
+                            </p>
+                            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--text-muted)' }}>
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {contacts.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+                    <div className="text-5xl">📊</div>
+                    <p className="font-bold" style={{ color: 'var(--text-secondary)' }}>No data yet — add your first contact to see insights</p>
                   </div>
                 )}
               </div>
-            </div>
-          )}
+            )}
 
-          {/* ── INSIGHTS TAB ──────────────────────────────── */}
-          {dbStatus === 'connected' && activeTab === 'insights' && (
-            <div className="flex-1 overflow-y-auto scrollbar-thin p-5 md:p-8 space-y-6">
-              <div className="space-y-1">
-                <h2 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>Insights & Flow</h2>
-                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>A complete picture of your balances</p>
-              </div>
+            {/* ── SETTINGS TAB ──────────────────────────────── */}
+            {dbStatus === 'connected' && activeTab === 'settings' && (
+              <div className="flex-1 overflow-y-auto scrollbar-thin p-5 md:p-8 space-y-6">
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>Settings</h2>
+                  <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Manage your ledger preferences</p>
+                </div>
 
-              {/* Main wallet card */}
-              <div className="relative p-6 rounded-3xl overflow-hidden"
-                style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(79,70,229,0.06) 100%)', border: '1px solid rgba(99,102,241,0.2)' }}>
-                <div className="absolute top-0 right-0 w-48 h-48 pointer-events-none"
-                  style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%)', transform: 'translate(20%,-20%)' }} />
-                <div className="relative z-10">
-                  <div className="flex items-start justify-between">
+                {/* Account */}
+                <div className="card p-5 space-y-4" style={{ background: 'var(--bg-surface)' }}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'rgba(99,102,241,0.1)' }}>👤</div>
                     <div>
-                      <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'rgba(165,180,252,0.7)' }}>NET WALLET BALANCE</p>
-                      <div className="flex items-baseline gap-2 mt-2">
-                        <h2 className="text-4xl font-black tabular-nums"
-                          style={{ color: showBalances ? (stats.netBalance >= 0 ? '#6ee7b7' : '#fda4af') : 'var(--text-primary)' }}>
-                          {showBalances
-                            ? `${stats.netBalance >= 0 ? '+' : '-'}${currency.symbol}${Math.abs(stats.netBalance).toLocaleString('en-IN')}`
-                            : '****'}
-                        </h2>
-                      </div>
-                      <p className="text-xs mt-1" style={{ color: 'rgba(165,180,252,0.6)' }}>
-                        {stats.netBalance > 0 ? 'You are owed more than you owe' : stats.netBalance < 0 ? 'You owe more than you are owed' : 'Everything balanced'}
-                      </p>
+                      <h3 className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Account</h3>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{userEmail}</p>
                     </div>
-                    <button onClick={() => setShowBalances(!showBalances)}
-                      className="p-2 rounded-xl transition-all"
-                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', color: '#a5b4fc' }}>
-                      {showBalances
-                        ? <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                        : <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" /></svg>
+                  </div>
+                  <button onClick={handleLogout}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all"
+                    style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.15)', color: '#f43f5e' }}>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                    Sign Out
+                  </button>
+                </div>
+
+                {/* Danger zone */}
+                <div className="card p-5 space-y-4" style={{ background: 'var(--bg-surface)', border: '1px solid rgba(244,63,94,0.15)' }}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'rgba(244,63,94,0.1)' }}>⚠️</div>
+                    <div>
+                      <h3 className="font-bold text-sm" style={{ color: '#f43f5e' }}>Danger Zone</h3>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Irreversible actions — proceed carefully</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (confirm('This will permanently delete ALL your contacts and transactions. This cannot be undone. Continue?')) {
+                        handleWipeData();
                       }
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 mt-6">
-                    {[
-                      { label: 'You\'ll Receive', value: stats.totalCredit, color: '#10b981', glow: 'rgba(16,185,129,0.1)' },
-                      { label: 'You Owe', value: stats.totalDebit, color: '#f43f5e', glow: 'rgba(244,63,94,0.1)' },
-                    ].map(({ label, value, color, glow }) => (
-                      <div key={label} className="p-3 rounded-2xl" style={{ background: glow, border: `1px solid ${color}20` }}>
-                        <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: `${color}99` }}>{label}</p>
-                        <p className="text-xl font-black tabular-nums mt-1" style={{ color }}>
-                          {showBalances ? `${currency.symbol}${value.toLocaleString('en-IN')}` : '****'}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
+                    }}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all"
+                    style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.15)', color: '#f43f5e' }}>
+                    🗑️ Wipe All Data
+                  </button>
                 </div>
+
+                <UpcomingFeatures />
               </div>
-
-              {/* Contact breakdown */}
-              {contacts.length > 0 && (
-                <div className="space-y-3">
-                  <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Contact Breakdown</h3>
-                  <div className="space-y-2">
-                    {contacts
-                      .map(c => ({ c, bal: getContactBalance(c) }))
-                      .filter(({ bal }) => bal !== 0)
-                      .sort((a, b) => Math.abs(b.bal) - Math.abs(a.bal))
-                      .map(({ c, bal }) => (
-                        <button key={c.id} onClick={() => { setSelectedContactId(c.id); setActiveTab('ledgers'); setMobileView('ledger'); }}
-                          className="w-full flex items-center gap-3 p-4 rounded-2xl text-left transition-all hover:translate-x-1"
-                          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
-                          <div className={`w-9 h-9 rounded-xl shrink-0 bg-gradient-to-tr ${getAvatarGradient(c.name)} flex items-center justify-center font-black text-xs text-white`}>
-                            {getInitials(c.name)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{c.name}</p>
-                            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                              {c.transactions.length} transaction{c.transactions.length !== 1 ? 's' : ''}
-                            </p>
-                          </div>
-                          <p className="font-black text-sm tabular-nums shrink-0" style={{ color: bal > 0 ? '#10b981' : '#f43f5e' }}>
-                            {bal > 0 ? '+' : '-'}{currency.symbol}{Math.abs(bal).toLocaleString('en-IN')}
-                          </p>
-                          <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--text-muted)' }}>
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        </button>
-                      ))}
-                  </div>
-                </div>
-              )}
-
-              {contacts.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
-                  <div className="text-5xl">📊</div>
-                  <p className="font-bold" style={{ color: 'var(--text-secondary)' }}>No data yet — add your first contact to see insights</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── SETTINGS TAB ──────────────────────────────── */}
-          {dbStatus === 'connected' && activeTab === 'settings' && (
-            <div className="flex-1 overflow-y-auto scrollbar-thin p-5 md:p-8 space-y-6">
-              <div className="space-y-1">
-                <h2 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>Settings</h2>
-                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Manage your ledger preferences</p>
-              </div>
-
-              {/* Currency */}
-              <div className="card p-5 space-y-4" style={{ background: 'var(--bg-surface)' }}>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'rgba(99,102,241,0.1)' }}>💱</div>
-                  <div>
-                    <h3 className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Display Currency</h3>
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Changes how amounts are displayed</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {CURRENCIES.map(c => (
-                    <button key={c.code} onClick={() => handleCurrencyChange(c)}
-                      className="flex flex-col items-center py-3 rounded-xl transition-all"
-                      style={{
-                        background: currency.code === c.code ? 'rgba(99,102,241,0.15)' : 'var(--bg-raised)',
-                        border: `1px solid ${currency.code === c.code ? 'rgba(99,102,241,0.3)' : 'var(--border-soft)'}`,
-                        color: currency.code === c.code ? '#a5b4fc' : 'var(--text-secondary)',
-                      }}>
-                      <span className="text-xl font-black">{c.symbol}</span>
-                      <span className="text-[10px] font-bold mt-1">{c.code}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Account */}
-              <div className="card p-5 space-y-4" style={{ background: 'var(--bg-surface)' }}>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'rgba(99,102,241,0.1)' }}>👤</div>
-                  <div>
-                    <h3 className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Account</h3>
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{userEmail}</p>
-                  </div>
-                </div>
-                <button onClick={handleLogout}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all"
-                  style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.15)', color: '#f43f5e' }}>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
-                  Sign Out
-                </button>
-              </div>
-
-              {/* Danger zone */}
-              <div className="card p-5 space-y-4" style={{ background: 'var(--bg-surface)', border: '1px solid rgba(244,63,94,0.15)' }}>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'rgba(244,63,94,0.1)' }}>⚠️</div>
-                  <div>
-                    <h3 className="font-bold text-sm" style={{ color: '#f43f5e' }}>Danger Zone</h3>
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Irreversible actions — proceed carefully</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    if (confirm('This will permanently delete ALL your contacts and transactions. This cannot be undone. Continue?')) {
-                      handleWipeData();
-                    }
-                  }}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all"
-                  style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.15)', color: '#f43f5e' }}>
-                  🗑️ Wipe All Data
-                </button>
-              </div>
-
-              <UpcomingFeatures />
-            </div>
-          )}
-        </main>
+            )}
+          </main>
         </div>
       </div>
 
@@ -1553,18 +1553,24 @@ export default function Dashboard() {
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-stretch"
         style={{ background: 'rgba(13,17,23,0.95)', backdropFilter: 'blur(20px)', borderTop: '1px solid var(--border-soft)' }}>
         {([
-          { tab: 'ledgers' as const, label: 'Friends', icon: (
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'ledgers' ? 2.5 : 2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-          )},
-          { tab: 'insights' as const, label: 'Overview', icon: (
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'insights' ? 2.5 : 2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-          )},
-          { tab: 'settings' as const, label: 'Settings', icon: (
-            <>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'settings' ? 2.5 : 2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'settings' ? 2.5 : 2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </>
-          )},
+          {
+            tab: 'ledgers' as const, label: 'Friends', icon: (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'ledgers' ? 2.5 : 2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+            )
+          },
+          {
+            tab: 'insights' as const, label: 'Overview', icon: (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'insights' ? 2.5 : 2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            )
+          },
+          {
+            tab: 'settings' as const, label: 'Settings', icon: (
+              <>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'settings' ? 2.5 : 2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'settings' ? 2.5 : 2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </>
+            )
+          },
         ] as const).map(({ tab, label, icon }) => (
           <button key={tab} onClick={() => { setActiveTab(tab); setMobileView('list'); }}
             className="flex-1 flex flex-col items-center justify-center gap-1 py-2.5 transition-all"
@@ -1681,7 +1687,7 @@ export default function Dashboard() {
                 <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Opening Balance (optional)</label>
                 <div className="flex gap-2">
                   <div className="flex rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-soft)' }}>
-                    {(['credit','debit'] as const).map(t => (
+                    {(['credit', 'debit'] as const).map(t => (
                       <button key={t} type="button" onClick={() => setContactInitialType(t)}
                         className="px-3 py-2 text-xs font-bold transition-all"
                         style={{
@@ -1694,7 +1700,7 @@ export default function Dashboard() {
                   </div>
                   <input type="number" min="0" step="0.01" value={contactInitialBalance}
                     onChange={e => setContactInitialBalance(e.target.value)}
-                    className="input-field flex-1" placeholder={`${currency.symbol} 0.00`} />
+                    className="input-field flex-1" placeholder={`$₹ 0.00`} />
                 </div>
               </div>
 
@@ -1750,7 +1756,7 @@ export default function Dashboard() {
               <div className="space-y-1.5">
                 <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Amount *</label>
                 <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-sm" style={{ color: 'var(--text-muted)' }}>{currency.symbol}</span>
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-sm" style={{ color: 'var(--text-muted)' }}>₹</span>
                   <input type="number" required min="0.01" step="0.01" value={txAmount}
                     onChange={e => setTxAmount(e.target.value)}
                     className="input-field pl-8 text-lg font-black" placeholder="0.00" />
@@ -1759,7 +1765,7 @@ export default function Dashboard() {
 
               <div className="space-y-1.5">
                 <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Description *</label>
-                <input type="text" required value={txDescription} onChange={e => setTxDescription(e.target.value)}
+                <input type="text" required value={txRemark} onChange={e => setTxRemark(e.target.value)}
                   className="input-field" placeholder="e.g. Dinner at rooftop café" />
               </div>
 
@@ -1771,9 +1777,9 @@ export default function Dashboard() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Category</label>
-                  <select value={txCategory} onChange={e => setTxCategory(e.target.value as CategoryType)}
+                  <select value={txMode} onChange={e => setTxMode(e.target.value as ModeType)}
                     className="input-field">
-                    {(['Cash','Food','Shopping','Travel','Rent','Business','Other'] as CategoryType[]).map(c => (
+                    {(['Cash', 'Online Transfer'] as ModeType[]).map(c => (
                       <option key={c} value={c}>{c}</option>
                     ))}
                   </select>
@@ -1840,6 +1846,55 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-    </div>
+
+    
+      {/* ── EDIT CONTACT MODAL ───────────────────────── */}
+      {isEditContactOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setIsEditContactOpen(false)} />
+          <div className="relative w-full max-w-sm rounded-3xl overflow-hidden animate-scale-up flex flex-col max-h-[90vh]"
+            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
+            
+            <div className="px-5 py-4 shrink-0 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border-soft)' }}>
+              <h3 className="font-black text-lg" style={{ color: 'var(--text-primary)' }}>Edit Contact</h3>
+              <button onClick={() => setIsEditContactOpen(false)} className="w-8 h-8 rounded-full flex items-center justify-center transition-colors"
+                style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'}>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto scrollbar-thin">
+              <form id="edit-contact-form" onSubmit={handleEditContactSubmit} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Name <span className="text-rose-500">*</span></label>
+                  <input type="text" required value={contactName} onChange={e => setContactName(e.target.value)}
+                    className="input-field w-full" placeholder="e.g. Rahul Sharma" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Phone <span className="text-rose-500">*</span></label>
+                  <input type="tel" required value={contactPhone} onChange={e => setContactPhone(e.target.value)}
+                    className="input-field w-full" placeholder="e.g. +91 98765 43210" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Email <span style={{ opacity: 0.5 }}>(Optional)</span></label>
+                  <input type="email" value={contactEmail} onChange={e => setContactEmail(e.target.value)}
+                    className="input-field w-full" placeholder="e.g. rahul@example.com" />
+                </div>
+              </form>
+            </div>
+
+            <div className="p-5 shrink-0" style={{ background: 'var(--bg-raised)', borderTop: '1px solid var(--border-soft)' }}>
+              <button type="submit" form="edit-contact-form" className="btn-primary w-full shadow-lg shadow-indigo-500/25">
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+</div>
   );
 }

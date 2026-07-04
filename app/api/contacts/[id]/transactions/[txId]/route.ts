@@ -27,7 +27,7 @@ export async function PUT(
     await connectToDatabase();
     const { id, txId } = await params;
     const body = await req.json();
-    const { amount, category, description, date, type } = body;
+    const { amount, mode, remark, date, type } = body;
 
     const contact = await Contact.findOne({ id, userId });
 
@@ -42,8 +42,8 @@ export async function PUT(
     }
 
     if (amount !== undefined) tx.amount = Number(amount);
-    if (category !== undefined) tx.category = category;
-    if (description !== undefined) tx.description = description;
+    if (mode !== undefined) tx.mode = mode;
+    if (remark !== undefined) tx.remark = remark;
     if (date !== undefined) tx.date = date;
     if (type !== undefined) tx.type = type;
 

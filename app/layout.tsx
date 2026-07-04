@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "UdharWale - Smart Digital Debt Ledger & Khata Book",
+  title: "Udharwale by Naeem Navjivan - Smart Digital Debt Ledger & Khata Book",
   description: "Track your personal and business debts easily. Record credits (money you'll get) and debits (money you owe), send WhatsApp reminders, and settle balances dynamically with instant calculations.",
 };
 

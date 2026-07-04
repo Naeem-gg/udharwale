@@ -5,11 +5,11 @@ const TransactionSchema = new Schema({
   id: { type: String, required: true }, // Client-generated unique ID to maintain sync with frontend
   amount: { type: Number, required: true },
   type: { type: String, enum: ['gave', 'got'], required: true },
-  description: { type: String, required: true },
+  remark: { type: String, required: true },
   date: { type: String, required: true }, // YYYY-MM-DD
-  category: {
+  mode: {
     type: String,
-    enum: ['Food', 'Shopping', 'Travel', 'Rent', 'Cash', 'Business', 'Other'],
+    enum: ['Cash', 'Online Transfer'],
     required: true
   }
 });
@@ -32,9 +32,9 @@ export interface ITransactionSub extends Document {
   id: string;
   amount: number;
   type: 'gave' | 'got';
-  description: string;
+  remark: string;
   date: string;
-  category: string;
+  mode: string;
 }
 
 export interface IContactDoc extends Document {
@@ -48,6 +48,9 @@ export interface IContactDoc extends Document {
 }
 
 // Compile model or fetch existing to prevent compilation duplication errors on Dev reload
+if (process.env.NODE_ENV !== 'production' && mongoose.models.Contact) {
+  delete mongoose.models.Contact;
+}
 const Contact = mongoose.models.Contact || mongoose.model<IContactDoc>('Contact', ContactSchema);
 
 export default Contact;

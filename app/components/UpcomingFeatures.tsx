@@ -9,7 +9,7 @@ export default function UpcomingFeatures() {
     {
       id: 'pwa',
       title: 'Install as App (PWA)',
-      description: 'Install Udharwale directly to your home screen for quick access, just like a native app.',
+      description: 'Install Udharwale by Naeem Navjivan directly to your home screen for quick access, just like a native app.',
       icon: <Smartphone className="w-5 h-5 text-indigo-400" />,
       color: 'bg-indigo-500/10 border-indigo-500/20',
     },
@@ -42,7 +42,7 @@ export default function UpcomingFeatures() {
         </motion.div>
         <h2 className="text-2xl md:text-3xl font-black text-white">Upcoming Features</h2>
         <p className="text-zinc-400 text-sm md:text-base max-w-lg mx-auto">
-          We are constantly working to make Udharwale smoother and more powerful. Here is a sneak peek at what is coming next!
+          We are constantly working to make Udharwale by Naeem Navjivan smoother and more powerful. Here is a sneak peek at what is coming next!
         </p>
       </div>
 

@@ -61,9 +61,10 @@ export default function LoginPage() {
             <div className="absolute inset-0 rounded-2xl animate-ping opacity-20"
               style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }} />
           </div>
-          <h1 className="text-2xl font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>
-            UdharWale
-          </h1>
+          <div className="flex flex-col items-center">
+            <span className="text-3xl font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>Udharwale</span>
+            <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-widest mt-1">By Naeem Navjivan</span>
+          </div>
           <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
             Your smart debt ledger
           </p>

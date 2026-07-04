@@ -12,25 +12,25 @@ export const INITIAL_CONTACTS: Contact[] = [
         id: 't1',
         amount: 1500,
         type: 'gave', // you gave Aarav money, so he owes you
-        description: 'Dinner at Punjabi Rasoi',
+        remark: 'Dinner at Punjabi Rasoi',
         date: '2026-05-10',
-        category: 'Food'
+        mode: 'Cash'
       },
       {
         id: 't2',
         amount: 500,
         type: 'got', // you got from Aarav, so you deduct from his credit
-        description: 'Cab fare share',
+        remark: 'Cab fare share',
         date: '2026-05-12',
-        category: 'Travel'
+        mode: 'Cash'
       },
       {
         id: 't3',
         amount: 800,
         type: 'gave', // you gave Aarav money again
-        description: 'Movie tickets (Avengers)',
+        remark: 'Movie tickets (Avengers)',
         date: '2026-05-15',
-        category: 'Shopping'
+        mode: 'Cash'
       }
     ]
   },
@@ -45,17 +45,17 @@ export const INITIAL_CONTACTS: Contact[] = [
         id: 't4',
         amount: 3000,
         type: 'got', // you got from Priya, so you owe her
-        description: 'Apartment electricity bill share',
+        remark: 'Apartment electricity bill share',
         date: '2026-05-02',
-        category: 'Rent'
+        mode: 'Cash'
       },
       {
         id: 't5',
         amount: 1000,
         type: 'gave', // you gave Priya, reducing what you owe her
-        description: 'Grocery shopping share',
+        remark: 'Grocery shopping share',
         date: '2026-05-05',
-        category: 'Shopping'
+        mode: 'Cash'
       }
     ]
   },
@@ -70,17 +70,17 @@ export const INITIAL_CONTACTS: Contact[] = [
         id: 't6',
         amount: 5000,
         type: 'gave', // you lent him
-        description: 'Advance loan for bike repair',
+        remark: 'Advance loan for bike repair',
         date: '2026-04-28',
-        category: 'Cash'
+        mode: 'Cash'
       },
       {
         id: 't7',
         amount: 5000,
         type: 'got', // he returned it, so it's fully settled
-        description: 'Returned full amount via UPI',
+        remark: 'Returned full amount via UPI',
         date: '2026-05-14',
-        category: 'Cash'
+        mode: 'Cash'
       }
     ]
   },
@@ -95,9 +95,9 @@ export const INITIAL_CONTACTS: Contact[] = [
         id: 't8',
         amount: 1200,
         type: 'got', // you borrowed
-        description: 'Concert ticket booking',
+        remark: 'Concert ticket booking',
         date: '2026-05-16',
-        category: 'Other'
+        mode: 'Cash'
       }
     ]
   }

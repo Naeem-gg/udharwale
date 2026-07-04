@@ -39,7 +39,10 @@ export default function LandingPage() {
           </div>
           <div>
             <h1 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
-              UdharWale
+              <div className="flex flex-col items-center gap-0.5">
+                <span className="font-black text-lg tracking-tight leading-none text-white">Udharwale</span>
+                <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">By Naeem Navjivan</span>
+              </div>
               <span className="text-[10px] tracking-wider uppercase font-extrabold px-1.5 py-0.5 rounded bg-indigo-600/10 text-indigo-400 border border-indigo-500/20">
                 PRO v1.2
               </span>
@@ -99,7 +102,7 @@ export default function LandingPage() {
             </h2>
 
             <p className="text-zinc-400 text-base sm:text-lg max-w-xl mx-auto lg:mx-0 leading-relaxed font-medium">
-              UdharWale is a beautiful, personal ledger tracker designed to take the friction out of shared bills, friends&apos; balances, and loan tracking. No confusing tables—just clean cards, automatic logs, and instant sharing.
+              Udharwale by Naeem Navjivan is a beautiful, personal ledger tracker designed to take the friction out of shared bills, friends&apos; balances, and loan tracking. No confusing tables-just clean cards, automatic logs, and instant sharing.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 pt-4">
@@ -209,7 +212,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="w-full max-w-7xl mx-auto px-6 py-8 border-t border-zinc-900/60 mt-12 flex flex-col sm:flex-row items-center justify-between text-zinc-650 text-xs gap-4 z-10">
-        <p>© 2026 UdharWale Inc. All rights reserved.</p>
+        <p>© 2026 Udharwale by Naeem Navjivan. All rights reserved.</p>
         <div className="flex items-center gap-6">
           <a href="#" className="hover:text-zinc-450 transition-colors">Privacy Policy</a>
           <a href="#" className="hover:text-zinc-450 transition-colors">Terms of Service</a>

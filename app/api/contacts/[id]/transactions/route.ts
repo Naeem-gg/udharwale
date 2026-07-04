@@ -28,9 +28,9 @@ export async function POST(
     const { id } = await params;
     const body = await req.json();
 
-    const { amount, type, description, date, category, id: txId } = body;
+    const { amount, type, remark, date, mode, id: txId } = body;
 
-    if (!amount || !type || !description || !date || !category || !txId) {
+    if (!amount || !type || !remark || !date || !mode || !txId) {
       return NextResponse.json(
         { error: 'Missing required parameters for transaction creation' },
         { status: 400 }
@@ -47,9 +47,9 @@ export async function POST(
       id: txId,
       amount: Number(amount),
       type,
-      description,
+      remark,
       date,
-      category
+      mode
     };
 
     contact.transactions.push(newTx as any);

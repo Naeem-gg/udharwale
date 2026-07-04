@@ -1,12 +1,12 @@
-export type CategoryType = 'Food' | 'Shopping' | 'Travel' | 'Rent' | 'Cash' | 'Business' | 'Other';
+export type ModeType = 'Cash' | 'Online Transfer';
 
 export interface Transaction {
   id: string;
   amount: number;
   type: 'gave' | 'got'; // 'gave' = you lent (they owe you, green), 'got' = you borrowed (you owe them, red)
-  description: string;
+  remark: string;
   date: string;         // YYYY-MM-DD format
-  category: CategoryType;
+  mode: ModeType;
 }
 
 export interface Contact {
@@ -19,16 +19,3 @@ export interface Contact {
 }
 
 export type ActiveTab = 'ledgers' | 'insights' | 'settings';
-
-export interface CurrencyConfig {
-  code: string;
-  symbol: string;
-  name: string;
-}
-
-export const CURRENCIES: CurrencyConfig[] = [
-  { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
-  { code: 'USD', symbol: '$', name: 'US Dollar' },
-  { code: 'EUR', symbol: '€', name: 'Euro' },
-  { code: 'GBP', symbol: '£', name: 'British Pound' },
-];
