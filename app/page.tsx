@@ -22,7 +22,7 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen text-white flex flex-col overflow-x-hidden relative"
-      style={{ background: 'var(--bg-base)', fontFamily: "'Inter', system-ui, sans-serif" }}>
+      style={{ background: 'var(--bg-base)', fontFamily: "'Outfit', system-ui, sans-serif" }}>
 
       {/* ── Aurora Background ── */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
@@ -56,7 +56,7 @@ export default function LandingPage() {
             </div>
             <div className="flex flex-col">
               <span className="font-black text-lg tracking-tight leading-none text-white"
-                style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Udharwale</span>
+                style={{ fontFamily: "'Syne', sans-serif" }}>Udharwale</span>
               <span className="text-[9px] font-bold uppercase tracking-widest mt-0.5"
                 style={{ color: 'var(--violet-bright)' }}>By Naeem Navjivan</span>
             </div>
@@ -114,7 +114,7 @@ export default function LandingPage() {
             {/* Headline */}
             <div className="space-y-2 animate-fade-slide-up" style={{ animationDelay: '0.08s' }}>
               <h1 className="text-5xl sm:text-6xl md:text-7xl font-black leading-[1.05] tracking-tight"
-                style={{ fontFamily: "'Space Grotesk', sans-serif", color: 'var(--text-primary)' }}>
+                style={{ fontFamily: "'Syne', sans-serif", color: 'var(--text-primary)' }}>
                 Settle debts,<br />
                 track loans,{' '}
                 <span className="gradient-text">
@@ -163,7 +163,7 @@ export default function LandingPage() {
                 { value: '100%', label: 'Private & Safe', color: 'var(--violet-bright)' },
               ].map(({ value, label, color }) => (
                 <div key={label}>
-                  <p className="text-2xl font-black" style={{ color, fontFamily: "'Space Grotesk', sans-serif" }}>{value}</p>
+                  <p className="text-2xl font-black" style={{ color, fontFamily: "'Syne', sans-serif" }}>{value}</p>
                   <p className="text-[10px] font-bold uppercase tracking-wider mt-0.5" style={{ color: 'var(--text-muted)' }}>{label}</p>
                 </div>
               ))}
@@ -198,7 +198,7 @@ export default function LandingPage() {
                     AS
                   </div>
                   <div>
-                    <h4 className="font-bold text-sm text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Aarav Sharma</h4>
+                    <h4 className="font-bold text-sm text-white" style={{ fontFamily: "'Syne', sans-serif" }}>Aarav Sharma</h4>
                     <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>+91 98765 43210</p>
                   </div>
                 </div>
@@ -243,7 +243,7 @@ export default function LandingPage() {
                 style={{ background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.18)' }}>
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--violet-bright)', opacity: 0.7 }}>Net Balance</p>
-                  <p className="text-lg font-black mt-0.5 gradient-text" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>₹4,500.00</p>
+                  <p className="text-lg font-black mt-0.5 gradient-text" style={{ fontFamily: "'Syne', sans-serif" }}>₹4,500.00</p>
                 </div>
                 <button className="text-xs font-bold px-3 py-1.5 rounded-xl text-white"
                   style={{ background: 'linear-gradient(135deg, #059669, #10b981)', boxShadow: '0 2px 12px rgba(16,185,129,0.3)' }}>
@@ -258,7 +258,7 @@ export default function LandingPage() {
       {/* ── Features ── */}
       <section className="relative z-10 max-w-6xl mx-auto px-6 py-16 w-full">
         <div className="text-center mb-10">
-          <h2 className="text-2xl font-black" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+          <h2 className="text-2xl font-black" style={{ fontFamily: "'Syne', sans-serif" }}>
             <span className="gradient-text">Everything you need</span> to manage shared money
           </h2>
         </div>
@@ -281,7 +281,7 @@ export default function LandingPage() {
                 style={{ background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.15)' }}>
                 {icon}
               </div>
-              <h3 className="font-bold text-sm mb-1" style={{ fontFamily: "'Space Grotesk', sans-serif", color: 'var(--text-primary)' }}>{title}</h3>
+              <h3 className="font-bold text-sm mb-1" style={{ fontFamily: "'Syne', sans-serif", color: 'var(--text-primary)' }}>{title}</h3>
               <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>{desc}</p>
             </div>
           ))}

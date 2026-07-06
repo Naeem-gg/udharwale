@@ -763,7 +763,7 @@ export default function Dashboard() {
   }, []);
 
   return (
-    <div className="flex flex-col flex-1 h-screen overflow-hidden relative" style={{ background: 'var(--bg-base)', fontFamily: "'Inter', system-ui, sans-serif", color: 'var(--text-primary)' }}>
+    <div className="flex flex-col flex-1 h-screen overflow-hidden relative" style={{ background: 'var(--bg-base)', fontFamily: "'Outfit', system-ui, sans-serif", color: 'var(--text-primary)' }}>
 
       {/* ── Toast Container ─────────────────────────── */}
       <div className="toast-container">

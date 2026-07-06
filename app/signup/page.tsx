@@ -103,7 +103,7 @@ export default function SignupPage() {
           </div>
           <div className="flex flex-col items-center">
             <span className="text-3xl font-black tracking-tight text-white"
-              style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Udharwale</span>
+              style={{ fontFamily: "'Syne', sans-serif" }}>Udharwale</span>
             <span className="text-[10px] font-bold uppercase tracking-widest mt-1"
               style={{ color: 'var(--violet-bright)' }}>By Naeem Navjivan</span>
           </div>
@@ -122,7 +122,7 @@ export default function SignupPage() {
           }}>
 
           <div className="px-6 pt-6 pb-5 border-b" style={{ borderColor: 'rgba(124,58,237,0.12)' }}>
-            <h2 className="text-lg font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+            <h2 className="text-lg font-bold text-white" style={{ fontFamily: "'Syne', sans-serif" }}>
               Create your account
             </h2>
             <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>Start tracking balances in seconds</p>
