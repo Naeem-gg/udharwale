@@ -968,11 +968,9 @@ export default function Dashboard() {
               <div className="flex-1 flex overflow-hidden">
 
                 {/* Left panel: contact list */}
-                <div className={`flex flex-col shrink-0 overflow-hidden ${mobileView === 'ledger' ? 'hidden md:flex' : 'flex'}`}
-                  style={{ width: '100%', maxWidth: '100%', borderRight: '1px solid var(--border-soft)' }}
-                  data-md-width="320px">
-                  <style>{`.contact-list-panel { max-width: 100%; } @media(min-width:768px) { .contact-list-panel { width: 320px !important; max-width: 320px !important; } }`}</style>
-                  <div className="contact-list-panel flex flex-col overflow-hidden flex-1 md:flex md:flex-col"
+                <div className={`flex flex-col shrink-0 overflow-hidden w-full md:w-[320px] md:max-w-[320px] ${mobileView === 'ledger' ? 'hidden md:flex' : 'flex'}`}
+                  style={{ borderRight: '1px solid var(--border-soft)' }}>
+                  <div className="flex flex-col overflow-hidden flex-1"
                     style={{ width: '100%' }}>
 
                     {/* Search + filter bar */}
@@ -1086,7 +1084,7 @@ export default function Dashboard() {
 
                               return (
                                 <div key={contact.id}
-                                  className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-all duration-150 ${isSelected ? 'md:block' : ''}`}
+                                  className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-all duration-150`}
                                   style={{
                                     background: isSelected ? 'rgba(99,102,241,0.08)' : 'transparent',
                                     borderLeft: `3px solid ${isSelected ? '#6366f1' : borderColor}`,
@@ -1182,27 +1180,6 @@ export default function Dashboard() {
 
                             {/* Quick actions */}
                             <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-                              {contactBal !== 0 && (
-                                <button onClick={handleSettleFullBalance}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
-                                  style={{ background: 'rgba(16,185,129,0.1)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.2)' }}>
-                                  🤝 Settle
-                                </button>
-                              )}
-                              {contactBal !== 0 && (
-                                <button onClick={handleWhatsAppReminder}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
-                                  style={{ background: 'rgba(99,102,241,0.1)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.2)' }}>
-                                  <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.825 1.451 5.436 0 9.86-4.37 9.864-9.799.002-2.63-1.023-5.101-2.885-6.965C16.59 1.977 14.113.953 11.999.953c-5.439 0-9.866 4.37-9.87 9.8a9.697 9.697 0 0 0 1.511 5.176l-.99 3.616 3.791-.977z" /></svg>
-                                  Remind
-                                </button>
-                              )}
-                              <button onClick={() => setIsShareModalOpen(true)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
-                                style={{ background: 'rgba(139,92,246,0.1)', color: '#c4b5fd', border: '1px solid rgba(139,92,246,0.2)' }}>
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
-                                Share
-                              </button>
                               {/* More menu */}
                               <div className="relative">
                                 <button onClick={() => setIsContactMenuOpen(!isContactMenuOpen)}
@@ -1217,6 +1194,35 @@ export default function Dashboard() {
                                     <div className="fixed inset-0 z-10" onClick={() => setIsContactMenuOpen(false)} />
                                     <div className="absolute right-0 mt-2 w-44 rounded-xl py-1.5 z-20 animate-fade-slide-down"
                                       style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border-soft)', boxShadow: 'var(--shadow-card)' }}>
+                                      
+                                      {contactBal !== 0 && (
+                                        <button onClick={() => { setIsContactMenuOpen(false); handleSettleFullBalance(); }}
+                                          className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                          style={{ color: '#10b981' }}
+                                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(16,185,129,0.08)'}
+                                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                          🤝 Settle Balance
+                                        </button>
+                                      )}
+                                      
+                                      {contactBal !== 0 && (
+                                        <button onClick={() => { setIsContactMenuOpen(false); handleWhatsAppReminder(); }}
+                                          className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                          style={{ color: '#6366f1' }}
+                                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,0.08)'}
+                                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                          💬 Send Reminder
+                                        </button>
+                                      )}
+
+                                      <button onClick={() => { setIsContactMenuOpen(false); setIsShareModalOpen(true); }}
+                                        className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                        style={{ color: '#8b5cf6' }}
+                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(139,92,246,0.08)'}
+                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+                                        Share Ledger
+                                      </button>
                                       
 
                                       <button onClick={() => {
@@ -1283,7 +1289,7 @@ export default function Dashboard() {
                         </div>
 
                         {/* Transaction timeline */}
-                        <div className="flex-1 overflow-y-auto scrollbar-thin px-5 py-4 space-y-3">
+                        <div className="flex-1 overflow-y-auto scrollbar-thin px-3 py-2 md:px-5 md:py-4 space-y-2 md:space-y-3">
                           {filteredTxs.length === 0 ? (
                             <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
                               <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>📭</div>
@@ -1301,7 +1307,7 @@ export default function Dashboard() {
                             const formattedDate = new Date(tx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
                             return (
-                              <div key={tx.id} className="group flex items-start gap-3.5 p-4 rounded-2xl transition-all duration-150 animate-fade-slide-up"
+                              <div key={tx.id} className="group flex items-center gap-2.5 md:gap-3.5 p-2.5 md:p-4 rounded-2xl transition-all duration-150 animate-fade-slide-up"
                                 style={{
                                   animationDelay: `${Math.min(idx * 0.04, 0.3)}s`,
                                   background: 'var(--bg-surface)',
@@ -1309,37 +1315,37 @@ export default function Dashboard() {
                                   borderLeft: `3px solid ${isGave ? '#10b981' : '#f43f5e'}`,
                                 }}>
                                 {/* Icon */}
-                                <div className="w-10 h-10 rounded-xl shrink-0 flex items-center justify-center text-lg"
+                                <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl shrink-0 flex items-center justify-center text-sm md:text-lg"
                                   style={{ background: isGave ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)' }}>
                                   {catIcons[tx.mode] || '📦'}
                                 </div>
                                 {/* Details */}
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                                    <span className="text-[9px] md:text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.25 md:px-2 md:py-0.5 rounded-full"
                                       style={{ background: isGave ? 'rgba(16,185,129,0.12)' : 'rgba(244,63,94,0.12)', color: isGave ? '#6ee7b7' : '#fda4af' }}>
                                       {isGave ? '↗ Gave (Lent)' : '↙ Got (Borrowed)'}
                                     </span>
-                                    <span className="text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>{formattedDate}</span>
+                                    <span className="text-[9px] md:text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>{formattedDate}</span>
                                   </div>
-                                  <p className="font-bold text-sm mt-1.5" style={{ color: 'var(--text-primary)' }}>{tx.remark}</p>
-                                  <p className="text-[10px] mt-0.5 font-medium" style={{ color: 'var(--text-muted)' }}>{tx.mode}</p>
+                                  <p className="font-bold text-xs md:text-sm mt-0.5 md:mt-1.5" style={{ color: 'var(--text-primary)' }}>{tx.remark}</p>
+                                  <p className="text-[9px] md:text-[10px] mt-0.5 font-medium" style={{ color: 'var(--text-muted)' }}>{tx.mode}</p>
                                 </div>
                                 {/* Amount + actions */}
                                 <div className="flex items-center gap-2 shrink-0">
-                                  <span className="text-base font-black tabular-nums" style={{ color: isGave ? '#10b981' : '#f43f5e' }}>
+                                  <span className="text-sm md:text-base font-black tabular-nums" style={{ color: isGave ? '#10b981' : '#f43f5e' }}>
                                     {isGave ? '+' : '-'}₹{tx.amount.toLocaleString('en-IN')}
                                   </span>
-                                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                                  <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-150">
                                     <button onClick={() => handleOpenEditTx(tx)}
-                                      className="p-1.5 rounded-lg transition-colors"
+                                      className="p-1 md:p-1.5 rounded-lg transition-colors"
                                       style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}>
                                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                                       </svg>
                                     </button>
                                     <button onClick={() => handleDeleteTransaction(tx.id)}
-                                      className="p-1.5 rounded-lg transition-colors"
+                                      className="p-1 md:p-1.5 rounded-lg transition-colors"
                                       style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}>
                                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -1354,7 +1360,7 @@ export default function Dashboard() {
                         </div>
 
                         {/* Bottom CTA */}
-                        <div className="shrink-0 px-5 py-4 grid grid-cols-2 gap-3"
+                        <div className="shrink-0 px-5 py-4"
                           style={{ background: 'var(--bg-surface)', borderTop: '1px solid var(--border-soft)' }}>
                           <button onClick={() => handleOpenAddTx('gave')}
                             className="w-full py-4 px-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition-all shadow-sm text-white"
@@ -1764,25 +1770,36 @@ export default function Dashboard() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Description *</label>
+                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Remarks *</label>
                 <input type="text" required value={txRemark} onChange={e => setTxRemark(e.target.value)}
                   className="input-field" placeholder="e.g. Dinner at rooftop café" />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Date</label>
-                  <input type="date" required value={txDate} onChange={e => setTxDate(e.target.value)}
-                    className="input-field" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Category</label>
-                  <select value={txMode} onChange={e => setTxMode(e.target.value as ModeType)}
-                    className="input-field">
-                    {(['Cash', 'Online Transfer'] as ModeType[]).map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Date</label>
+                <input type="date" required value={txDate} onChange={e => setTxDate(e.target.value)}
+                  className="input-field" />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Mode</label>
+                <div className="grid grid-cols-2 gap-2 p-1 rounded-xl" style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>
+                  {(['Cash', 'Online Transfer'] as const).map(mode => {
+                    const isSelected = txMode === mode;
+                    const icons: Record<string, string> = { Cash: '💵', 'Online Transfer': '🏦' };
+                    return (
+                      <button key={mode} type="button" onClick={() => setTxMode(mode)}
+                        className="py-2.5 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+                        style={{
+                          background: isSelected ? 'rgba(124,58,237,0.15)' : 'transparent',
+                          color: isSelected ? 'var(--violet-bright)' : 'var(--text-muted)',
+                          border: isSelected ? '1px solid rgba(124,58,237,0.25)' : '1px solid transparent'
+                        }}>
+                        <span>{icons[mode]}</span>
+                        <span>{mode}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

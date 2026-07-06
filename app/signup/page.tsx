@@ -77,40 +77,55 @@ export default function SignupPage() {
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
       style={{ background: 'var(--bg-base)' }}>
 
-      {/* Animated background */}
+      {/* ── Aurora Background ── */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="animate-orb absolute w-[500px] h-[500px] rounded-full"
-          style={{ top: '-10%', right: '-10%', background: 'radial-gradient(circle, rgba(99,102,241,0.1) 0%, transparent 70%)' }} />
-        <div className="animate-orb absolute w-[400px] h-[400px] rounded-full"
-          style={{ bottom: '-5%', left: '-10%', background: 'radial-gradient(circle, rgba(16,185,129,0.08) 0%, transparent 70%)', animationDelay: '4s' }} />
-        <div className="absolute inset-0 opacity-[0.025]"
-          style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)', backgroundSize: '48px 48px' }} />
+        <div className="animate-aurora absolute rounded-full aurora-blob"
+          style={{ width: 600, height: 600, top: '-10%', right: '-10%', background: 'radial-gradient(circle, rgba(124,58,237,0.13) 0%, transparent 70%)' }} />
+        <div className="animate-aurora absolute rounded-full aurora-blob"
+          style={{ width: 500, height: 500, bottom: '-5%', left: '-10%', animationDelay: '4s', animationDirection: 'reverse', background: 'radial-gradient(circle, rgba(6,182,212,0.09) 0%, transparent 70%)' }} />
+        <div className="absolute inset-0" style={{
+          backgroundImage: 'linear-gradient(rgba(124,58,237,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(124,58,237,0.04) 1px, transparent 1px)',
+          backgroundSize: '60px 60px'
+        }} />
       </div>
 
-      <div className="w-full max-w-[440px] animate-fade-slide-up relative">
+      <div className="w-full max-w-[440px] animate-fade-slide-up relative z-10">
 
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="relative mb-4">
+          <div className="relative mb-5">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-black text-white"
-              style={{ background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', boxShadow: '0 8px 32px rgba(99,102,241,0.4)' }}>
+              style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', boxShadow: '0 8px 32px rgba(124,58,237,0.45)' }}>
               🧾
             </div>
-            <div className="absolute inset-0 rounded-2xl animate-ping opacity-20"
-              style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }} />
+            <div className="absolute -inset-1 rounded-2xl animate-ping opacity-15"
+              style={{ background: 'linear-gradient(135deg, #7c3aed, #5b21b6)' }} />
           </div>
           <div className="flex flex-col items-center">
-            <span className="text-3xl font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>Udharwale</span>
-            <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-widest mt-1">By Naeem Navjivan</span>
+            <span className="text-3xl font-black tracking-tight text-white"
+              style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Udharwale</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest mt-1"
+              style={{ color: 'var(--violet-bright)' }}>By Naeem Navjivan</span>
           </div>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>Your smart debt ledger</p>
+          <p className="text-sm mt-2 font-medium" style={{ color: 'var(--text-muted)' }}>
+            Your smart debt ledger
+          </p>
         </div>
 
         {/* Card */}
-        <div className="card overflow-hidden" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
-          <div className="px-6 pt-6 pb-5 border-b" style={{ borderColor: 'var(--border-soft)' }}>
-            <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Create your account</h2>
-            <p className="text-sm mt-0.5" style={{ color: 'var(--text-secondary)' }}>Start tracking balances in seconds</p>
+        <div className="rounded-2xl overflow-hidden"
+          style={{
+            background: 'rgba(8,12,24,0.85)',
+            border: '1px solid rgba(124,58,237,0.2)',
+            backdropFilter: 'blur(24px)',
+            boxShadow: '0 24px 64px rgba(0,0,0,0.5), 0 1px 0 rgba(168,85,247,0.12) inset',
+          }}>
+
+          <div className="px-6 pt-6 pb-5 border-b" style={{ borderColor: 'rgba(124,58,237,0.12)' }}>
+            <h2 className="text-lg font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              Create your account
+            </h2>
+            <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>Start tracking balances in seconds</p>
           </div>
 
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
@@ -181,9 +196,10 @@ export default function SignupPage() {
             </div>
 
             {/* Recovery section */}
-            <div className="pt-3 mt-1 space-y-3 rounded-xl p-4" style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>
+            <div className="pt-3 mt-1 space-y-3 rounded-xl p-4"
+              style={{ background: 'rgba(124,58,237,0.06)', border: '1px solid rgba(124,58,237,0.15)' }}>
               <div>
-                <p className="text-xs font-bold uppercase tracking-wider" style={{ color: '#818cf8' }}>Account Recovery</p>
+                <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--violet-bright)' }}>Account Recovery</p>
                 <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Set these up to recover your account if you forget your password.</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -202,7 +218,7 @@ export default function SignupPage() {
               </div>
             </div>
 
-            <button type="submit" disabled={loading || success} className="btn-primary w-full" style={{ marginTop: '4px' }}>
+            <button type="submit" disabled={loading || success} className="btn-primary w-full" style={{ marginTop: '4px', borderRadius: 12 }}>
               {loading ? (
                 <>
                   <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -211,17 +227,17 @@ export default function SignupPage() {
                   </svg>
                   Creating account…
                 </>
-              ) : 'Create Account'}
+              ) : 'Create Account →'}
             </button>
 
             <p className="text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
               Already have an account?{' '}
-              <Link href="/login" className="font-semibold" style={{ color: '#818cf8' }}>Sign in</Link>
+              <Link href="/login" className="font-semibold" style={{ color: 'var(--violet-bright)' }}>Sign in</Link>
             </p>
           </form>
         </div>
 
-        <p className="text-center text-xs mt-6" style={{ color: 'var(--text-muted)' }}>
+        <p className="text-center text-xs mt-6" style={{ color: 'var(--text-faint)' }}>
           Crafted with precision · Secure · Private
         </p>
       </div>

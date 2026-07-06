@@ -35,48 +35,64 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
       style={{ background: 'var(--bg-base)' }}>
 
-      {/* Animated background orbs */}
+      {/* ── Aurora Background ── */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="animate-orb absolute w-[500px] h-[500px] rounded-full"
-          style={{ top: '-10%', left: '-10%', background: 'radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%)' }} />
-        <div className="animate-orb absolute w-[400px] h-[400px] rounded-full"
-          style={{ bottom: '-10%', right: '-5%', background: 'radial-gradient(circle, rgba(16,185,129,0.08) 0%, transparent 70%)', animationDelay: '3s' }} />
-        <div className="animate-orb absolute w-[300px] h-[300px] rounded-full"
-          style={{ top: '50%', right: '20%', background: 'radial-gradient(circle, rgba(244,63,94,0.06) 0%, transparent 70%)', animationDelay: '5s' }} />
-        {/* Grid lines */}
-        <div className="absolute inset-0 opacity-[0.025]"
-          style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)', backgroundSize: '48px 48px' }} />
+        <div className="animate-aurora absolute rounded-full aurora-blob"
+          style={{ width: 600, height: 600, top: '-15%', left: '-10%', background: 'radial-gradient(circle, rgba(124,58,237,0.15) 0%, transparent 70%)' }} />
+        <div className="animate-aurora absolute rounded-full aurora-blob"
+          style={{ width: 500, height: 500, bottom: '-10%', right: '-8%', animationDelay: '5s', animationDirection: 'reverse', background: 'radial-gradient(circle, rgba(6,182,212,0.10) 0%, transparent 70%)' }} />
+        <div className="animate-aurora absolute rounded-full aurora-blob"
+          style={{ width: 350, height: 350, top: '50%', right: '15%', animationDelay: '3s', background: 'radial-gradient(circle, rgba(168,85,247,0.07) 0%, transparent 70%)' }} />
+        {/* Grid */}
+        <div className="absolute inset-0" style={{
+          backgroundImage: 'linear-gradient(rgba(124,58,237,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(124,58,237,0.04) 1px, transparent 1px)',
+          backgroundSize: '60px 60px'
+        }} />
       </div>
 
-      <div className="w-full max-w-[400px] animate-fade-slide-up relative">
+      <div className="w-full max-w-[400px] animate-fade-slide-up relative z-10">
 
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="relative mb-4">
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-black text-white shadow-2xl"
-              style={{ background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', boxShadow: '0 8px 32px rgba(99,102,241,0.4)' }}>
+          <div className="relative mb-5">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-black text-white"
+              style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', boxShadow: '0 8px 32px rgba(124,58,237,0.45)' }}>
               🧾
             </div>
             {/* Pulsing ring */}
-            <div className="absolute inset-0 rounded-2xl animate-ping opacity-20"
-              style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }} />
+            <div className="absolute -inset-1 rounded-2xl animate-ping opacity-15"
+              style={{ background: 'linear-gradient(135deg, #7c3aed, #5b21b6)' }} />
           </div>
           <div className="flex flex-col items-center">
-            <span className="text-3xl font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>Udharwale</span>
-            <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-widest mt-1">By Naeem Navjivan</span>
+            <span className="text-3xl font-black tracking-tight text-white"
+              style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Udharwale</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest mt-1"
+              style={{ color: 'var(--violet-bright)' }}>By Naeem Navjivan</span>
           </div>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+          <p className="text-sm mt-2 font-medium" style={{ color: 'var(--text-muted)' }}>
             Your smart debt ledger
           </p>
         </div>
 
         {/* Card */}
-        <div className="card overflow-hidden" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
+        <div className="rounded-2xl overflow-hidden"
+          style={{
+            background: 'rgba(8,12,24,0.85)',
+            border: '1px solid rgba(124,58,237,0.2)',
+            backdropFilter: 'blur(24px)',
+            boxShadow: '0 24px 64px rgba(0,0,0,0.5), 0 1px 0 rgba(168,85,247,0.12) inset',
+          }}>
 
-          {/* Card header */}
-          <div className="px-6 pt-6 pb-5 border-b" style={{ borderColor: 'var(--border-soft)' }}>
-            <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Welcome back</h2>
-            <p className="text-sm mt-0.5" style={{ color: 'var(--text-secondary)' }}>Sign in to your account</p>
+          {/* Inner top glow */}
+          <div className="absolute left-10 right-10 h-px top-0 pointer-events-none"
+            style={{ background: 'linear-gradient(90deg, transparent, rgba(192,132,252,0.35), transparent)' }} />
+
+          {/* Header */}
+          <div className="px-6 pt-6 pb-5 border-b" style={{ borderColor: 'rgba(124,58,237,0.12)' }}>
+            <h2 className="text-lg font-bold text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+              Welcome back
+            </h2>
+            <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>Sign in to your account</p>
           </div>
 
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
@@ -118,7 +134,7 @@ export default function LoginPage() {
                 </label>
                 <Link href="/forgot-password"
                   className="text-xs font-semibold transition-colors"
-                  style={{ color: '#818cf8' }}>
+                  style={{ color: 'var(--violet-bright)' }}>
                   Forgot password?
                 </Link>
               </div>
@@ -157,7 +173,7 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <button type="submit" disabled={loading} className="btn-primary w-full mt-2" style={{ marginTop: '8px' }}>
+            <button type="submit" disabled={loading} className="btn-primary w-full" style={{ marginTop: '8px', borderRadius: 12 }}>
               {loading ? (
                 <>
                   <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -166,20 +182,19 @@ export default function LoginPage() {
                   </svg>
                   Authenticating…
                 </>
-              ) : 'Sign In'}
+              ) : 'Sign In →'}
             </button>
 
             <p className="text-center text-sm pt-1" style={{ color: 'var(--text-secondary)' }}>
               No account?{' '}
-              <Link href="/signup" className="font-semibold transition-colors" style={{ color: '#818cf8' }}>
+              <Link href="/signup" className="font-semibold transition-colors" style={{ color: 'var(--violet-bright)' }}>
                 Create one free
               </Link>
             </p>
           </form>
         </div>
 
-        {/* Footer credit */}
-        <p className="text-center text-xs mt-6" style={{ color: 'var(--text-muted)' }}>
+        <p className="text-center text-xs mt-6" style={{ color: 'var(--text-faint)' }}>
           Crafted with precision · Secure · Private
         </p>
       </div>
