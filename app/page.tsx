@@ -55,8 +55,7 @@ export default function LandingPage() {
                 style={{ background: 'transparent', boxShadow: '0 0 20px rgba(124,58,237,0.3)' }} />
             </div>
             <div className="flex flex-col">
-              <span className="font-black text-lg tracking-tight leading-none text-white"
-                style={{ fontFamily: "'Syne', sans-serif" }}>Udharwale</span>
+              <span className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-cyan-400 font-branding">Udharwale</span>
               <span className="text-[9px] font-bold uppercase tracking-widest mt-0.5"
                 style={{ color: 'var(--violet-bright)' }}>By Naeem Navjivan</span>
             </div>

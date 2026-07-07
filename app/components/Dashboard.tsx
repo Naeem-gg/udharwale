@@ -672,9 +672,9 @@ export default function Dashboard() {
     let msg = '';
 
     if (balance > 0) {
-      msg = `Hi ${cleanName}, standard reminder that there is a pending balance of ${formattedAmt} to be paid to me on Udharwale by Naeem Navjivan. Let me know when you can settle it! Thank you.`;
+      msg = `Hello ${cleanName},\n\nThis is a gentle reminder regarding an outstanding balance of ${formattedAmt}. Please let me know when you might be able to settle this.\n\nThank you for your prompt attention.\n\n—\nTracked transparently via Udharwale by Naeem Navjivan 🚀\nYour smart digital ledger for seamless balance tracking.`;
     } else {
-      msg = `Hi ${cleanName}, I just wanted to let you know I owe you ${formattedAmt} as tracked on my Udharwale by Naeem Navjivan ledger. I will settle this with you as soon as possible!`;
+      msg = `Hello ${cleanName},\n\nI am writing to confirm that I currently owe you ${formattedAmt}. I will ensure this balance is settled with you as soon as possible.\n\nThank you for your patience.\n\n—\nTracked transparently via Udharwale by Naeem Navjivan 🚀\nYour smart digital ledger for seamless balance tracking.`;
     }
 
     const whatsappUrl = `https://api.whatsapp.com/send?phone=${selectedContact.phone.replace(/[^0-9+]/g, '')}&text=${encodeURIComponent(msg)}`;
@@ -684,9 +684,9 @@ export default function Dashboard() {
   const handleShareLedger = async (option: 'all' | 'gave' | 'got') => {
     if (!selectedContact) return;
 
-    let text = `Ledger with ${selectedContact.name}\n`;
-    text += `Current Position: ${getContactBalance(selectedContact) > 0 ? `They owe you $₹${getContactBalance(selectedContact).toLocaleString('en-IN')}` : getContactBalance(selectedContact) < 0 ? `You owe them $₹${Math.abs(getContactBalance(selectedContact)).toLocaleString('en-IN')}` : 'Settled'}\n\n`;
-    text += `Transaction History:\n`;
+    let text = `📊 Ledger Summary with ${selectedContact.name}\n\n`;
+    text += `Current Position: ${getContactBalance(selectedContact) > 0 ? `To Receive: $₹${getContactBalance(selectedContact).toLocaleString('en-IN')}` : getContactBalance(selectedContact) < 0 ? `To Pay: $₹${Math.abs(getContactBalance(selectedContact)).toLocaleString('en-IN')}` : 'Settled 🎉'}\n\n`;
+    text += `--- Transaction History ---\n`;
 
     const txsToShare = selectedContact.transactions.filter(t => {
       if (option === 'all') return true;
@@ -701,12 +701,16 @@ export default function Dashboard() {
       const formattedDate = new Date(t.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
       const amountStr = `$₹${t.amount.toLocaleString('en-IN')}`;
       runningTotal += isGave ? t.amount : -t.amount;
-      text += `- ${formattedDate}: ${t.remark} (${isGave ? 'You lent' : 'You borrowed'} ${amountStr})\n`;
+      text += `• ${formattedDate}: ${t.remark} (${isGave ? 'Lent' : 'Borrowed'} ${amountStr})\n`;
     });
 
     if (option === 'all') {
-      text += `\nNet Total: ${runningTotal > 0 ? `+$₹${runningTotal.toLocaleString('en-IN')}` : `-$₹${Math.abs(runningTotal).toLocaleString('en-IN')}`}`;
+      text += `\nNet Balance: ${runningTotal > 0 ? `+$₹${runningTotal.toLocaleString('en-IN')}` : `-$₹${Math.abs(runningTotal).toLocaleString('en-IN')}`}\n\n`;
+    } else {
+      text += `\n`;
     }
+    
+    text += `—\nPowered by Udharwale by Naeem Navjivan 🚀\nStart tracking your own balances smartly and securely today!`;
 
     try {
       if (navigator.share) {
@@ -801,7 +805,7 @@ export default function Dashboard() {
             </div>
             <div>
               <div className="flex flex-col">
-                <span className="font-black text-lg tracking-tight leading-none" style={{ color: 'var(--text-primary)' }}>Udharwale</span>
+                <span className="font-branding text-2xl tracking-tight leading-none" style={{ color: 'var(--text-primary)' }}>Udharwale</span>
                 <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mt-1">By Naeem Navjivan</span>
               </div>
               <p className="text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>Smart Debt Ledger</p>
@@ -899,7 +903,7 @@ export default function Dashboard() {
                 style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}>🧾</div>
               <div>
                 <div className="flex flex-col">
-                  <span className="font-black text-lg tracking-tight leading-none" style={{ color: 'var(--text-primary)' }}>Udharwale</span>
+                  <span className="font-branding text-2xl tracking-tight leading-none" style={{ color: 'var(--text-primary)' }}>Udharwale</span>
                   <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mt-1">By Naeem Navjivan</span>
                 </div>
                 <div className="flex items-center gap-1">

@@ -102,8 +102,9 @@ export default function SignupPage() {
               style={{ background: 'linear-gradient(135deg, #7c3aed, #5b21b6)' }} />
           </div>
           <div className="flex flex-col items-center">
-            <span className="text-3xl font-black tracking-tight text-white"
-              style={{ fontFamily: "'Syne', sans-serif" }}>Udharwale</span>
+            <h1 className="text-2xl font-bold tracking-tight mb-2">
+              Join <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-cyan-400 font-branding">Udharwale</span>
+            </h1>
             <span className="text-[10px] font-bold uppercase tracking-widest mt-1"
               style={{ color: 'var(--violet-bright)' }}>By Naeem Navjivan</span>
           </div>

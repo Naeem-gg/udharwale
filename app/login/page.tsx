@@ -64,8 +64,7 @@ export default function LoginPage() {
               style={{ background: 'linear-gradient(135deg, #7c3aed, #5b21b6)' }} />
           </div>
           <div className="flex flex-col items-center">
-            <span className="text-3xl font-black tracking-tight text-white"
-              style={{ fontFamily: "'Syne', sans-serif" }}>Udharwale</span>
+            <span className="text-3xl font-black tracking-tight text-white font-branding">Udharwale</span>
             <span className="text-[10px] font-bold uppercase tracking-widest mt-1"
               style={{ color: 'var(--violet-bright)' }}>By Naeem Navjivan</span>
           </div>
