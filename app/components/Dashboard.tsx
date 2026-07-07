@@ -668,13 +668,13 @@ export default function Dashboard() {
     if (balance === 0) return;
 
     const cleanName = selectedContact.name;
-    const formattedAmt = `$₹${Math.abs(balance).toLocaleString('en-IN')}`;
+    const formattedAmt = `₹${Math.abs(balance).toLocaleString('en-IN')}`;
     let msg = '';
 
     if (balance > 0) {
-      msg = `Hello ${cleanName},\n\nThis is a gentle reminder regarding an outstanding balance of ${formattedAmt}. Please let me know when you might be able to settle this.\n\nThank you for your prompt attention.\n\n—\nTracked transparently via Udharwale by Naeem Navjivan 🚀\nYour smart digital ledger for seamless balance tracking.`;
+      msg = `Hello ${cleanName},\n\nThis is a gentle reminder regarding an outstanding balance of ${formattedAmt}. Please let me know when you might be able to settle this.\n\nThank you for your prompt attention.\n\n—\nTracked transparently via Udharwale by Naeem Navjivan 🚀\nYour smart digital ledger for seamless balance tracking.\n🌐 https://udharwaale.vercal.app`;
     } else {
-      msg = `Hello ${cleanName},\n\nI am writing to confirm that I currently owe you ${formattedAmt}. I will ensure this balance is settled with you as soon as possible.\n\nThank you for your patience.\n\n—\nTracked transparently via Udharwale by Naeem Navjivan 🚀\nYour smart digital ledger for seamless balance tracking.`;
+      msg = `Hello ${cleanName},\n\nI am writing to confirm that I currently owe you ${formattedAmt}. I will ensure this balance is settled with you as soon as possible.\n\nThank you for your patience.\n\n—\nTracked transparently via Udharwale by Naeem Navjivan 🚀\nYour smart digital ledger for seamless balance tracking.\n🌐 https://udharwaale.vercal.app`;
     }
 
     const whatsappUrl = `https://api.whatsapp.com/send?phone=${selectedContact.phone.replace(/[^0-9+]/g, '')}&text=${encodeURIComponent(msg)}`;
@@ -685,7 +685,7 @@ export default function Dashboard() {
     if (!selectedContact) return;
 
     let text = `📊 Ledger Summary with ${selectedContact.name}\n\n`;
-    text += `Current Position: ${getContactBalance(selectedContact) > 0 ? `To Receive: $₹${getContactBalance(selectedContact).toLocaleString('en-IN')}` : getContactBalance(selectedContact) < 0 ? `To Pay: $₹${Math.abs(getContactBalance(selectedContact)).toLocaleString('en-IN')}` : 'Settled 🎉'}\n\n`;
+    text += `Current Position: ${getContactBalance(selectedContact) > 0 ? `To Receive: ₹${getContactBalance(selectedContact).toLocaleString('en-IN')}` : getContactBalance(selectedContact) < 0 ? `To Pay: ₹${Math.abs(getContactBalance(selectedContact)).toLocaleString('en-IN')}` : 'Settled 🎉'}\n\n`;
     text += `--- Transaction History ---\n`;
 
     const txsToShare = selectedContact.transactions.filter(t => {
@@ -699,18 +699,18 @@ export default function Dashboard() {
     txsToShare.forEach(t => {
       const isGave = t.type === 'gave';
       const formattedDate = new Date(t.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-      const amountStr = `$₹${t.amount.toLocaleString('en-IN')}`;
+      const amountStr = `₹${t.amount.toLocaleString('en-IN')}`;
       runningTotal += isGave ? t.amount : -t.amount;
       text += `• ${formattedDate}: ${t.remark} (${isGave ? 'Lent' : 'Borrowed'} ${amountStr})\n`;
     });
 
     if (option === 'all') {
-      text += `\nNet Balance: ${runningTotal > 0 ? `+$₹${runningTotal.toLocaleString('en-IN')}` : `-$₹${Math.abs(runningTotal).toLocaleString('en-IN')}`}\n\n`;
+      text += `\nNet Balance: ${runningTotal > 0 ? `+₹${runningTotal.toLocaleString('en-IN')}` : `-₹${Math.abs(runningTotal).toLocaleString('en-IN')}`}\n\n`;
     } else {
       text += `\n`;
     }
     
-    text += `—\nPowered by Udharwale by Naeem Navjivan 🚀\nStart tracking your own balances smartly and securely today!`;
+    text += `—\nPowered by Udharwale by Naeem Navjivan 🚀\nStart tracking your own balances smartly and securely today!\n🌐 https://udharwaale.vercal.app`;
 
     try {
       if (navigator.share) {
@@ -1119,7 +1119,7 @@ export default function Dashboard() {
                                         {balance === 0 ? (
                                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}>Settled</span>
                                         ) : revealed ? (
-                                          `${balance > 0 ? '+' : '-'}$₹${Math.abs(balance).toLocaleString('en-IN')}`
+                                          `${balance > 0 ? '+' : '-'}₹${Math.abs(balance).toLocaleString('en-IN')}`
                                         ) : '•••'}
                                       </p>
                                     </div>
@@ -1272,7 +1272,7 @@ export default function Dashboard() {
                                 <p className="text-sm font-bold mt-0.5" style={{ color: contactBal > 0 ? '#6ee7b7' : '#fda4af' }}>
                                   {contactBal > 0
                                     ? `${selectedContact.name} owes you ₹${contactBal.toLocaleString('en-IN')}`
-                                    : `You owe ${selectedContact.name} $₹${Math.abs(contactBal).toLocaleString('en-IN')}`}
+                                    : `You owe ${selectedContact.name} ₹${Math.abs(contactBal).toLocaleString('en-IN')}`}
                                 </p>
                               )}
                             </div>
@@ -1425,7 +1425,7 @@ export default function Dashboard() {
                           <h2 className="text-4xl font-black tabular-nums"
                             style={{ color: showBalances ? (stats.netBalance >= 0 ? '#6ee7b7' : '#fda4af') : 'var(--text-primary)' }}>
                             {showBalances
-                              ? `${stats.netBalance >= 0 ? '+' : '-'}$₹${Math.abs(stats.netBalance).toLocaleString('en-IN')}`
+                              ? `${stats.netBalance >= 0 ? '+' : '-'}₹${Math.abs(stats.netBalance).toLocaleString('en-IN')}`
                               : '****'}
                           </h2>
                         </div>
@@ -1451,7 +1451,7 @@ export default function Dashboard() {
                         <div key={label} className="p-3 rounded-2xl" style={{ background: glow, border: `1px solid ${color}20` }}>
                           <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: `${color}99` }}>{label}</p>
                           <p className="text-xl font-black tabular-nums mt-1" style={{ color }}>
-                            {showBalances ? `$₹${value.toLocaleString('en-IN')}` : '****'}
+                            {showBalances ? `₹${value.toLocaleString('en-IN')}` : '****'}
                           </p>
                         </div>
                       ))}
@@ -1710,7 +1710,7 @@ export default function Dashboard() {
                   </div>
                   <input type="number" min="0" step="0.01" value={contactInitialBalance}
                     onChange={e => setContactInitialBalance(e.target.value)}
-                    className="input-field flex-1" placeholder={`$₹ 0.00`} />
+                    className="input-field flex-1" placeholder={`₹ 0.00`} />
                 </div>
               </div>
 
