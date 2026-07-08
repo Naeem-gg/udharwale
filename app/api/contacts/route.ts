@@ -1,19 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { connectToDatabase } from '@/lib/db';
 import Contact from '@/models/Contact';
-import { verifyToken } from '@/lib/auth';
+import { getAuthenticatedUserId } from '@/lib/session';
 
 // Next.js App Router forces dynamic execution for db calls
 export const dynamic = 'force-dynamic';
-
-async function getAuthenticatedUserId() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get('token')?.value;
-  if (!token) return null;
-  const decoded = verifyToken(token);
-  return decoded ? decoded.userId : null;
-}
 
 export async function GET() {
   try {

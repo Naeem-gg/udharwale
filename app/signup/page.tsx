@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { signIn } from 'next-auth/react';
 
 export default function SignupPage() {
   const [name, setName] = useState('');
@@ -39,13 +40,13 @@ export default function SignupPage() {
 
       setSuccess(true);
 
-      const loginRes = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+      const loginRes = await signIn('credentials', {
+        email,
+        password,
+        redirect: false
       });
 
-      if (loginRes.ok) {
+      if (!loginRes?.error) {
         window.location.href = '/dashboard';
       } else {
         window.location.href = '/login';

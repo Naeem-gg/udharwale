@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { signOut } from 'next-auth/react';
 import { Contact, Transaction, ModeType, ActiveTab } from './types';
 import UpcomingFeatures from './UpcomingFeatures';
 
@@ -123,12 +124,7 @@ export default function Dashboard() {
 
   const handleLogout = async () => {
     try {
-      const res = await fetch('/api/auth/logout', { method: 'POST' });
-      if (res.ok) {
-        window.location.href = '/login';
-      } else {
-        alert('Failed to log out.');
-      }
+      await signOut({ callbackUrl: '/login' });
     } catch (e) {
       console.error(e);
       alert('An error occurred during log out.');

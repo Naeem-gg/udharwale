@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { signIn } from 'next-auth/react';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -56,13 +57,13 @@ export default function ForgotPasswordPage() {
       setSuccess(true);
       
       // Auto login user on reset success
-      const loginRes = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password: newPassword })
+      const loginRes = await signIn('credentials', {
+        email,
+        password: newPassword,
+        redirect: false
       });
       
-      if (loginRes.ok) {
+      if (!loginRes?.error) {
         setTimeout(() => {
           window.location.href = '/dashboard';
         }, 1500);

@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { signIn } from 'next-auth/react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -16,14 +17,13 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+      const res = await signIn('credentials', {
+        email,
+        password,
+        redirect: false
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to sign in');
+      if (res?.error) throw new Error('Invalid email or password');
       window.location.href = '/dashboard';
     } catch (err: any) {
       setError(err.message || 'An error occurred during sign in');
