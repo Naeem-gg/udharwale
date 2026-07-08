@@ -672,9 +672,9 @@ export default function Dashboard() {
     let msg = '';
 
     if (balance > 0) {
-      msg = `Hello ${cleanName},\n\nThis is a gentle reminder regarding an outstanding balance of ${formattedAmt}. Please let me know when you might be able to settle this.\n\nThank you for your prompt attention.\n\n—\nTracked transparently via Udharwale by Naeem Navjivan 🚀\nYour smart digital ledger for seamless balance tracking.\n🌐 https://udharwaale.vercal.app`;
+      msg = `Hi ${cleanName},\n\nJust a quick reminder that you need to pay me ${formattedAmt}. Please let me know when you can send it over.\n\n—\nTracked via Udharwale by Naeem Navjivan 🚀\n🌐 https://udharwaale.vercel.app`;
     } else {
-      msg = `Hello ${cleanName},\n\nI am writing to confirm that I currently owe you ${formattedAmt}. I will ensure this balance is settled with you as soon as possible.\n\nThank you for your patience.\n\n—\nTracked transparently via Udharwale by Naeem Navjivan 🚀\nYour smart digital ledger for seamless balance tracking.\n🌐 https://udharwaale.vercal.app`;
+      msg = `Hi ${cleanName},\n\nJust letting you know that I need to pay you ${formattedAmt}. I'll make sure to send it to you soon!\n\n—\nTracked via Udharwale by Naeem Navjivan 🚀\n🌐 https://udharwaale.vercel.app`;
     }
 
     const whatsappUrl = `https://api.whatsapp.com/send?phone=${selectedContact.phone.replace(/[^0-9+]/g, '')}&text=${encodeURIComponent(msg)}`;
@@ -684,8 +684,16 @@ export default function Dashboard() {
   const handleShareLedger = async (option: 'all' | 'gave' | 'got') => {
     if (!selectedContact) return;
 
-    let text = `📊 Ledger Summary with ${selectedContact.name}\n\n`;
-    text += `Current Position: ${getContactBalance(selectedContact) > 0 ? `To Receive: ₹${getContactBalance(selectedContact).toLocaleString('en-IN')}` : getContactBalance(selectedContact) < 0 ? `To Pay: ₹${Math.abs(getContactBalance(selectedContact)).toLocaleString('en-IN')}` : 'Settled 🎉'}\n\n`;
+    let text = `📊 Account Summary with ${selectedContact.name}\n\n`;
+
+    if (getContactBalance(selectedContact) > 0) {
+      text += `Status: YOU need to pay me ₹${getContactBalance(selectedContact).toLocaleString('en-IN')}\n\n`;
+    } else if (getContactBalance(selectedContact) < 0) {
+      text += `Status: I need to pay you ₹${Math.abs(getContactBalance(selectedContact)).toLocaleString('en-IN')}\n\n`;
+    } else {
+      text += `Status: All settled up! 🎉\n\n`;
+    }
+
     text += `--- Transaction History ---\n`;
 
     const txsToShare = selectedContact.transactions.filter(t => {
@@ -701,7 +709,7 @@ export default function Dashboard() {
       const formattedDate = new Date(t.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
       const amountStr = `₹${t.amount.toLocaleString('en-IN')}`;
       runningTotal += isGave ? t.amount : -t.amount;
-      text += `• ${formattedDate}: ${t.remark} (${isGave ? 'Lent' : 'Borrowed'} ${amountStr})\n`;
+      text += `• ${formattedDate}: ${t.remark} (${isGave ? 'I gave you' : 'You gave me'} ${amountStr})\n`;
     });
 
     if (option === 'all') {
@@ -709,8 +717,8 @@ export default function Dashboard() {
     } else {
       text += `\n`;
     }
-    
-    text += `—\nPowered by Udharwale by Naeem Navjivan 🚀\nStart tracking your own balances smartly and securely today!\n🌐 https://udharwaale.vercal.app`;
+
+    text += `—\nPowered by Udharwale by Naeem Navjivan 🚀\nStart tracking your own balances smartly and securely today!\n🌐 https://udharwaale.vercel.app`;
 
     try {
       if (navigator.share) {
@@ -1198,7 +1206,7 @@ export default function Dashboard() {
                                     <div className="fixed inset-0 z-10" onClick={() => setIsContactMenuOpen(false)} />
                                     <div className="absolute right-0 mt-2 w-44 rounded-xl py-1.5 z-20 animate-fade-slide-down"
                                       style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border-soft)', boxShadow: 'var(--shadow-card)' }}>
-                                      
+
                                       {contactBal !== 0 && (
                                         <button onClick={() => { setIsContactMenuOpen(false); handleSettleFullBalance(); }}
                                           className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
@@ -1208,7 +1216,7 @@ export default function Dashboard() {
                                           🤝 Settle Balance
                                         </button>
                                       )}
-                                      
+
                                       {contactBal !== 0 && (
                                         <button onClick={() => { setIsContactMenuOpen(false); handleWhatsAppReminder(); }}
                                           className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
@@ -1227,7 +1235,7 @@ export default function Dashboard() {
                                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
                                         Share Ledger
                                       </button>
-                                      
+
 
                                       <button onClick={() => {
                                         setIsContactMenuOpen(false);
@@ -1868,14 +1876,14 @@ export default function Dashboard() {
         </div>
       )}
 
-    
+
       {/* ── EDIT CONTACT MODAL ───────────────────────── */}
       {isEditContactOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setIsEditContactOpen(false)} />
           <div className="relative w-full max-w-sm rounded-3xl overflow-hidden animate-scale-up flex flex-col max-h-[90vh]"
             style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
-            
+
             <div className="px-5 py-4 shrink-0 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border-soft)' }}>
               <h3 className="font-black text-lg" style={{ color: 'var(--text-primary)' }}>Edit Contact</h3>
               <button onClick={() => setIsEditContactOpen(false)} className="w-8 h-8 rounded-full flex items-center justify-center transition-colors"
@@ -1916,6 +1924,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-</div>
+    </div>
   );
 }
