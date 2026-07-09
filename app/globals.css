@@ -98,6 +98,66 @@
   --shadow-elevated: 0 8px 40px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(139, 92, 246, 0.08) inset;
 }
 
+html.light {
+  color-scheme: light;
+
+  --background: #f6f8fc;
+  --foreground: #0f172a;
+  --card: rgba(255, 255, 255, 0.9);
+  --card-foreground: #0f172a;
+  --primary: #6d28d9;
+  --primary-foreground: #ffffff;
+  --secondary: rgba(241, 245, 249, 0.9);
+  --secondary-foreground: #172033;
+  --muted: rgba(226, 232, 240, 0.8);
+  --muted-foreground: #64748b;
+  --accent: rgba(109, 40, 217, 0.1);
+  --accent-foreground: #5b21b6;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: rgba(99, 102, 241, 0.18);
+  --input: rgba(99, 102, 241, 0.22);
+  --ring: rgba(109, 40, 217, 0.45);
+
+  --bg-base: #f6f8fc;
+  --bg-surface: #ffffff;
+  --bg-raised: #eef2f7;
+  --bg-overlay: #e2e8f0;
+  --bg-glass: rgba(255, 255, 255, 0.76);
+
+  --border-soft: rgba(99, 102, 241, 0.18);
+  --border-muted: rgba(99, 102, 241, 0.1);
+  --border-bright: rgba(99, 102, 241, 0.32);
+
+  --violet: #6d28d9;
+  --violet-light: #7c3aed;
+  --violet-bright: #6d28d9;
+  --violet-glow: rgba(109, 40, 217, 0.16);
+  --violet-glow-soft: rgba(109, 40, 217, 0.08);
+
+  --cyan: #0891b2;
+  --cyan-light: #0e7490;
+  --cyan-glow: rgba(8, 145, 178, 0.14);
+
+  --emerald: #059669;
+  --emerald-light: #047857;
+  --emerald-glow: rgba(5, 150, 105, 0.12);
+  --rose: #e11d48;
+  --rose-light: #be123c;
+  --rose-glow: rgba(225, 29, 72, 0.12);
+  --amber: #d97706;
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --text-faint: #94a3b8;
+
+  --shadow-violet: 0 4px 24px rgba(109, 40, 217, 0.16);
+  --shadow-card: 0 10px 30px rgba(15, 23, 42, 0.08);
+  --shadow-glow: 0 0 32px rgba(109, 40, 217, 0.1);
+  --shadow-elevated: 0 18px 50px rgba(15, 23, 42, 0.12), 0 1px 0 rgba(255, 255, 255, 0.8) inset;
+}
+
 /* ===================== BASE ===================== */
 *,
 *::before,

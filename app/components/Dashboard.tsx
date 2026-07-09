@@ -4,6 +4,11 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { signOut } from 'next-auth/react';
 import { Contact, Transaction, ModeType, ActiveTab } from './types';
 import UpcomingFeatures from './UpcomingFeatures';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
+import { useTheme } from '@/app/theme-provider';
 
 // Custom CSS-based Confetti Particle component for settlements
 interface ConfettiParticle {
@@ -17,7 +22,20 @@ interface ConfettiParticle {
   speedY: number;
 }
 
+const getStoredDefaultTxMode = (): ModeType => {
+  if (typeof window === 'undefined') return 'Cash';
+  const saved = window.localStorage.getItem('udharwale-default-tx-mode');
+  return saved === 'Online Transfer' ? 'Online Transfer' : 'Cash';
+};
+
+const getStoredCompactLedgerView = () => {
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem('udharwale-compact-ledger-view') === 'true';
+};
+
 export default function Dashboard() {
+  const { theme, toggleTheme } = useTheme();
+
   // --- Persistent State ---
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [userName, setUserName] = useState<string>('');
@@ -46,12 +64,14 @@ export default function Dashboard() {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [showBalances, setShowBalances] = useState(false);
   const [peekingContactId, setPeekingContactId] = useState<string | null>(null);
+  const [defaultTxMode, setDefaultTxMode] = useState<ModeType>(getStoredDefaultTxMode);
+  const [compactLedgerView, setCompactLedgerView] = useState(getStoredCompactLedgerView);
 
   // --- Add Transaction Form State ---
   const [txAmount, setTxAmount] = useState('');
   const [txType, setTxType] = useState<'gave' | 'got'>('gave');
   const [txRemark, setTxRemark] = useState('');
-  const [txMode, setTxMode] = useState<ModeType>('Cash');
+  const [txMode, setTxMode] = useState<ModeType>(getStoredDefaultTxMode);
   const [txDate, setTxDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   // --- Add Contact Form State ---
@@ -120,6 +140,14 @@ export default function Dashboard() {
 
     }
   }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem('udharwale-default-tx-mode', defaultTxMode);
+  }, [defaultTxMode]);
+
+  useEffect(() => {
+    window.localStorage.setItem('udharwale-compact-ledger-view', String(compactLedgerView));
+  }, [compactLedgerView]);
 
 
   const handleLogout = async () => {
@@ -232,6 +260,23 @@ export default function Dashboard() {
       totalCredit: credit,
       totalDebit: debit,
       netBalance: credit - debit,
+    };
+  }, [contacts]);
+
+  const ledgerSummary = useMemo(() => {
+    const transactionCount = contacts.reduce((sum, contact) => sum + contact.transactions.length, 0);
+    const allDates = contacts.flatMap((contact) => [
+      contact.createdAt,
+      ...contact.transactions.map((transaction) => transaction.date),
+    ]);
+    const lastActivity = allDates.length
+      ? new Date(Math.max(...allDates.map((date) => new Date(date).getTime())))
+      : null;
+
+    return {
+      contactCount: contacts.length,
+      transactionCount,
+      lastActivity,
     };
   }, [contacts]);
 
@@ -507,7 +552,7 @@ export default function Dashboard() {
     setTxType(type);
     setTxAmount('');
     setTxRemark('');
-    setTxMode('Cash');
+    setTxMode(defaultTxMode);
     setTxDate(new Date().toISOString().split('T')[0]);
     setEditingTransaction(null);
     setIsAddTransactionOpen(true);
@@ -769,6 +814,81 @@ export default function Dashboard() {
       setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 300);
     }, 3800);
   }, []);
+
+  const downloadTextFile = (filename: string, content: string, type: string) => {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportBackup = () => {
+    const backup = {
+      app: 'Udharwale',
+      exportedAt: new Date().toISOString(),
+      user: { name: userName, email: userEmail },
+      settings: { theme, defaultTxMode, compactLedgerView, showBalances },
+      stats,
+      contacts,
+    };
+
+    downloadTextFile(
+      `udharwale-backup-${new Date().toISOString().slice(0, 10)}.json`,
+      JSON.stringify(backup, null, 2),
+      'application/json'
+    );
+    showToast('Backup downloaded as JSON', 'success');
+  };
+
+  const handleExportCsv = () => {
+    const escapeCsv = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
+    const rows = [
+      ['Contact', 'Phone', 'Email', 'Date', 'Type', 'Mode', 'Remark', 'Amount'],
+      ...contacts.flatMap((contact) =>
+        contact.transactions.map((transaction) => [
+          contact.name,
+          contact.phone,
+          contact.email || '',
+          transaction.date,
+          transaction.type === 'gave' ? 'You gave' : 'You got',
+          transaction.mode,
+          transaction.remark,
+          transaction.amount,
+        ])
+      ),
+    ];
+
+    downloadTextFile(
+      `udharwale-transactions-${new Date().toISOString().slice(0, 10)}.csv`,
+      rows.map((row) => row.map(escapeCsv).join(',')).join('\n'),
+      'text/csv'
+    );
+    showToast('Transactions exported as CSV', 'success');
+  };
+
+  const handleCopyLedgerSummary = async () => {
+    const summary = [
+      'Udharwale Ledger Summary',
+      `User: ${userName || 'Unknown'}${userEmail ? ` <${userEmail}>` : ''}`,
+      `Contacts: ${ledgerSummary.contactCount}`,
+      `Transactions: ${ledgerSummary.transactionCount}`,
+      `You'll receive: ₹${stats.totalCredit.toLocaleString('en-IN')}`,
+      `You owe: ₹${stats.totalDebit.toLocaleString('en-IN')}`,
+      `Net balance: ${stats.netBalance >= 0 ? '+' : '-'}₹${Math.abs(stats.netBalance).toLocaleString('en-IN')}`,
+    ].join('\n');
+
+    try {
+      await navigator.clipboard.writeText(summary);
+      showToast('Ledger summary copied', 'success');
+    } catch {
+      showToast('Could not copy summary', 'error');
+    }
+  };
 
   return (
     <div className="flex flex-col flex-1 h-screen overflow-hidden relative" style={{ background: 'var(--bg-base)', fontFamily: "'Outfit', system-ui, sans-serif", color: 'var(--text-primary)' }}>
@@ -1315,7 +1435,8 @@ export default function Dashboard() {
                             const formattedDate = new Date(tx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
                             return (
-                              <div key={tx.id} className="group flex items-center gap-2.5 md:gap-3.5 p-2.5 md:p-4 rounded-2xl transition-all duration-150 animate-fade-slide-up"
+                              <div key={tx.id}
+                                className={`group flex items-center gap-2.5 md:gap-3.5 ${compactLedgerView ? 'p-2 md:p-2.5' : 'p-2.5 md:p-4'} rounded-2xl transition-all duration-150 animate-fade-slide-up`}
                                 style={{
                                   animationDelay: `${Math.min(idx * 0.04, 0.3)}s`,
                                   background: 'var(--bg-surface)',
@@ -1514,45 +1635,175 @@ export default function Dashboard() {
                   <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Manage your ledger preferences</p>
                 </div>
 
-                {/* Account */}
-                <div className="card p-5 space-y-4" style={{ background: 'var(--bg-surface)' }}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'rgba(99,102,241,0.1)' }}>👤</div>
-                    <div>
-                      <h3 className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Account</h3>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{userEmail}</p>
-                    </div>
-                  </div>
-                  <button onClick={handleLogout}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all"
-                    style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.15)', color: '#f43f5e' }}>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                    </svg>
-                    Sign Out
-                  </button>
+                {/* Ledger overview */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {[
+                    { label: 'Contacts', value: ledgerSummary.contactCount.toLocaleString('en-IN'), tone: '#818cf8' },
+                    { label: 'Transactions', value: ledgerSummary.transactionCount.toLocaleString('en-IN'), tone: '#22d3ee' },
+                    {
+                      label: 'Last Activity',
+                      value: ledgerSummary.lastActivity
+                        ? ledgerSummary.lastActivity.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+                        : 'No activity',
+                      tone: '#34d399',
+                    },
+                  ].map(({ label, value, tone }) => (
+                    <Card key={label} className="border-primary/15 bg-card/80">
+                      <CardContent className="p-4">
+                        <p className="text-[10px] font-bold uppercase" style={{ color: 'var(--text-muted)' }}>{label}</p>
+                        <p className="mt-1 text-xl font-black tabular-nums" style={{ color: tone }}>{value}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
 
-                {/* Danger zone */}
-                <div className="card p-5 space-y-4" style={{ background: 'var(--bg-surface)', border: '1px solid rgba(244,63,94,0.15)' }}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'rgba(244,63,94,0.1)' }}>⚠️</div>
-                    <div>
-                      <h3 className="font-bold text-sm" style={{ color: '#f43f5e' }}>Danger Zone</h3>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Irreversible actions — proceed carefully</p>
+                {/* Preferences */}
+                <Card className="border-primary/15 bg-card/80">
+                  <CardContent className="p-5 space-y-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style={{ background: 'rgba(99,102,241,0.1)' }}>⚙️</div>
+                        <div>
+                          <h3 className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Ledger Preferences</h3>
+                          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Small defaults that make daily entry faster</p>
+                        </div>
+                      </div>
+                      <Badge variant="secondary">Saved locally</Badge>
                     </div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      if (confirm('This will permanently delete ALL your contacts and transactions. This cannot be undone. Continue?')) {
-                        handleWipeData();
-                      }
-                    }}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all"
-                    style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.15)', color: '#f43f5e' }}>
-                    🗑️ Wipe All Data
-                  </button>
-                </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold uppercase" style={{ color: 'var(--text-secondary)' }}>Default Transaction Mode</p>
+                        <div className="grid grid-cols-2 gap-2 p-1 rounded-xl" style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>
+                          {(['Cash', 'Online Transfer'] as const).map(mode => (
+                            <Button
+                              key={mode}
+                              type="button"
+                              variant={defaultTxMode === mode ? 'default' : 'ghost'}
+                              size="sm"
+                              onClick={() => setDefaultTxMode(mode)}
+                              className="h-10"
+                            >
+                              {mode === 'Cash' ? '💵' : '🏦'} {mode}
+                            </Button>
+                          ))}
+                        </div>
+                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>New transactions will open with this payment mode selected.</p>
+                      </div>
+
+                      <div className="space-y-3">
+                        {[
+                          {
+                            label: 'Dark mode',
+                            desc: 'Use the richer high-contrast dashboard theme.',
+                            active: theme === 'dark',
+                            onToggle: toggleTheme,
+                          },
+                          {
+                            label: 'Reveal balances by default',
+                            desc: 'Show amounts across overview and contact lists without holding peek.',
+                            active: showBalances,
+                            onToggle: () => setShowBalances((current) => !current),
+                          },
+                          {
+                            label: 'Compact transaction rows',
+                            desc: 'Reduce spacing in the ledger timeline for quicker scanning.',
+                            active: compactLedgerView,
+                            onToggle: () => setCompactLedgerView((current) => !current),
+                          },
+                        ].map(({ label, desc, active, onToggle }) => (
+                          <button key={label} type="button" onClick={onToggle}
+                            className="w-full flex items-center justify-between gap-4 p-3 rounded-xl text-left transition-all"
+                            style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}
+                            aria-pressed={active}>
+                            <span>
+                              <span className="flex items-center gap-2 text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                                {label}
+                                {label === 'Dark mode' && (
+                                  <Badge variant="secondary">{theme === 'dark' ? 'Dark' : 'Light'}</Badge>
+                                )}
+                              </span>
+                              <span className="block text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{desc}</span>
+                            </span>
+                            <Switch
+                              checked={active}
+                              onCheckedChange={onToggle}
+                              aria-label={label}
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Data tools */}
+                <Card className="border-primary/15 bg-card/80">
+                  <CardContent className="p-5 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style={{ background: 'rgba(6,182,212,0.1)' }}>📦</div>
+                      <div>
+                        <h3 className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Data Tools</h3>
+                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Export, copy, and review your ledger outside the app</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <Button type="button" variant="secondary" onClick={handleExportBackup} disabled={contacts.length === 0}>
+                        JSON Backup
+                      </Button>
+                      <Button type="button" variant="secondary" onClick={handleExportCsv} disabled={ledgerSummary.transactionCount === 0}>
+                        CSV Export
+                      </Button>
+                      <Button type="button" variant="secondary" onClick={handleCopyLedgerSummary}>
+                        Copy Summary
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Account */}
+                <Card className="border-primary/15 bg-card/80">
+                  <CardContent className="p-5 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'rgba(99,102,241,0.1)' }}>👤</div>
+                        <div className="min-w-0">
+                          <h3 className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{userName || 'Account'}</h3>
+                          <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{userEmail}</p>
+                        </div>
+                      </div>
+                      <Button type="button" variant="outline" onClick={handleLogout}>
+                        Sign Out
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Danger zone */}
+                <Card className="bg-card/80" style={{ border: '1px solid rgba(244,63,94,0.18)' }}>
+                  <CardContent className="p-5 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'rgba(244,63,94,0.1)' }}>⚠️</div>
+                      <div>
+                        <h3 className="font-bold text-sm" style={{ color: '#f43f5e' }}>Danger Zone</h3>
+                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Irreversible actions — proceed carefully</p>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={() => {
+                        if (confirm('This will permanently delete ALL your contacts and transactions. This cannot be undone. Continue?')) {
+                          handleWipeData();
+                        }
+                      }}
+                      className="w-full"
+                    >
+                      Wipe All Data
+                    </Button>
+                  </CardContent>
+                </Card>
 
                 <UpcomingFeatures />
               </div>
@@ -1565,7 +1816,7 @@ export default function Dashboard() {
           MOBILE BOTTOM NAV
       ══════════════════════════════════════════════════════ */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-stretch"
-        style={{ background: 'rgba(13,17,23,0.95)', backdropFilter: 'blur(20px)', borderTop: '1px solid var(--border-soft)' }}>
+        style={{ background: 'var(--bg-glass)', backdropFilter: 'blur(20px)', borderTop: '1px solid var(--border-soft)' }}>
         {([
           {
             tab: 'ledgers' as const, label: 'Friends', icon: (

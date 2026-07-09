@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
+import { ThemeProvider } from "./theme-provider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -39,9 +41,15 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <Script id="theme-init" strategy="beforeInteractive">
+          {`try{var t=localStorage.getItem('udharwale-theme')==='light'?'light':'dark';var r=document.documentElement;r.classList.remove(t==='light'?'dark':'light');r.classList.add(t);r.dataset.theme=t;r.style.colorScheme=t;}catch(e){}`}
+        </Script>
+        <ThemeProvider>{children}</ThemeProvider>
+      </body>
     </html>
   );
 }
