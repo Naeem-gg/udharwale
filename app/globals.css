@@ -1,8 +1,50 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Pacifico&display=swap');
 @import "tailwindcss";
 
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+}
+
 /* ===================== DESIGN TOKENS ===================== */
 :root {
+  /* shadcn-compatible tokens */
+  --background: #080c18;
+  --foreground: #eef2ff;
+  --card: rgba(8, 12, 24, 0.84);
+  --card-foreground: #eef2ff;
+  --primary: #7c3aed;
+  --primary-foreground: #ffffff;
+  --secondary: rgba(14, 20, 38, 0.86);
+  --secondary-foreground: #eef2ff;
+  --muted: rgba(14, 20, 38, 0.7);
+  --muted-foreground: #9ca3c4;
+  --accent: rgba(124, 58, 237, 0.12);
+  --accent-foreground: #c084fc;
+  --destructive: #f43f5e;
+  --destructive-foreground: #ffffff;
+  --border: rgba(139, 92, 246, 0.14);
+  --input: rgba(139, 92, 246, 0.16);
+  --ring: rgba(168, 85, 247, 0.55);
+  --radius: 0.625rem;
+
   /* Backgrounds — deep space */
   --bg-base: #03040a;
   --bg-surface: #080c18;
@@ -74,18 +116,18 @@ body {
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 h1, h2, h3, h4, h5, h6 {
   font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .font-branding {
   font-family: 'Pacifico', cursive;
   font-weight: 400;
-  letter-spacing: 0.05em;
+  letter-spacing: 0;
 }
 
 ::selection {

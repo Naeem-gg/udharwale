@@ -2,6 +2,20 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { ArrowRight, LockKeyhole, MessageCircle, ReceiptText, ShieldCheck, Sparkles, Zap } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
+
+const features = [
+  { icon: ReceiptText, title: 'Smart Ledger', desc: 'Track who owes what, when, and how with full transaction history.' },
+  { icon: MessageCircle, title: 'WhatsApp Reminders', desc: 'Send payment reminders directly via WhatsApp in one tap.' },
+  { icon: ShieldCheck, title: '100% Private', desc: 'Your data stays secure. No ads, no data selling, no nonsense.' },
+  { icon: Zap, title: 'Instant Settle', desc: 'Mark full or custom balance settlements without losing context.' },
+  { icon: LockKeyhole, title: 'Account Recovery', desc: 'Recover access with a PIN or security answer when needed.' },
+  { icon: Sparkles, title: 'Insights & Flow', desc: 'See your net position, credit, and debit at a glance.' },
+];
 
 export default function LandingPage() {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
@@ -21,74 +35,49 @@ export default function LandingPage() {
   }, []);
 
   return (
-    <div className="min-h-screen text-white flex flex-col overflow-x-hidden relative"
-      style={{ background: 'var(--bg-base)', fontFamily: "'Outfit', system-ui, sans-serif" }}>
-
-      {/* ── Aurora Background ── */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <div className="animate-aurora absolute rounded-full aurora-blob"
-          style={{ width: 700, height: 700, top: '-15%', left: '-10%', background: 'radial-gradient(circle at center, rgba(124,58,237,0.14) 0%, transparent 70%)' }} />
-        <div className="animate-aurora absolute rounded-full aurora-blob"
-          style={{ width: 600, height: 600, bottom: '0%', right: '-8%', animationDelay: '4s', animationDirection: 'reverse', background: 'radial-gradient(circle at center, rgba(6,182,212,0.10) 0%, transparent 70%)' }} />
-        <div className="animate-aurora absolute rounded-full aurora-blob"
-          style={{ width: 400, height: 400, top: '40%', left: '45%', animationDelay: '7s', background: 'radial-gradient(circle at center, rgba(168,85,247,0.08) 0%, transparent 70%)' }} />
-        {/* Subtle grid */}
-        <div className="absolute inset-0" style={{
-          backgroundImage: 'linear-gradient(rgba(124,58,237,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(124,58,237,0.04) 1px, transparent 1px)',
-          backgroundSize: '64px 64px'
-        }} />
-        {/* Top edge glow */}
-        <div className="absolute top-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(124,58,237,0.4), rgba(6,182,212,0.3), transparent)' }} />
+    <div className="relative flex min-h-screen flex-col overflow-x-hidden bg-[var(--bg-base)] text-foreground">
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+        <div className="aurora-blob animate-aurora absolute -left-28 -top-32 h-[700px] w-[700px] bg-[radial-gradient(circle_at_center,rgba(124,58,237,0.14)_0%,transparent_70%)]" />
+        <div className="aurora-blob animate-aurora absolute -right-24 bottom-0 h-[600px] w-[600px] bg-[radial-gradient(circle_at_center,rgba(6,182,212,0.10)_0%,transparent_70%)] [animation-delay:4s] [animation-direction:reverse]" />
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(124,58,237,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(124,58,237,0.04)_1px,transparent_1px)] bg-[size:64px_64px]" />
+        <div className="absolute left-0 right-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(124,58,237,0.4),rgba(6,182,212,0.3),transparent)]" />
       </div>
 
-      {/* ── Header / Navbar ── */}
       <header className="relative z-10 w-full">
-        <div className="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
-          {/* Logo */}
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
           <div className="flex items-center gap-3">
             <div className="relative">
-              <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-lg font-black text-white shadow-2xl"
-                style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', boxShadow: '0 4px 20px rgba(124,58,237,0.4)' }}>
-                🧾
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-white shadow-[0_4px_20px_rgba(124,58,237,0.4)]">
+                <ReceiptText className="h-5 w-5" aria-hidden="true" />
               </div>
-              <div className="absolute inset-0 rounded-2xl animate-glow-pulse"
-                style={{ background: 'transparent', boxShadow: '0 0 20px rgba(124,58,237,0.3)' }} />
+              <div className="absolute inset-0 animate-glow-pulse rounded-lg shadow-[0_0_20px_rgba(124,58,237,0.3)]" />
             </div>
             <div className="flex flex-col">
-              <span className="text-xl font-bold text-transparent bg-clip-text bg-linear-to-r from-violet-400 to-cyan-400 font-branding">Udharwale</span>
-              <span className="text-[9px] font-bold uppercase tracking-widest mt-0.5"
-                style={{ color: 'var(--violet-bright)' }}>By Naeem Navjivan</span>
+              <span className="font-branding text-xl text-primary">Udharwale</span>
+              <span className="mt-0.5 text-[9px] font-bold uppercase text-primary">By Naeem Navjivan</span>
             </div>
-            <span className="hidden sm:block text-[9px] tracking-wider uppercase font-extrabold px-1.5 py-0.5 rounded-md"
-              style={{ background: 'rgba(124,58,237,0.12)', color: 'var(--violet-bright)', border: '1px solid rgba(124,58,237,0.25)' }}>
-              PRO v1.2
-            </span>
+            <Badge className="hidden sm:inline-flex">PRO v1.2</Badge>
           </div>
 
-          {/* Nav */}
           <nav className="flex items-center gap-3">
             {isLoggedIn === null ? (
-              <div className="w-24 h-8 rounded-xl animate-glow-pulse" style={{ background: 'var(--bg-raised)' }} />
+              <div className="h-8 w-24 rounded-md bg-secondary shimmer-bg" />
             ) : isLoggedIn ? (
               <div className="flex items-center gap-3">
-                <span className="hidden sm:block text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                  Hey, {userName} 👋
+                <span className="hidden text-xs font-semibold text-muted-foreground sm:block">
+                  Hey, {userName || 'there'}
                 </span>
-                <Link href="/dashboard"
-                  className="btn-primary text-xs px-4 py-2" style={{ borderRadius: 10 }}>
-                  Dashboard →
+                <Link href="/dashboard" className={buttonVariants({ size: 'sm' })}>
+                  Dashboard
+                  <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
                 </Link>
               </div>
             ) : (
               <>
-                <Link href="/login"
-                  className="text-xs font-semibold px-3 py-2 transition-colors"
-                  style={{ color: 'var(--text-secondary)' }}>
+                <Link href="/login" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
                   Sign In
                 </Link>
-                <Link href="/signup"
-                  className="text-xs font-bold px-4 py-2 rounded-xl transition-all"
-                  style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }}>
+                <Link href="/signup" className={buttonVariants({ variant: 'secondary', size: 'sm' })}>
                   Register
                 </Link>
               </>
@@ -97,207 +86,141 @@ export default function LandingPage() {
         </div>
       </header>
 
-      {/* ── Hero ── */}
-      <main className="relative z-10 flex-1 flex flex-col justify-center max-w-6xl w-full mx-auto px-6 py-16 md:py-28">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-14 items-center">
+      <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center px-6 py-16 md:py-24">
+        <div className="grid grid-cols-1 items-center gap-14 lg:grid-cols-12">
+          <section className="space-y-7 text-center lg:col-span-7 lg:text-left">
+            <Badge className="animate-fade-slide-up gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+              Free Personal Khata Book · No Hidden Fees
+            </Badge>
 
-          {/* Left: Hero Text */}
-          <div className="lg:col-span-7 space-y-7 text-center lg:text-left">
-            {/* Badge */}
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold animate-fade-slide-up"
-              style={{ background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.2)', color: 'var(--violet-bright)' }}>
-              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--cyan)' }} />
-              <span>✨ Free Personal Khata Book · No Hidden Fees</span>
-            </div>
-
-            {/* Headline */}
-            <div className="space-y-2 animate-fade-slide-up" style={{ animationDelay: '0.08s' }}>
-              <h1 className="text-5xl sm:text-6xl md:text-7xl font-black leading-[1.05] tracking-tight"
-                style={{ fontFamily: "'Syne', sans-serif", color: 'var(--text-primary)' }}>
-                Settle debts,<br />
-                track loans,{' '}
-                <span className="gradient-text">
-                  maintain trust.
-                </span>
+            <div className="space-y-2 animate-fade-slide-up [animation-delay:0.08s]">
+              <h1 className="text-5xl font-black leading-[1.05] text-foreground sm:text-6xl md:text-7xl">
+                Settle debts,
+                <br />
+                track loans, <span className="gradient-text">maintain trust.</span>
               </h1>
             </div>
 
-            {/* Subtext */}
-            <p className="text-base sm:text-lg leading-relaxed max-w-xl mx-auto lg:mx-0 animate-fade-slide-up"
-              style={{ color: 'var(--text-secondary)', animationDelay: '0.16s' }}>
-              Udharwale is a beautiful, personal ledger tracker designed to remove friction from shared bills, friend balances, and loan tracking — clean cards, auto logs, and instant WhatsApp reminders.
+            <p className="mx-auto max-w-xl animate-fade-slide-up text-base leading-relaxed text-muted-foreground sm:text-lg lg:mx-0 [animation-delay:0.16s]">
+              Udharwale is a personal ledger tracker designed to remove friction from shared bills, friend balances, and loan tracking with clean cards, auto logs, and instant WhatsApp reminders.
             </p>
 
-            {/* CTAs */}
-            <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3 pt-2 animate-fade-slide-up"
-              style={{ animationDelay: '0.24s' }}>
+            <div className="flex animate-fade-slide-up flex-col items-center justify-center gap-3 pt-2 sm:flex-row lg:justify-start [animation-delay:0.24s]">
               {isLoggedIn === null ? (
-                <div className="w-40 h-12 rounded-xl shimmer-bg" />
+                <div className="h-12 w-40 rounded-md shimmer-bg" />
               ) : isLoggedIn ? (
-                <Link href="/dashboard"
-                  className="btn-primary w-full sm:w-auto px-8 py-3.5 text-sm" style={{ borderRadius: 14 }}>
-                  Go to Dashboard →
+                <Link href="/dashboard" className={buttonVariants({ size: 'lg', className: 'w-full sm:w-auto' })}>
+                  Go to Dashboard
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
                 </Link>
               ) : (
                 <>
-                  <Link href="/signup"
-                    className="btn-primary w-full sm:w-auto px-8 py-3.5 text-sm" style={{ borderRadius: 14 }}>
-                    Get Started Free 🚀
+                  <Link href="/signup" className={buttonVariants({ size: 'lg', className: 'w-full sm:w-auto' })}>
+                    Get Started Free
+                    <ArrowRight className="h-4 w-4" aria-hidden="true" />
                   </Link>
-                  <Link href="/login"
-                    className="w-full sm:w-auto flex items-center justify-center px-8 py-3.5 rounded-2xl text-sm font-bold transition-all"
-                    style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-secondary)' }}>
+                  <Link href="/login" className={buttonVariants({ variant: 'secondary', size: 'lg', className: 'w-full sm:w-auto' })}>
                     Sign In
                   </Link>
                 </>
               )}
             </div>
 
-            {/* Metrics */}
-            <div className="flex items-center justify-center lg:justify-start gap-8 pt-6 border-t animate-fade-slide-up"
-              style={{ borderColor: 'var(--border-soft)', animationDelay: '0.32s' }}>
+            <div className="flex animate-fade-slide-up items-center justify-center gap-8 border-t border-border pt-6 lg:justify-start [animation-delay:0.32s]">
               {[
-                { value: '0%', label: 'Hidden Fees', color: 'var(--text-primary)' },
-                { value: '1-Click', label: 'WhatsApp Share', color: 'var(--cyan-light)' },
-                { value: '100%', label: 'Private & Safe', color: 'var(--violet-bright)' },
-              ].map(({ value, label, color }) => (
+                { value: '0%', label: 'Hidden Fees', tone: 'text-foreground' },
+                { value: '1-Click', label: 'WhatsApp Share', tone: 'text-cyan-300' },
+                { value: '100%', label: 'Private & Safe', tone: 'text-primary' },
+              ].map(({ value, label, tone }) => (
                 <div key={label}>
-                  <p className="text-2xl font-black" style={{ color, fontFamily: "'Syne', sans-serif" }}>{value}</p>
-                  <p className="text-[10px] font-bold uppercase tracking-wider mt-0.5" style={{ color: 'var(--text-muted)' }}>{label}</p>
+                  <p className={cn('text-2xl font-black', tone)}>{value}</p>
+                  <p className="mt-0.5 text-[10px] font-bold uppercase text-muted-foreground">{label}</p>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
 
-          {/* Right: Mockup Card */}
-          <div className="lg:col-span-5 relative w-full max-w-md mx-auto animate-float">
-            {/* Glow behind card */}
-            <div className="absolute inset-0 rounded-3xl animate-glow-pulse"
-              style={{ background: 'radial-gradient(ellipse at center, rgba(124,58,237,0.18) 0%, transparent 70%)', filter: 'blur(20px)' }} />
-
-            {/* Main card */}
-            <div className="relative rounded-3xl p-6 space-y-5 overflow-hidden"
-              style={{
-                background: 'rgba(8,12,24,0.80)',
-                backdropFilter: 'blur(24px)',
-                border: '1px solid rgba(124,58,237,0.2)',
-                boxShadow: '0 24px 64px rgba(0,0,0,0.6), 0 1px 0 rgba(168,85,247,0.15) inset',
-              }}>
-
-              {/* Inner top glow line */}
-              <div className="absolute top-0 left-10 right-10 h-px"
-                style={{ background: 'linear-gradient(90deg, transparent, rgba(192,132,252,0.4), transparent)' }} />
-
-              {/* Contact header */}
-              <div className="flex items-center justify-between pb-4"
-                style={{ borderBottom: '1px solid rgba(124,58,237,0.12)' }}>
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-2xl flex items-center justify-center font-black text-white text-sm"
-                    style={{ background: 'linear-gradient(135deg, #06b6d4, #7c3aed)', boxShadow: '0 4px 16px rgba(6,182,212,0.3)' }}>
-                    AS
+          <section className="relative mx-auto w-full max-w-md animate-float lg:col-span-5">
+            <div className="absolute inset-0 rounded-lg bg-[radial-gradient(ellipse_at_center,rgba(124,58,237,0.18)_0%,transparent_70%)] blur-xl" />
+            <Card className="relative overflow-hidden border-primary/20 bg-card/85 p-0 backdrop-blur-2xl shadow-[0_24px_64px_rgba(0,0,0,0.6)]">
+              <CardContent className="space-y-5 p-6">
+                <div className="flex items-center justify-between border-b border-border pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[linear-gradient(135deg,#06b6d4,#7c3aed)] text-sm font-black text-white shadow-[0_4px_16px_rgba(6,182,212,0.3)]">
+                      AS
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-white">Aarav Sharma</h4>
+                      <p className="text-[10px] text-muted-foreground">+91 98765 43210</p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-bold text-sm text-white" style={{ fontFamily: "'Syne', sans-serif" }}>Aarav Sharma</h4>
-                    <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>+91 98765 43210</p>
-                  </div>
+                  <Badge variant="success">Owes ₹4,500</Badge>
                 </div>
-                <span className="text-xs font-bold px-2.5 py-1 rounded-xl"
-                  style={{ background: 'rgba(16,185,129,0.12)', color: '#34d399', border: '1px solid rgba(16,185,129,0.2)' }}>
-                  Owes ₹4,500
-                </span>
-              </div>
 
-              {/* Transactions */}
-              <div className="space-y-3">
-                {[
-                  { emoji: '🍔', label: 'Sunday Dinner', date: '20 May 2026', amount: '+₹1,200', isGave: true },
-                  { emoji: '🚗', label: 'Cab Share Airport', date: '18 May 2026', amount: '-₹400', isGave: false },
-                  { emoji: '☕', label: 'Coffee meetup', date: '14 May 2026', amount: '+₹280', isGave: true },
-                ].map((tx, i) => (
-                  <div key={i} className="flex items-center justify-between p-3.5 rounded-2xl"
-                    style={{
-                      background: 'rgba(14,20,38,0.7)',
-                      borderLeft: `3px solid ${tx.isGave ? 'var(--emerald)' : 'var(--rose)'}`,
-                      border: '1px solid rgba(124,58,237,0.08)',
-                      borderLeftWidth: 3,
-                      borderLeftColor: tx.isGave ? 'var(--emerald)' : 'var(--rose)',
-                    }}>
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-base">{tx.emoji}</span>
+                <div className="space-y-3">
+                  {[
+                    { label: 'Sunday Dinner', date: '20 May 2026', amount: '+₹1,200', isGave: true },
+                    { label: 'Cab Share Airport', date: '18 May 2026', amount: '-₹400', isGave: false },
+                    { label: 'Coffee meetup', date: '14 May 2026', amount: '+₹280', isGave: true },
+                  ].map((tx) => (
+                    <div key={tx.label} className={cn('flex items-center justify-between rounded-md border bg-secondary/70 p-3.5', tx.isGave ? 'border-l-emerald-400' : 'border-l-rose-400', 'border-l-3')}>
                       <div>
                         <p className="text-xs font-semibold text-white">{tx.label}</p>
-                        <p className="text-[9px]" style={{ color: 'var(--text-muted)' }}>{tx.date}</p>
+                        <p className="text-[9px] text-muted-foreground">{tx.date}</p>
                       </div>
+                      <span className={cn('text-xs font-black tabular-nums', tx.isGave ? 'text-emerald-300' : 'text-rose-300')}>
+                        {tx.amount}
+                      </span>
                     </div>
-                    <span className="text-xs font-black tabular-nums"
-                      style={{ color: tx.isGave ? 'var(--emerald-light)' : 'var(--rose-light)' }}>
-                      {tx.amount}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Summary */}
-              <div className="flex items-center justify-between p-4 rounded-2xl"
-                style={{ background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.18)' }}>
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--violet-bright)', opacity: 0.7 }}>Net Balance</p>
-                  <p className="text-lg font-black mt-0.5 gradient-text" style={{ fontFamily: "'Syne', sans-serif" }}>₹4,500.00</p>
+                  ))}
                 </div>
-                <button className="text-xs font-bold px-3 py-1.5 rounded-xl text-white"
-                  style={{ background: 'linear-gradient(135deg, #059669, #10b981)', boxShadow: '0 2px 12px rgba(16,185,129,0.3)' }}>
-                  💬 Remind
-                </button>
-              </div>
-            </div>
-          </div>
+
+                <div className="flex items-center justify-between rounded-md border border-primary/25 bg-primary/10 p-4">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase text-primary/80">Net Balance</p>
+                    <p className="gradient-text mt-0.5 text-lg font-black">₹4,500.00</p>
+                  </div>
+                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500">
+                    <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                    Remind
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </section>
         </div>
       </main>
 
-      {/* ── Features ── */}
-      <section className="relative z-10 max-w-6xl mx-auto px-6 py-16 w-full">
-        <div className="text-center mb-10">
-          <h2 className="text-2xl font-black" style={{ fontFamily: "'Syne', sans-serif" }}>
+      <section className="relative z-10 mx-auto w-full max-w-6xl px-6 py-16">
+        <div className="mb-10 text-center">
+          <h2 className="text-2xl font-black">
             <span className="gradient-text">Everything you need</span> to manage shared money
           </h2>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[
-            { icon: '📖', title: 'Smart Ledger', desc: 'Track who owes what, when, and how — with full transaction history.' },
-            { icon: '💬', title: 'WhatsApp Reminders', desc: 'Send one-tap payment reminders directly via WhatsApp.' },
-            { icon: '🔒', title: '100% Private', desc: 'Your data stays secure. No ads, no data selling, no nonsense.' },
-            { icon: '⚡', title: 'Instant Settle', desc: 'Mark full or custom balance settlements with one tap.' },
-            { icon: '📱', title: 'Contact Import', desc: 'Import contacts from your phone on Android Chrome instantly.' },
-            { icon: '📊', title: 'Insights & Flow', desc: 'See your net position, credit, and debit at a glance.' },
-          ].map(({ icon, title, desc }, i) => (
-            <div key={i} className="p-5 rounded-2xl transition-all hover:-translate-y-1 hover:border-violet-500/30"
-              style={{
-                background: 'rgba(8,12,24,0.7)',
-                border: '1px solid var(--border-soft)',
-                backdropFilter: 'blur(12px)',
-              }}>
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl mb-4"
-                style={{ background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.15)' }}>
-                {icon}
-              </div>
-              <h3 className="font-bold text-sm mb-1" style={{ fontFamily: "'Syne', sans-serif", color: 'var(--text-primary)' }}>{title}</h3>
-              <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>{desc}</p>
-            </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {features.map(({ icon: Icon, title, desc }) => (
+            <Card key={title} className="border-primary/15 bg-card/70 backdrop-blur-md transition-all hover:-translate-y-1 hover:border-primary/30">
+              <CardContent className="p-5">
+                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-md border border-primary/15 bg-primary/10 text-primary">
+                  <Icon className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <h3 className="mb-1 text-sm font-bold text-foreground">{title}</h3>
+                <p className="text-xs leading-relaxed text-muted-foreground">{desc}</p>
+              </CardContent>
+            </Card>
           ))}
         </div>
       </section>
 
-      {/* ── Footer ── */}
-      <footer className="relative z-10 max-w-6xl mx-auto px-6 py-8 w-full border-t"
-        style={{ borderColor: 'var(--border-soft)' }}>
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-xs"
-          style={{ color: 'var(--text-muted)' }}>
+      <footer className="relative z-10 mx-auto w-full max-w-6xl border-t border-border px-6 py-8">
+        <div className="flex flex-col items-center justify-between gap-4 text-xs text-muted-foreground sm:flex-row">
           <p>© 2026 Udharwale by Naeem Navjivan. All rights reserved.</p>
           <div className="flex items-center gap-6">
-            <a href="#" className="hover:text-violet-400 transition-colors">Privacy Policy</a>
-            <a href="#" className="hover:text-violet-400 transition-colors">Terms of Service</a>
-            <div className="flex items-center gap-1.5 font-bold" style={{ color: 'var(--emerald)' }}>
-              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--emerald)' }} />
+            <a href="#" className="transition-colors hover:text-primary">Privacy Policy</a>
+            <a href="#" className="transition-colors hover:text-primary">Terms of Service</a>
+            <div className="flex items-center gap-1.5 font-bold text-emerald-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
               <span>Secure & Private</span>
             </div>
           </div>
