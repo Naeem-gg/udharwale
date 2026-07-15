@@ -217,8 +217,8 @@ export default function LandingPage() {
         <div className="flex flex-col items-center justify-between gap-4 text-xs text-muted-foreground sm:flex-row">
           <p>© 2026 Udharwale by Naeem Navjivan. All rights reserved.</p>
           <div className="flex items-center gap-6">
-            <a href="#" className="transition-colors hover:text-primary">Privacy Policy</a>
-            <a href="#" className="transition-colors hover:text-primary">Terms of Service</a>
+            <Link href="/privacy-policy" className="transition-colors hover:text-primary">Privacy Policy</Link>
+            <Link href="/terms-of-service" className="transition-colors hover:text-primary">Terms of Service</Link>
             <div className="flex items-center gap-1.5 font-bold text-emerald-400">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
               <span>Secure & Private</span>

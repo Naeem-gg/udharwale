@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { useTheme } from '@/app/theme-provider';
+import ConfirmDialog from './ConfirmDialog';
 
 // Custom CSS-based Confetti Particle component for settlements
 interface ConfettiParticle {
@@ -85,9 +86,24 @@ export default function Dashboard() {
   const [contactsSupported, setContactsSupported] = useState(false);
   const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
+  // --- Account Security Form State ---
+  const [securityModal, setSecurityModal] = useState<'password' | 'pin' | 'answer' | null>(null);
+  const [securityCurrentPassword, setSecurityCurrentPassword] = useState('');
+  const [securityPrimaryValue, setSecurityPrimaryValue] = useState('');
+  const [securityConfirmValue, setSecurityConfirmValue] = useState('');
+  const [isUpdatingSecurity, setIsUpdatingSecurity] = useState(false);
+
   // --- Confetti Particle System ---
   const [particles, setParticles] = useState<ConfettiParticle[]>([]);
   const confettiInterval = useRef<NodeJS.Timeout | null>(null);
+  const restoreInputRef = useRef<HTMLInputElement | null>(null);
+  const confirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    tone?: 'danger' | 'default';
+  } | null>(null);
 
   // --- Fetch Contacts Function (Component Scope for Retry) ---
   const loadContacts = async () => {
@@ -155,7 +171,7 @@ export default function Dashboard() {
       await signOut({ callbackUrl: '/login' });
     } catch (e) {
       console.error(e);
-      alert('An error occurred during log out.');
+      showToast('An error occurred during log out.', 'error');
     }
   };
 
@@ -223,12 +239,13 @@ export default function Dashboard() {
         saveContactsState([]);
         setSelectedContactId(null);
         setDbStatus('connected');
+        showToast('All ledger data wiped', 'success');
       } else {
-        alert('Failed to wipe database on backend.');
+        showToast('Failed to wipe database on backend.', 'error');
       }
     } catch (err) {
       console.error('Error modifying database state:', err);
-      alert('An error occurred while connecting to the database server.');
+      showToast('An error occurred while connecting to the database server.', 'error');
     }
   };
 
@@ -408,11 +425,11 @@ export default function Dashboard() {
         setIsAddContactOpen(false);
       } else {
         const errorData = await res.json();
-        alert(`Failed to add contact: ${errorData.error || 'Server error'}`);
+        showToast(`Failed to add contact: ${errorData.error || 'Server error'}`, 'error');
       }
     } catch (err) {
       console.error('Error adding contact to backend:', err);
-      alert('An error occurred while communicating with the database.');
+      showToast('An error occurred while communicating with the database.', 'error');
     }
   };
 
@@ -441,11 +458,11 @@ export default function Dashboard() {
         showToast('Contact updated successfully', 'success');
       } else {
         const errorData = await res.json();
-        alert(`Failed to update contact: ${errorData.error || 'Server error'}`);
+        showToast(`Failed to update contact: ${errorData.error || 'Server error'}`, 'error');
       }
     } catch (err) {
       console.error('Error updating contact:', err);
-      alert('An error occurred while communicating with the database.');
+      showToast('An error occurred while communicating with the database.', 'error');
     }
   };
 
@@ -525,25 +542,32 @@ export default function Dashboard() {
   };
 
   const handleDeleteContact = async (contactId: string) => {
-    if (confirm('Are you sure you want to delete this contact and all their ledger history?')) {
-      try {
-        const res = await fetch(`/api/contacts/${contactId}`, {
-          method: 'DELETE',
-        });
+    const confirmed = await confirmAction({
+      title: 'Delete contact?',
+      message: 'This will permanently delete this contact and all their ledger history.',
+      confirmLabel: 'Delete Contact',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
 
-        if (res.ok) {
-          const remaining = contacts.filter((c) => c.id !== contactId);
-          saveContactsState(remaining);
-          setSelectedContactId(null);
-          setMobileView('list');
-        } else {
-          const errorData = await res.json();
-          alert(`Failed to delete contact: ${errorData.error || 'Server error'}`);
-        }
-      } catch (err) {
-        console.error('Error deleting contact from backend:', err);
-        alert('An error occurred while deleting the contact.');
+    try {
+      const res = await fetch(`/api/contacts/${contactId}`, {
+        method: 'DELETE',
+      });
+
+      if (res.ok) {
+        const remaining = contacts.filter((c) => c.id !== contactId);
+        saveContactsState(remaining);
+        setSelectedContactId(null);
+        setMobileView('list');
+        showToast('Contact deleted', 'success');
+      } else {
+        const errorData = await res.json();
+        showToast(`Failed to delete contact: ${errorData.error || 'Server error'}`, 'error');
       }
+    } catch (err) {
+      console.error('Error deleting contact from backend:', err);
+      showToast('An error occurred while deleting the contact.', 'error');
     }
   };
 
@@ -611,7 +635,7 @@ export default function Dashboard() {
             setTimeout(() => triggerConfetti(), 150);
           }
         } else {
-          alert('Failed to update transaction on backend.');
+          showToast('Failed to update transaction on backend.', 'error');
         }
       } else {
         // Add Mode
@@ -648,44 +672,51 @@ export default function Dashboard() {
             setTimeout(() => triggerConfetti(), 150);
           }
         } else {
-          alert('Failed to record transaction on backend.');
+          showToast('Failed to record transaction on backend.', 'error');
         }
       }
     } catch (err) {
       console.error('Error submitting transaction:', err);
-      alert('An error occurred while saving transaction data.');
+      showToast('An error occurred while saving transaction data.', 'error');
     }
   };
 
   const handleDeleteTransaction = async (txId: string) => {
-    if (confirm('Delete this transaction? This will permanently modify the balance.')) {
-      try {
-        const res = await fetch(`/api/contacts/${selectedContactId}/transactions/${txId}`, {
-          method: 'DELETE',
-        });
+    const confirmed = await confirmAction({
+      title: 'Delete transaction?',
+      message: 'This will permanently modify the contact balance.',
+      confirmLabel: 'Delete Transaction',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
 
-        if (res.ok) {
-          const updatedContacts = contacts.map((c) => {
-            if (c.id !== selectedContactId) return c;
-            return {
-              ...c,
-              transactions: c.transactions.filter((t) => t.id !== txId),
-            };
-          });
-          saveContactsState(updatedContacts);
-          setIsAddTransactionOpen(false);
-          setEditingTransaction(null);
-        } else {
-          alert('Failed to delete transaction on backend.');
-        }
-      } catch (err) {
-        console.error('Error deleting transaction:', err);
-        alert('An error occurred while deleting the transaction.');
+    try {
+      const res = await fetch(`/api/contacts/${selectedContactId}/transactions/${txId}`, {
+        method: 'DELETE',
+      });
+
+      if (res.ok) {
+        const updatedContacts = contacts.map((c) => {
+          if (c.id !== selectedContactId) return c;
+          return {
+            ...c,
+            transactions: c.transactions.filter((t) => t.id !== txId),
+          };
+        });
+        saveContactsState(updatedContacts);
+        setIsAddTransactionOpen(false);
+        setEditingTransaction(null);
+        showToast('Transaction deleted', 'success');
+      } else {
+        showToast('Failed to delete transaction on backend.', 'error');
       }
+    } catch (err) {
+      console.error('Error deleting transaction:', err);
+      showToast('An error occurred while deleting the transaction.', 'error');
     }
   };
 
-  const handleSettleFullBalance = async () => {
+  const handleOpenSettlement = (mode: 'full' | 'partial') => {
     if (!selectedContact) return;
     const balance = getContactBalance(selectedContact);
     if (balance === 0) return;
@@ -693,9 +724,9 @@ export default function Dashboard() {
     const settleAmount = Math.abs(balance);
     const settleType = balance > 0 ? 'got' : 'gave';
 
-    setTxAmount(settleAmount.toString());
+    setTxAmount(mode === 'full' ? settleAmount.toString() : '');
     setTxType(settleType);
-    setTxRemark('🤝 Settlement');
+    setTxRemark(mode === 'full' ? '🤝 Full Settlement' : '🤝 Partial Settlement');
     setTxMode('Cash');
     setTxDate(new Date().toISOString().split('T')[0]);
     setEditingTransaction(null);
@@ -769,10 +800,11 @@ export default function Dashboard() {
         });
       } else {
         await navigator.clipboard.writeText(text);
-        alert('Ledger copied to clipboard!');
+        showToast('Ledger copied to clipboard', 'success');
       }
     } catch (err) {
       console.error('Share failed', err);
+      showToast('Could not share ledger', 'error');
     }
     setIsShareModalOpen(false);
   };
@@ -815,6 +847,24 @@ export default function Dashboard() {
     }, 3800);
   }, []);
 
+  const confirmAction = React.useCallback((options: {
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    tone?: 'danger' | 'default';
+  }) => {
+    setConfirmDialog(options);
+    return new Promise<boolean>((resolve) => {
+      confirmResolverRef.current = resolve;
+    });
+  }, []);
+
+  const closeConfirmDialog = React.useCallback((confirmed: boolean) => {
+    confirmResolverRef.current?.(confirmed);
+    confirmResolverRef.current = null;
+    setConfirmDialog(null);
+  }, []);
+
   const downloadTextFile = (filename: string, content: string, type: string) => {
     const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
@@ -846,29 +896,36 @@ export default function Dashboard() {
   };
 
   const handleExportCsv = () => {
+    if (contacts.length === 0) {
+      showToast('Add at least one contact before exporting CSV.', 'warn');
+      return;
+    }
+
     const escapeCsv = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
     const rows = [
       ['Contact', 'Phone', 'Email', 'Date', 'Type', 'Mode', 'Remark', 'Amount'],
       ...contacts.flatMap((contact) =>
-        contact.transactions.map((transaction) => [
-          contact.name,
-          contact.phone,
-          contact.email || '',
-          transaction.date,
-          transaction.type === 'gave' ? 'You gave' : 'You got',
-          transaction.mode,
-          transaction.remark,
-          transaction.amount,
-        ])
+        contact.transactions.length > 0
+          ? contact.transactions.map((transaction) => [
+              contact.name,
+              contact.phone,
+              contact.email || '',
+              transaction.date,
+              transaction.type === 'gave' ? 'You gave' : 'You got',
+              transaction.mode,
+              transaction.remark,
+              transaction.amount,
+            ])
+          : [[contact.name, contact.phone, contact.email || '', '', '', '', 'No transactions yet', '']]
       ),
     ];
 
     downloadTextFile(
-      `udharwale-transactions-${new Date().toISOString().slice(0, 10)}.csv`,
+      `udharwale-ledger-${new Date().toISOString().slice(0, 10)}.csv`,
       rows.map((row) => row.map(escapeCsv).join(',')).join('\n'),
       'text/csv'
     );
-    showToast('Transactions exported as CSV', 'success');
+    showToast('Ledger exported as CSV', 'success');
   };
 
   const handleCopyLedgerSummary = async () => {
@@ -890,6 +947,276 @@ export default function Dashboard() {
     }
   };
 
+  const handlePrintLedgerPdf = () => {
+    const rows = contacts.flatMap((contact) =>
+      contact.transactions.map((transaction) => ({
+        contact: contact.name,
+        phone: contact.phone,
+        date: transaction.date,
+        type: transaction.type === 'gave' ? 'You gave' : 'You got',
+        mode: transaction.mode,
+        remark: transaction.remark,
+        amount: transaction.amount,
+      }))
+    );
+
+    const popup = window.open('about:blank', '_blank');
+    if (!popup) {
+      showToast('Pop-up blocked. Allow pop-ups to print or save the PDF.', 'warn');
+      return;
+    }
+
+    const escapeHtml = (value: string | number) =>
+      String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+
+    popup.document.open();
+    popup.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Udharwale Ledger Export</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111827; margin: 32px; }
+            h1 { margin: 0 0 4px; font-size: 26px; }
+            button { cursor: pointer; }
+            .muted { color: #64748b; font-size: 12px; }
+            .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 24px 0; }
+            .stat { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; }
+            .label { color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: 700; }
+            .value { font-size: 18px; font-weight: 800; margin-top: 4px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+            th, td { border-bottom: 1px solid #e2e8f0; padding: 8px; text-align: left; }
+            th { background: #f8fafc; font-size: 10px; text-transform: uppercase; color: #475569; }
+            .amount { text-align: right; font-weight: 700; }
+            @media print { button { display: none; } body { margin: 20px; } }
+          </style>
+        </head>
+        <body>
+          <button onclick="window.print()" style="float:right;padding:8px 12px;border:1px solid #cbd5e1;border-radius:8px;background:white;color:#111827;font-weight:700;">Print / Save PDF</button>
+          <h1>Udharwale Ledger</h1>
+          <div class="muted">Exported ${new Date().toLocaleString('en-IN')} · ${escapeHtml(userName || 'Account')}</div>
+          <div class="stats">
+            <div class="stat"><div class="label">Contacts</div><div class="value">${ledgerSummary.contactCount}</div></div>
+            <div class="stat"><div class="label">Transactions</div><div class="value">${ledgerSummary.transactionCount}</div></div>
+            <div class="stat"><div class="label">Net Balance</div><div class="value">${stats.netBalance >= 0 ? '+' : '-'}₹${Math.abs(stats.netBalance).toLocaleString('en-IN')}</div></div>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Date</th><th>Contact</th><th>Type</th><th>Mode</th><th>Remark</th><th class="amount">Amount</th></tr>
+            </thead>
+            <tbody>
+              ${rows.length === 0
+                ? '<tr><td colspan="6">No transactions yet.</td></tr>'
+                : rows.map((row) => `
+                  <tr>
+                    <td>${escapeHtml(row.date)}</td>
+                    <td>${escapeHtml(row.contact)}<div class="muted">${escapeHtml(row.phone)}</div></td>
+                    <td>${escapeHtml(row.type)}</td>
+                    <td>${escapeHtml(row.mode)}</td>
+                    <td>${escapeHtml(row.remark)}</td>
+                    <td class="amount">₹${row.amount.toLocaleString('en-IN')}</td>
+                  </tr>
+                `).join('')}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `);
+    popup.document.close();
+    popup.focus();
+    popup.setTimeout(() => popup.print(), 300);
+    showToast('Printable ledger opened. Choose Save as PDF in the print dialog.', 'success');
+  };
+
+  const handleRestoreBackupFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const backupContacts = parsed?.contacts;
+
+      if (!Array.isArray(backupContacts)) {
+        showToast('Invalid backup file: contacts array missing.', 'error');
+        return;
+      }
+
+      const confirmed = await confirmAction({
+        title: 'Restore backup?',
+        message: `This will import ${backupContacts.length} contact(s). Existing duplicate IDs will be skipped by the server.`,
+        confirmLabel: 'Restore Backup',
+        tone: 'default',
+      });
+      if (!confirmed) return;
+
+      const res = await fetch('/api/contacts/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contacts: backupContacts }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        showToast(data?.error || 'Failed to restore backup.', 'error');
+        return;
+      }
+
+      const data = await res.json();
+      await loadContacts();
+      showToast(`Restored ${data.insertedCount || 0} contact(s) from backup`, 'success');
+    } catch (error) {
+      console.error('Restore backup failed:', error);
+      showToast('Could not read this backup file.', 'error');
+    }
+  };
+
+  const openSecurityModal = (type: 'password' | 'pin' | 'answer') => {
+    setSecurityModal(type);
+    setSecurityCurrentPassword('');
+    setSecurityPrimaryValue('');
+    setSecurityConfirmValue('');
+  };
+
+  const closeSecurityModal = () => {
+    if (isUpdatingSecurity) return;
+    setSecurityModal(null);
+    setSecurityCurrentPassword('');
+    setSecurityPrimaryValue('');
+    setSecurityConfirmValue('');
+  };
+
+  const getPasswordScore = (value: string) => {
+    return [
+      value.length >= 8,
+      /[A-Z]/.test(value),
+      /[0-9]/.test(value),
+      /[^A-Za-z0-9]/.test(value),
+    ].filter(Boolean).length;
+  };
+
+  const handleSecurityUpdate = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!securityModal) return;
+
+    if (!securityCurrentPassword) {
+      showToast('Enter your current password first.', 'warn');
+      return;
+    }
+
+    if (!securityPrimaryValue) {
+      showToast('Enter the new security value.', 'warn');
+      return;
+    }
+
+    if (securityPrimaryValue !== securityConfirmValue) {
+      showToast('Confirmation does not match.', 'warn');
+      return;
+    }
+
+    const payload: {
+      currentPassword: string;
+      newPassword?: string;
+      recoveryPin?: string;
+      securityAnswer?: string;
+    } = { currentPassword: securityCurrentPassword };
+
+    if (securityModal === 'password') {
+      if (securityPrimaryValue.length < 8) {
+        showToast('New password must be at least 8 characters.', 'warn');
+        return;
+      }
+      payload.newPassword = securityPrimaryValue;
+    }
+
+    if (securityModal === 'pin') {
+      if (!/^\d{4}$/.test(securityPrimaryValue)) {
+        showToast('Recovery PIN must be exactly 4 digits.', 'warn');
+        return;
+      }
+      payload.recoveryPin = securityPrimaryValue;
+    }
+
+    if (securityModal === 'answer') {
+      if (securityPrimaryValue.trim().length < 2) {
+        showToast('Recovery answer is too short.', 'warn');
+        return;
+      }
+      payload.securityAnswer = securityPrimaryValue;
+    }
+
+    setIsUpdatingSecurity(true);
+
+    try {
+      const res = await fetch('/api/auth/security', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Could not update security settings.', 'error');
+        return;
+      }
+
+      showToast('Account security updated', 'success');
+      setSecurityModal(null);
+      setSecurityCurrentPassword('');
+      setSecurityPrimaryValue('');
+      setSecurityConfirmValue('');
+    } catch (error) {
+      console.error('Security update failed:', error);
+      showToast('Could not update security settings.', 'error');
+    } finally {
+      setIsUpdatingSecurity(false);
+    }
+  };
+
+  const securityModalCopy = securityModal
+    ? {
+      password: {
+        title: 'Change Password',
+        description: 'Create a new password for your account. You will need your current password to confirm this change.',
+        label: 'New Password',
+        confirmLabel: 'Confirm New Password',
+        placeholder: 'At least 8 characters',
+        type: 'password',
+        inputMode: undefined,
+        maxLength: undefined,
+        saveLabel: 'Save Password',
+      },
+      pin: {
+        title: 'Update Recovery PIN',
+        description: 'Replace the 4-digit PIN used during account recovery.',
+        label: 'New Recovery PIN',
+        confirmLabel: 'Confirm Recovery PIN',
+        placeholder: '4 digits',
+        type: 'password',
+        inputMode: 'numeric' as const,
+        maxLength: 4,
+        saveLabel: 'Save PIN',
+      },
+      answer: {
+        title: 'Update Recovery Answer',
+        description: 'Replace your recovery answer with something memorable but hard to guess.',
+        label: 'New Recovery Answer',
+        confirmLabel: 'Confirm Recovery Answer',
+        placeholder: 'Your private answer',
+        type: 'text',
+        inputMode: undefined,
+        maxLength: undefined,
+        saveLabel: 'Save Answer',
+      },
+    }[securityModal]
+    : null;
+  const passwordScore = getPasswordScore(securityPrimaryValue);
+
   return (
     <div className="flex flex-col flex-1 h-screen overflow-hidden relative" style={{ background: 'var(--bg-base)', fontFamily: "'Outfit', system-ui, sans-serif", color: 'var(--text-primary)' }}>
 
@@ -904,6 +1231,131 @@ export default function Dashboard() {
           </div>
         ))}
       </div>
+
+      {confirmDialog && (
+        <ConfirmDialog
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          confirmLabel={confirmDialog.confirmLabel}
+          tone={confirmDialog.tone}
+          onCancel={() => closeConfirmDialog(false)}
+          onConfirm={() => closeConfirmDialog(true)}
+        />
+      )}
+
+      {securityModal && securityModalCopy && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center p-0 md:items-center md:p-4">
+          <div
+            className="absolute inset-0"
+            style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)' }}
+            onClick={closeSecurityModal}
+          />
+          <div
+            className="relative w-full md:max-w-lg animate-slide-up md:animate-scale-in rounded-t-3xl md:rounded-2xl overflow-hidden"
+            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)', boxShadow: '0 24px 80px rgba(0,0,0,0.32)' }}
+          >
+            <div className="flex items-start justify-between gap-4 px-5 py-4" style={{ borderBottom: '1px solid var(--border-soft)' }}>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#818cf8' }}>Security Center</p>
+                <h3 className="mt-1 text-lg font-extrabold" style={{ color: 'var(--text-primary)' }}>{securityModalCopy.title}</h3>
+                <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>{securityModalCopy.description}</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeSecurityModal}
+                disabled={isUpdatingSecurity}
+                className="p-1.5 rounded-xl transition-colors disabled:opacity-50"
+                style={{ color: 'var(--text-muted)', background: 'var(--bg-raised)' }}
+                aria-label="Close security dialog"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <form onSubmit={handleSecurityUpdate} className="p-5 space-y-4">
+              <div className="rounded-2xl p-3 text-xs leading-relaxed" style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.18)', color: 'var(--text-secondary)' }}>
+                Confirming your current password keeps sensitive recovery settings from being changed from an unattended session.
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Current Password</label>
+                <input
+                  type="password"
+                  autoFocus
+                  value={securityCurrentPassword}
+                  onChange={(event) => setSecurityCurrentPassword(event.target.value)}
+                  className="input-field"
+                  placeholder="Required to continue"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>{securityModalCopy.label}</label>
+                <input
+                  type={securityModalCopy.type}
+                  inputMode={securityModalCopy.inputMode}
+                  maxLength={securityModalCopy.maxLength}
+                  value={securityPrimaryValue}
+                  onChange={(event) => {
+                    const nextValue = securityModal === 'pin'
+                      ? event.target.value.replace(/[^0-9]/g, '')
+                      : event.target.value;
+                    setSecurityPrimaryValue(nextValue);
+                  }}
+                  className="input-field"
+                  placeholder={securityModalCopy.placeholder}
+                />
+              </div>
+
+              {securityModal === 'password' && (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-4 gap-1">
+                    {[0, 1, 2, 3].map((index) => (
+                      <div
+                        key={index}
+                        className="h-1.5 rounded-full"
+                        style={{ background: index < passwordScore ? '#34d399' : 'var(--bg-raised)' }}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    Stronger passwords use 8+ characters with a mix of uppercase letters, numbers, and symbols.
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>{securityModalCopy.confirmLabel}</label>
+                <input
+                  type={securityModalCopy.type}
+                  inputMode={securityModalCopy.inputMode}
+                  maxLength={securityModalCopy.maxLength}
+                  value={securityConfirmValue}
+                  onChange={(event) => {
+                    const nextValue = securityModal === 'pin'
+                      ? event.target.value.replace(/[^0-9]/g, '')
+                      : event.target.value;
+                    setSecurityConfirmValue(nextValue);
+                  }}
+                  className="input-field"
+                  placeholder="Re-enter to confirm"
+                />
+              </div>
+
+              <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+                <Button type="button" variant="secondary" onClick={closeSecurityModal} disabled={isUpdatingSecurity}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isUpdatingSecurity}>
+                  {isUpdatingSecurity ? 'Saving...' : securityModalCopy.saveLabel}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* CSS Confetti Canvas */}
       {/* ── Confetti ─────────────────────────────── */}
@@ -1324,12 +1776,22 @@ export default function Dashboard() {
                                       style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border-soft)', boxShadow: 'var(--shadow-card)' }}>
 
                                       {contactBal !== 0 && (
-                                        <button onClick={() => { setIsContactMenuOpen(false); handleSettleFullBalance(); }}
+                                        <button onClick={() => { setIsContactMenuOpen(false); handleOpenSettlement('full'); }}
                                           className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
                                           style={{ color: '#10b981' }}
                                           onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(16,185,129,0.08)'}
                                           onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                          🤝 Settle Balance
+                                          🤝 Full Settlement
+                                        </button>
+                                      )}
+
+                                      {contactBal !== 0 && (
+                                        <button onClick={() => { setIsContactMenuOpen(false); handleOpenSettlement('partial'); }}
+                                          className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                          style={{ color: '#22d3ee' }}
+                                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(6,182,212,0.08)'}
+                                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                          ✂️ Partial Settlement
                                         </button>
                                       )}
 
@@ -1712,10 +2174,11 @@ export default function Dashboard() {
                             onToggle: () => setCompactLedgerView((current) => !current),
                           },
                         ].map(({ label, desc, active, onToggle }) => (
-                          <button key={label} type="button" onClick={onToggle}
-                            className="w-full flex items-center justify-between gap-4 p-3 rounded-xl text-left transition-all"
+                          <div key={label} onClick={onToggle}
+                            className="w-full flex cursor-pointer items-center justify-between gap-4 p-3 rounded-xl text-left transition-all"
                             style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}
-                            aria-pressed={active}>
+                            role="group"
+                            aria-label={label}>
                             <span>
                               <span className="flex items-center gap-2 text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
                                 {label}
@@ -1730,7 +2193,7 @@ export default function Dashboard() {
                               onCheckedChange={onToggle}
                               aria-label={label}
                             />
-                          </button>
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -1748,16 +2211,94 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <input
+                      ref={restoreInputRef}
+                      type="file"
+                      accept="application/json,.json"
+                      className="hidden"
+                      onChange={handleRestoreBackupFile}
+                    />
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                       <Button type="button" variant="secondary" onClick={handleExportBackup} disabled={contacts.length === 0}>
                         JSON Backup
                       </Button>
-                      <Button type="button" variant="secondary" onClick={handleExportCsv} disabled={ledgerSummary.transactionCount === 0}>
+                      <Button type="button" variant="secondary" onClick={handleExportCsv}>
                         CSV Export
+                      </Button>
+                      <Button type="button" variant="secondary" onClick={handlePrintLedgerPdf}>
+                        PDF / Print
+                      </Button>
+                      <Button type="button" variant="secondary" onClick={() => restoreInputRef.current?.click()}>
+                        Restore JSON
                       </Button>
                       <Button type="button" variant="secondary" onClick={handleCopyLedgerSummary}>
                         Copy Summary
                       </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Account security */}
+                <Card className="border-primary/15 bg-card/80">
+                  <CardContent className="p-5 space-y-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style={{ background: 'rgba(16,185,129,0.1)' }}>🔐</div>
+                        <div>
+                          <h3 className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Account Security</h3>
+                          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Professional account recovery controls with password-confirmed changes.</p>
+                        </div>
+                      </div>
+                      <Badge variant="secondary" className="w-fit">Current password required</Badge>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {([
+                        {
+                          type: 'password' as const,
+                          title: 'Change Password',
+                          desc: 'Replace your login password with a stronger one.',
+                          meta: 'Minimum 8 characters',
+                          icon: '🔑',
+                        },
+                        {
+                          type: 'pin' as const,
+                          title: 'Recovery PIN',
+                          desc: 'Update the 4-digit PIN used for account recovery.',
+                          meta: 'Digits only',
+                          icon: '🔢',
+                        },
+                        {
+                          type: 'answer' as const,
+                          title: 'Recovery Answer',
+                          desc: 'Refresh the private answer for identity checks.',
+                          meta: 'Stored securely',
+                          icon: '🛡️',
+                        },
+                      ]).map((item) => (
+                        <button
+                          key={item.type}
+                          type="button"
+                          onClick={() => openSecurityModal(item.type)}
+                          className="group rounded-2xl p-4 text-left transition-all hover:-translate-y-0.5"
+                          style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <span className="text-xl">{item.icon}</span>
+                            <svg className="h-4 w-4 transition-transform group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--text-muted)' }}>
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </div>
+                          <h4 className="mt-3 text-sm font-black" style={{ color: 'var(--text-primary)' }}>{item.title}</h4>
+                          <p className="mt-1 min-h-[2.5rem] text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>{item.desc}</p>
+                          <p className="mt-3 text-[10px] font-bold uppercase tracking-widest" style={{ color: '#34d399' }}>{item.meta}</p>
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="rounded-2xl p-3 text-xs leading-relaxed" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.18)', color: 'var(--text-secondary)' }}>
+                      Udharwale never reveals your existing password, PIN, or recovery answer. Sensitive values can only be replaced after you confirm the current password.
                     </div>
                   </CardContent>
                 </Card>
@@ -1793,10 +2334,14 @@ export default function Dashboard() {
                     <Button
                       type="button"
                       variant="destructive"
-                      onClick={() => {
-                        if (confirm('This will permanently delete ALL your contacts and transactions. This cannot be undone. Continue?')) {
-                          handleWipeData();
-                        }
+                      onClick={async () => {
+                        const confirmed = await confirmAction({
+                          title: 'Wipe all data?',
+                          message: 'This will permanently delete ALL your contacts and transactions. This cannot be undone.',
+                          confirmLabel: 'Wipe All Data',
+                          tone: 'danger',
+                        });
+                        if (confirmed) await handleWipeData();
                       }}
                       className="w-full"
                     >
