@@ -16,14 +16,19 @@ export async function POST() {
     await connectToDatabase();
     // Delete existing documents belonging to this user only
     await Contact.deleteMany({ userId });
-    
-    // Map initial contacts to have this user's ID
-    const contactsWithUser = INITIAL_CONTACTS.map(contact => ({
+
+    // Unique contact/tx ids per user so multi-user demos never collide
+    const stamp = String(userId).slice(-8);
+    const contactsWithUser = INITIAL_CONTACTS.map((contact) => ({
       ...contact,
-      userId
+      id: `${contact.id}-${stamp}`,
+      userId,
+      transactions: contact.transactions.map((tx) => ({
+        ...tx,
+        id: `${tx.id}-${stamp}`,
+      })),
     }));
 
-    // Insert mock dataset
     await Contact.insertMany(contactsWithUser);
     
     return NextResponse.json({ success: true, message: 'Database reset to mock dataset successfully' });

@@ -231,6 +231,24 @@ export default function Dashboard() {
     }, 16);
   };
 
+  // --- Load Demo / Sample Data ---
+  const handleLoadDemoData = async () => {
+    try {
+      const res = await fetch('/api/db/reset', { method: 'POST' });
+      if (res.ok) {
+        await loadContacts();
+        setSelectedContactId(null);
+        setMobileView('list');
+        showToast('Demo ledger loaded — ready to present', 'success');
+      } else {
+        showToast('Failed to load demo data.', 'error');
+      }
+    } catch (err) {
+      console.error('Error loading demo data:', err);
+      showToast('Failed to load demo data.', 'error');
+    }
+  };
+
   // --- Wipe All Data ---
   const handleWipeData = async () => {
     try {
@@ -2318,6 +2336,34 @@ export default function Dashboard() {
                         Sign Out
                       </Button>
                     </div>
+                  </CardContent>
+                </Card>
+
+                {/* Demo data (for presentations) */}
+                <Card className="border-primary/15 bg-card/80">
+                  <CardContent className="p-5 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'rgba(99,102,241,0.1)' }}>🎬</div>
+                      <div>
+                        <h3 className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Demo Dataset</h3>
+                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Replace current ledgers with sample contacts for presentations</p>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={async () => {
+                        const confirmed = await confirmAction({
+                          title: 'Load demo ledger?',
+                          message: 'This replaces your current contacts and transactions with the sample demo dataset.',
+                          confirmLabel: 'Load Demo Data',
+                        });
+                        if (confirmed) await handleLoadDemoData();
+                      }}
+                      className="w-full"
+                    >
+                      Load Demo Data
+                    </Button>
                   </CardContent>
                 </Card>
 
