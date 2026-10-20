@@ -22,7 +22,7 @@ export default function LegalPage({
   sections,
 }: LegalPageProps) {
   return (
-    <main className="min-h-screen bg-[var(--bg-base)] px-6 py-8 text-foreground">
+    <main className="min-h-dvh bg-[var(--bg-base)] px-6 py-8 text-foreground">
       <div className="mx-auto max-w-3xl">
         <header className="mb-8 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <Link href="/" className={buttonVariants({ variant: 'ghost', size: 'sm', className: 'w-fit' })}>

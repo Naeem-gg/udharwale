@@ -2,7 +2,7 @@ import Dashboard from '../components/Dashboard';
 
 export default function DashboardPage() {
   return (
-    <main className="flex flex-col flex-1 h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
+    <main className="fixed inset-0 overflow-hidden" style={{ background: 'var(--bg-raised)' }}>
       <Dashboard />
     </main>
   );

@@ -96,7 +96,7 @@ export default function SharedChatClient({ token }: { token: string }) {
   }, [data]);
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg-base)', color: 'var(--text-primary)' }}>
+    <div className="min-h-dvh flex flex-col" style={{ background: 'var(--bg-base)', color: 'var(--text-primary)' }}>
       <header className="shrink-0 px-4 py-4 border-b" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-soft)' }}>
         <div className="mx-auto max-w-lg flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">

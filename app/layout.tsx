@@ -117,10 +117,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
+      className={`${geistSans.variable} ${geistMono.variable} min-h-dvh antialiased dark`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-dvh flex flex-col">
         <Script id="theme-init" strategy="beforeInteractive">
           {`try{var t=localStorage.getItem('udharwale-theme')==='light'?'light':'dark';var r=document.documentElement;r.classList.remove(t==='light'?'dark':'light');r.classList.add(t);r.dataset.theme=t;r.style.colorScheme=t;}catch(e){}`}
         </Script>

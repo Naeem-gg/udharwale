@@ -77,7 +77,7 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[var(--bg-base)] p-4">
+    <main className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-[var(--bg-base)] p-4">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="aurora-blob animate-aurora absolute left-1/2 top-1/2 h-[520px] w-[520px] -translate-x-1/2 -translate-y-1/2 bg-[radial-gradient(circle,rgba(244,63,94,0.11)_0%,transparent_70%)]" />
         <div className="aurora-blob animate-aurora absolute -right-20 -top-24 h-[440px] w-[440px] bg-[radial-gradient(circle,rgba(124,58,237,0.12)_0%,transparent_70%)] [animation-delay:3s]" />

@@ -38,7 +38,7 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[var(--bg-base)] p-4">
+    <main className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-[var(--bg-base)] p-4">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="aurora-blob animate-aurora absolute -left-24 -top-32 h-[600px] w-[600px] bg-[radial-gradient(circle,rgba(124,58,237,0.15)_0%,transparent_70%)]" />
         <div className="aurora-blob animate-aurora absolute -bottom-24 -right-24 h-[500px] w-[500px] bg-[radial-gradient(circle,rgba(6,182,212,0.10)_0%,transparent_70%)] [animation-delay:5s] [animation-direction:reverse]" />

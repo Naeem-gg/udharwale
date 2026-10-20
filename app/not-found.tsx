@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function NotFound() {
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden"
+    <div className="min-h-dvh flex items-center justify-center p-6 relative overflow-hidden"
       style={{ background: 'var(--bg-base)', fontFamily: "'Outfit', system-ui, sans-serif" }}>
       {/* Aurora Background */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">

@@ -35,7 +35,7 @@ export default function LandingPage() {
   }, []);
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-x-hidden bg-[var(--bg-base)] text-foreground">
+    <div className="relative flex min-h-dvh flex-col overflow-x-hidden bg-[var(--bg-base)] text-foreground">
       <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
         <div className="aurora-blob animate-aurora absolute -left-28 -top-32 h-[700px] w-[700px] bg-[radial-gradient(circle_at_center,rgba(124,58,237,0.14)_0%,transparent_70%)]" />
         <div className="aurora-blob animate-aurora absolute -right-24 bottom-0 h-[600px] w-[600px] bg-[radial-gradient(circle_at_center,rgba(6,182,212,0.10)_0%,transparent_70%)] [animation-delay:4s] [animation-direction:reverse]" />
@@ -86,7 +86,7 @@ export default function LandingPage() {
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col justify-center px-6 py-16 md:py-24">
+      <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-col justify-center px-6 py-12 md:py-16">
         <div className="grid grid-cols-1 items-center gap-14 lg:grid-cols-12">
           <section className="space-y-7 text-center lg:col-span-7 lg:text-left">
             <Badge className="animate-fade-slide-up gap-2">
@@ -213,7 +213,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="relative z-10 mx-auto w-full max-w-6xl border-t border-border px-6 py-8">
+      <footer className="relative z-10 mx-auto mt-auto w-full max-w-6xl border-t border-border px-6 py-5">
         <div className="flex flex-col items-center justify-between gap-4 text-xs text-muted-foreground sm:flex-row">
           <p>© 2026 Udharwale by Naeem Navjivan. All rights reserved.</p>
           <div className="flex items-center gap-6">
