@@ -19,7 +19,7 @@ export async function POST(
     const { id } = await params;
     const body = await req.json();
 
-    const { amount, type, remark, date, mode, id: txId } = body;
+    const { amount, type, remark, date, mode, id: txId, createdAt } = body;
 
     if (!amount || !type || !remark || !date || !mode || !txId) {
       return NextResponse.json(
@@ -40,6 +40,8 @@ export async function POST(
       type,
       remark,
       date,
+      // Prefer server clock for audit transparency; allow client value for restore/seed
+      createdAt: typeof createdAt === 'string' && createdAt ? createdAt : new Date().toISOString(),
       mode
     };
 

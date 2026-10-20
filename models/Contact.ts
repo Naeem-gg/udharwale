@@ -6,7 +6,8 @@ const TransactionSchema = new Schema({
   amount: { type: Number, required: true },
   type: { type: String, enum: ['gave', 'got'], required: true },
   remark: { type: String, required: true },
-  date: { type: String, required: true }, // YYYY-MM-DD
+  date: { type: String, required: true }, // User-selected event date (YYYY-MM-DD)
+  createdAt: { type: String, required: false }, // System logged time when the record was created (ISO)
   mode: {
     type: String,
     enum: ['Cash', 'Online Transfer'],
@@ -34,6 +35,7 @@ export interface ITransactionSub extends Document {
   type: 'gave' | 'got';
   remark: string;
   date: string;
+  createdAt?: string;
   mode: string;
 }
 

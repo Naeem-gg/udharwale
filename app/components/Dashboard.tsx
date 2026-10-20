@@ -97,6 +97,7 @@ export default function Dashboard() {
   const [particles, setParticles] = useState<ConfettiParticle[]>([]);
   const confettiInterval = useRef<NodeJS.Timeout | null>(null);
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const confirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     title: string;
@@ -359,7 +360,7 @@ export default function Dashboard() {
       });
   }, [contacts, searchQuery, statusFilter, sortBy]);
 
-  // --- Filtered transactions within selected contact ---
+  // --- Filtered transactions within selected contact (chat order: oldest → newest) ---
   const filteredTransactions = useMemo(() => {
     if (!selectedContact) return [];
     return selectedContact.transactions
@@ -372,8 +373,30 @@ export default function Dashboard() {
           t.amount.toString().includes(query)
         );
       })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Newest first
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [selectedContact, ledgerSearchQuery]);
+
+  // Group ledger txs by date for PhonePe/GPay-style middle date chips
+  const chatTransactionGroups = useMemo(() => {
+    const groups: { date: string; items: Transaction[] }[] = [];
+    for (const tx of filteredTransactions) {
+      const last = groups[groups.length - 1];
+      if (last && last.date === tx.date) {
+        last.items.push(tx);
+      } else {
+        groups.push({ date: tx.date, items: [tx] });
+      }
+    }
+    return groups;
+  }, [filteredTransactions]);
+
+  useEffect(() => {
+    if (!selectedContactId || !chatScrollRef.current) return;
+    const el = chatScrollRef.current;
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+  }, [selectedContactId, filteredTransactions.length, ledgerSearchQuery]);
 
   // --- Mode-wise Transaction Distribution top-level hook ---
   const categoryDistribution = useMemo(() => {
@@ -403,12 +426,14 @@ export default function Dashboard() {
     // If initial balance is set
     const initBal = parseFloat(contactInitialBalance);
     if (!isNaN(initBal) && initBal > 0) {
+      const nowIso = new Date().toISOString();
       newTransactions.push({
         id: 't_' + Date.now(),
         amount: initBal,
         type: contactInitialType === 'credit' ? 'gave' : 'got',
         remark: 'Starting Balance',
-        date: new Date().toISOString().split('T')[0],
+        date: nowIso.split('T')[0],
+        createdAt: nowIso,
         mode: 'Cash',
       });
     }
@@ -845,6 +870,44 @@ export default function Dashboard() {
     return gradients[sum % gradients.length];
   };
 
+  const formatChatDateLabel = (dateStr: string) => {
+    const date = new Date(`${dateStr}T00:00:00`);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const target = new Date(date);
+    target.setHours(0, 0, 0, 0);
+
+    if (target.getTime() === today.getTime()) return 'Today';
+    if (target.getTime() === yesterday.getTime()) return 'Yesterday';
+    return date.toLocaleDateString('en-IN', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined,
+    });
+  };
+
+  const formatEventDate = (dateStr: string) =>
+    new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+
+  const formatLoggedAt = (iso?: string) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  };
+
   const getInitials = (name: string) => {
     const words = name.trim().split(' ');
     if (words.length >= 2) {
@@ -921,7 +984,7 @@ export default function Dashboard() {
 
     const escapeCsv = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
     const rows = [
-      ['Contact', 'Phone', 'Email', 'Date', 'Type', 'Mode', 'Remark', 'Amount'],
+      ['Contact', 'Phone', 'Email', 'Transaction Date', 'Logged At', 'Type', 'Mode', 'Remark', 'Amount'],
       ...contacts.flatMap((contact) =>
         contact.transactions.length > 0
           ? contact.transactions.map((transaction) => [
@@ -929,12 +992,13 @@ export default function Dashboard() {
               contact.phone,
               contact.email || '',
               transaction.date,
+              transaction.createdAt || '',
               transaction.type === 'gave' ? 'You gave' : 'You got',
               transaction.mode,
               transaction.remark,
               transaction.amount,
             ])
-          : [[contact.name, contact.phone, contact.email || '', '', '', '', 'No transactions yet', '']]
+          : [[contact.name, contact.phone, contact.email || '', '', '', '', '', 'No transactions yet', '']]
       ),
     ];
 
@@ -971,6 +1035,7 @@ export default function Dashboard() {
         contact: contact.name,
         phone: contact.phone,
         date: transaction.date,
+        loggedAt: formatLoggedAt(transaction.createdAt) || '—',
         type: transaction.type === 'gave' ? 'You gave' : 'You got',
         mode: transaction.mode,
         remark: transaction.remark,
@@ -1024,14 +1089,15 @@ export default function Dashboard() {
           </div>
           <table>
             <thead>
-              <tr><th>Date</th><th>Contact</th><th>Type</th><th>Mode</th><th>Remark</th><th class="amount">Amount</th></tr>
+              <tr><th>Transaction Date</th><th>Logged At</th><th>Contact</th><th>Type</th><th>Mode</th><th>Remark</th><th class="amount">Amount</th></tr>
             </thead>
             <tbody>
               ${rows.length === 0
-                ? '<tr><td colspan="6">No transactions yet.</td></tr>'
+                ? '<tr><td colspan="7">No transactions yet.</td></tr>'
                 : rows.map((row) => `
                   <tr>
                     <td>${escapeHtml(row.date)}</td>
+                    <td>${escapeHtml(row.loggedAt)}</td>
                     <td>${escapeHtml(row.contact)}<div class="muted">${escapeHtml(row.phone)}</div></td>
                     <td>${escapeHtml(row.type)}</td>
                     <td>${escapeHtml(row.mode)}</td>
@@ -1751,9 +1817,6 @@ export default function Dashboard() {
                   style={{ background: 'var(--bg-base)' }}>
                   {selectedContact ? (() => {
                     const contactBal = getContactBalance(selectedContact);
-                    const filteredTxs = selectedContact.transactions
-                      .filter(t => !ledgerSearchQuery || t.remark.toLowerCase().includes(ledgerSearchQuery.toLowerCase()))
-                      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
                     return (
                       <div className="flex-1 flex flex-col overflow-hidden animate-scale-in">
@@ -1896,76 +1959,136 @@ export default function Dashboard() {
                           </div>
                         </div>
 
-                        {/* Transaction timeline */}
-                        <div className="flex-1 overflow-y-auto scrollbar-thin px-3 py-2 md:px-5 md:py-4 space-y-2 md:space-y-3">
-                          {filteredTxs.length === 0 ? (
+                        {/* Payment chat timeline (PhonePe / GPay style) */}
+                        <div
+                          ref={chatScrollRef}
+                          className="flex-1 overflow-y-auto scrollbar-thin px-3 py-3 md:px-5 md:py-4"
+                          style={{
+                            background: 'var(--bg-base)',
+                            backgroundImage: 'radial-gradient(rgba(148,163,184,0.08) 1px, transparent 1px)',
+                            backgroundSize: '18px 18px',
+                          }}
+                        >
+                          {filteredTransactions.length === 0 ? (
                             <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
-                              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>📭</div>
+                              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>💬</div>
                               <div>
-                                <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>No transactions yet</p>
-                                <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>Use the buttons below to record the first one</p>
+                                <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>No payments yet</p>
+                                <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>Add a record — it will appear here like a chat</p>
                               </div>
                             </div>
-                          ) : filteredTxs.map((tx, idx) => {
-                            const isGave = tx.type === 'gave';
-                            const catIcons: Record<string, string> = {
-                              'Cash': '💵',
-                              'Online Transfer': '🏦'
-                            };
-                            const formattedDate = new Date(tx.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-
-                            return (
-                              <div key={tx.id}
-                                className={`group flex items-center gap-2.5 md:gap-3.5 ${compactLedgerView ? 'p-2 md:p-2.5' : 'p-2.5 md:p-4'} rounded-2xl transition-all duration-150 animate-fade-slide-up`}
-                                style={{
-                                  animationDelay: `${Math.min(idx * 0.04, 0.3)}s`,
-                                  background: 'var(--bg-surface)',
-                                  border: `1px solid var(--border-soft)`,
-                                  borderLeft: `3px solid ${isGave ? '#10b981' : '#f43f5e'}`,
-                                }}>
-                                {/* Icon */}
-                                <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl shrink-0 flex items-center justify-center text-sm md:text-lg"
-                                  style={{ background: isGave ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)' }}>
-                                  {catIcons[tx.mode] || '📦'}
-                                </div>
-                                {/* Details */}
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-[9px] md:text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.25 md:px-2 md:py-0.5 rounded-full"
-                                      style={{ background: isGave ? 'rgba(16,185,129,0.12)' : 'rgba(244,63,94,0.12)', color: isGave ? '#6ee7b7' : '#fda4af' }}>
-                                      {isGave ? '↗ Gave (Lent)' : '↙ Got (Borrowed)'}
+                          ) : (
+                            <div className="flex flex-col gap-3 md:gap-4 pb-2">
+                              {chatTransactionGroups.map((group) => (
+                                <div key={group.date} className="flex flex-col gap-2.5 md:gap-3">
+                                  <div className="sticky top-1 z-10 flex justify-center py-1">
+                                    <span
+                                      className="px-3 py-1 rounded-full text-[10px] md:text-[11px] font-bold tracking-wide shadow-sm"
+                                      style={{
+                                        background: 'var(--bg-surface)',
+                                        color: 'var(--text-secondary)',
+                                        border: '1px solid var(--border-soft)',
+                                      }}
+                                    >
+                                      {formatChatDateLabel(group.date)}
                                     </span>
-                                    <span className="text-[9px] md:text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>{formattedDate}</span>
                                   </div>
-                                  <p className="font-bold text-xs md:text-sm mt-0.5 md:mt-1.5" style={{ color: 'var(--text-primary)' }}>{tx.remark}</p>
-                                  <p className="text-[9px] md:text-[10px] mt-0.5 font-medium" style={{ color: 'var(--text-muted)' }}>{tx.mode}</p>
-                                </div>
-                                {/* Amount + actions */}
-                                <div className="flex items-center gap-2 shrink-0">
-                                  <span className="text-sm md:text-base font-black tabular-nums" style={{ color: isGave ? '#10b981' : '#f43f5e' }}>
-                                    {isGave ? '+' : '-'}₹{tx.amount.toLocaleString('en-IN')}
-                                  </span>
-                                  <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-150">
-                                    <button onClick={() => handleOpenEditTx(tx)}
-                                      className="p-1 md:p-1.5 rounded-lg transition-colors"
-                                      style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}>
-                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                      </svg>
-                                    </button>
-                                    <button onClick={() => handleDeleteTransaction(tx.id)}
-                                      className="p-1 md:p-1.5 rounded-lg transition-colors"
-                                      style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}>
-                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                      </svg>
-                                    </button>
-                                  </div>
-                                </div>
 
-                              </div>
-                            );
-                          })}
+                                  {group.items.map((tx) => {
+                                    const isGave = tx.type === 'gave';
+                                    return (
+                                      <div
+                                        key={tx.id}
+                                        className={`group flex w-full ${isGave ? 'justify-end' : 'justify-start'} animate-fade-slide-up`}
+                                      >
+                                        <div
+                                          className={`relative max-w-[78%] sm:max-w-[70%] md:max-w-[58%] ${compactLedgerView ? 'px-3 py-2' : 'px-3.5 py-2.5'} shadow-sm`}
+                                          style={{
+                                            background: isGave
+                                              ? 'linear-gradient(145deg, rgba(16,185,129,0.18), rgba(16,185,129,0.08))'
+                                              : 'var(--bg-surface)',
+                                            border: `1px solid ${isGave ? 'rgba(16,185,129,0.28)' : 'var(--border-soft)'}`,
+                                            borderRadius: isGave
+                                              ? '18px 18px 4px 18px'
+                                              : '18px 18px 18px 4px',
+                                          }}
+                                        >
+                                          <div className="flex items-center justify-between gap-3 mb-1">
+                                            <span
+                                              className="text-[9px] md:text-[10px] font-extrabold uppercase tracking-wider"
+                                              style={{ color: isGave ? '#34d399' : '#fb7185' }}
+                                            >
+                                              {isGave ? 'You paid' : 'You received'}
+                                            </span>
+                                            <span className="text-[9px] md:text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>
+                                              {tx.mode === 'Online Transfer' ? 'UPI / Online' : 'Cash'}
+                                            </span>
+                                          </div>
+
+                                          <p
+                                            className={`${compactLedgerView ? 'text-base' : 'text-lg'} font-black tabular-nums leading-none`}
+                                            style={{ color: isGave ? '#10b981' : '#f43f5e' }}
+                                          >
+                                            {isGave ? '-' : '+'}₹{tx.amount.toLocaleString('en-IN')}
+                                          </p>
+
+                                          <p
+                                            className={`${compactLedgerView ? 'text-[11px] mt-1' : 'text-xs mt-1.5'} font-medium leading-snug`}
+                                            style={{ color: 'var(--text-primary)' }}
+                                          >
+                                            {tx.remark}
+                                          </p>
+
+                                          <div className="mt-2 space-y-0.5">
+                                            <p className="text-[9px] md:text-[10px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                                              For {formatEventDate(tx.date)}
+                                            </p>
+                                            {formatLoggedAt(tx.createdAt) ? (
+                                              <p className="text-[9px] md:text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>
+                                                Logged {formatLoggedAt(tx.createdAt)}
+                                              </p>
+                                            ) : (
+                                              <p className="text-[9px] md:text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>
+                                                Logged time unavailable
+                                              </p>
+                                            )}
+                                          </div>
+
+                                          <div className="mt-2 flex items-center justify-between gap-2">
+                                            <span className="text-[9px] font-semibold" style={{ color: 'var(--text-muted)' }}>
+                                              {isGave ? 'Debited' : 'Credited'}
+                                            </span>
+                                            <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                              <button
+                                                onClick={() => handleOpenEditTx(tx)}
+                                                className="p-1 rounded-md transition-colors"
+                                                style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}
+                                                aria-label="Edit transaction"
+                                              >
+                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                                </svg>
+                                              </button>
+                                              <button
+                                                onClick={() => handleDeleteTransaction(tx.id)}
+                                                className="p-1 rounded-md transition-colors"
+                                                style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}
+                                                aria-label="Delete transaction"
+                                              >
+                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                </svg>
+                                              </button>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
 
                         {/* Bottom CTA */}
@@ -2626,9 +2749,12 @@ export default function Dashboard() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Date</label>
+                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Transaction date</label>
                 <input type="date" required value={txDate} onChange={e => setTxDate(e.target.value)}
                   className="input-field" />
+                <p className="text-[10px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                  When the money actually moved. The app also saves the exact time this record is logged.
+                </p>
               </div>
 
               <div className="space-y-1.5">

@@ -5,7 +5,8 @@ export interface Transaction {
   amount: number;
   type: 'gave' | 'got'; // 'gave' = you lent (they owe you, green), 'got' = you borrowed (you owe them, red)
   remark: string;
-  date: string;         // YYYY-MM-DD format
+  date: string;         // User-selected event date (YYYY-MM-DD) — when the money moved
+  createdAt?: string;   // System logged timestamp (ISO) — when the record was created
   mode: ModeType;
 }
 

@@ -45,14 +45,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const loggedAt = new Date().toISOString();
+    const normalizedTransactions = (transactions || []).map((tx: any) => ({
+      ...tx,
+      createdAt: tx?.createdAt || loggedAt,
+    }));
+
     const newContact = new Contact({
       id,
       userId, // Scope contact to authenticated user
       name,
       phone,
       email: email || undefined,
-      transactions: transactions || [],
-      createdAt: createdAt || new Date().toISOString()
+      transactions: normalizedTransactions,
+      createdAt: createdAt || loggedAt
     });
 
     await newContact.save();

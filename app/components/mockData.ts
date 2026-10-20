@@ -2,8 +2,9 @@ import { Contact } from './types';
 
 /**
  * Demo ledger dataset for viva / teacher presentations.
- * Covers: people who owe you, people you owe, settled balances,
- * Cash + Online Transfer, and everyday Indian use-cases.
+ * Each transaction has:
+ * - date: when the money moved (user-selected)
+ * - createdAt: when the record was logged in the app
  */
 export const INITIAL_CONTACTS: Contact[] = [
   {
@@ -19,6 +20,7 @@ export const INITIAL_CONTACTS: Contact[] = [
         type: 'gave',
         remark: 'Dinner at Punjabi Rasoi',
         date: '2026-08-10',
+        createdAt: '2026-08-10T20:15:00.000Z',
         mode: 'Cash'
       },
       {
@@ -27,6 +29,7 @@ export const INITIAL_CONTACTS: Contact[] = [
         type: 'got',
         remark: 'Cab fare share',
         date: '2026-08-12',
+        createdAt: '2026-08-13T09:40:00.000Z',
         mode: 'Online Transfer'
       },
       {
@@ -35,6 +38,7 @@ export const INITIAL_CONTACTS: Contact[] = [
         type: 'gave',
         remark: 'Movie tickets',
         date: '2026-09-05',
+        createdAt: '2026-09-05T22:05:00.000Z',
         mode: 'Online Transfer'
       }
     ]
@@ -52,6 +56,7 @@ export const INITIAL_CONTACTS: Contact[] = [
         type: 'got',
         remark: 'Apartment electricity bill share',
         date: '2026-08-02',
+        createdAt: '2026-08-02T18:20:00.000Z',
         mode: 'Online Transfer'
       },
       {
@@ -60,6 +65,7 @@ export const INITIAL_CONTACTS: Contact[] = [
         type: 'gave',
         remark: 'Grocery shopping share',
         date: '2026-08-18',
+        createdAt: '2026-08-18T11:05:00.000Z',
         mode: 'Cash'
       },
       {
@@ -68,6 +74,7 @@ export const INITIAL_CONTACTS: Contact[] = [
         type: 'gave',
         remark: 'Partial repayment — UPI',
         date: '2026-09-20',
+        createdAt: '2026-09-21T08:12:00.000Z',
         mode: 'Online Transfer'
       }
     ]
@@ -85,6 +92,7 @@ export const INITIAL_CONTACTS: Contact[] = [
         type: 'gave',
         remark: 'Advance loan for bike repair',
         date: '2026-08-01',
+        createdAt: '2026-08-01T16:30:00.000Z',
         mode: 'Online Transfer'
       },
       {
@@ -93,6 +101,7 @@ export const INITIAL_CONTACTS: Contact[] = [
         type: 'got',
         remark: '🤝 Full Settlement',
         date: '2026-09-14',
+        createdAt: '2026-09-14T19:45:00.000Z',
         mode: 'Online Transfer'
       }
     ]
@@ -110,6 +119,7 @@ export const INITIAL_CONTACTS: Contact[] = [
         type: 'got',
         remark: 'Concert ticket booking',
         date: '2026-09-16',
+        createdAt: '2026-09-16T21:10:00.000Z',
         mode: 'Online Transfer'
       }
     ]
@@ -127,6 +137,7 @@ export const INITIAL_CONTACTS: Contact[] = [
         type: 'gave',
         remark: 'College project print & binding',
         date: '2026-09-01',
+        createdAt: '2026-09-01T14:25:00.000Z',
         mode: 'Cash'
       },
       {
@@ -135,6 +146,7 @@ export const INITIAL_CONTACTS: Contact[] = [
         type: 'got',
         remark: 'Partial return via GPay',
         date: '2026-09-22',
+        createdAt: '2026-09-22T17:50:00.000Z',
         mode: 'Online Transfer'
       }
     ]
@@ -152,6 +164,7 @@ export const INITIAL_CONTACTS: Contact[] = [
         type: 'got',
         remark: 'Monthly ration on udhar',
         date: '2026-09-03',
+        createdAt: '2026-09-03T19:00:00.000Z',
         mode: 'Cash'
       },
       {
@@ -160,6 +173,7 @@ export const INITIAL_CONTACTS: Contact[] = [
         type: 'got',
         remark: 'Milk & bread — week 2',
         date: '2026-09-10',
+        createdAt: '2026-09-10T08:30:00.000Z',
         mode: 'Cash'
       },
       {
@@ -168,6 +182,7 @@ export const INITIAL_CONTACTS: Contact[] = [
         type: 'gave',
         remark: 'Cleared shop khata',
         date: '2026-09-28',
+        createdAt: '2026-09-28T20:15:00.000Z',
         mode: 'Cash'
       }
     ]
@@ -185,6 +200,7 @@ export const INITIAL_CONTACTS: Contact[] = [
         type: 'gave',
         remark: 'Emergency medical help',
         date: '2026-09-08',
+        createdAt: '2026-09-08T11:40:00.000Z',
         mode: 'Online Transfer'
       }
     ]

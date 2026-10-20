@@ -32,6 +32,12 @@ export async function POST(req: NextRequest) {
         continue; // Skip invalid contacts
       }
 
+      const loggedAt = createdAt || new Date().toISOString();
+      const normalizedTransactions = (transactions || []).map((tx: any) => ({
+        ...tx,
+        createdAt: tx?.createdAt || loggedAt,
+      }));
+
       // We will try to insert and catch duplicate key errors if 'id' is duplicate.
       const newContact = new Contact({
         id,
@@ -39,8 +45,8 @@ export async function POST(req: NextRequest) {
         name,
         phone,
         email: email || undefined,
-        transactions: transactions || [],
-        createdAt: createdAt || new Date().toISOString()
+        transactions: normalizedTransactions,
+        createdAt: loggedAt
       });
 
       try {
