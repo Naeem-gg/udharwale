@@ -2,8 +2,12 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: '404 - Page Not Found | Udharwale',
-  description: 'The page you are looking for does not exist.',
+  title: 'Page Not Found',
+  description: 'This Udharwale page does not exist. Head back home to continue tracking balances.',
+  robots: {
+    index: false,
+    follow: true,
+  },
 };
 
 export default function NotFound() {

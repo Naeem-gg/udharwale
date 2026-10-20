@@ -38,7 +38,7 @@ export default function UpcomingFeatures() {
       description: 'Create read-only ledger links for trusted contacts so both sides can review the same history.',
       icon: Share2,
       tone: '#f59e0b',
-      status: 'Idea',
+      status: 'Live',
     },
     {
       id: 'recurring-balances',

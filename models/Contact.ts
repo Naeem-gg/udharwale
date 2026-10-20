@@ -22,6 +22,7 @@ const ContactSchema = new Schema({
   name: { type: String, required: true },
   phone: { type: String, required: true },
   email: { type: String },
+  shareToken: { type: String, required: false, unique: true, sparse: true }, // Public read-only chat link
   transactions: [TransactionSchema],
   createdAt: { type: String, required: true }
 }, {
@@ -45,6 +46,7 @@ export interface IContactDoc extends Document {
   name: string;
   phone: string;
   email?: string;
+  shareToken?: string;
   transactions: ITransactionSub[];
   createdAt: string;
 }

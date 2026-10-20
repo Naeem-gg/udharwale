@@ -166,6 +166,18 @@ export default function Dashboard() {
     window.localStorage.setItem('udharwale-compact-ledger-view', String(compactLedgerView));
   }, [compactLedgerView]);
 
+  // Open a specific contact chat from /dashboard?contact=<id>
+  useEffect(() => {
+    if (typeof window === 'undefined' || contacts.length === 0) return;
+    const contactId = new URLSearchParams(window.location.search).get('contact');
+    if (!contactId) return;
+    if (!contacts.some((c) => c.id === contactId)) return;
+
+    setActiveTab('ledgers');
+    setSelectedContactId(contactId);
+    setMobileView('ledger');
+  }, [contacts]);
+
 
   const handleLogout = async () => {
     try {
@@ -776,80 +788,179 @@ export default function Dashboard() {
     setIsAddTransactionOpen(true);
   };
 
-  // --- Share Ledger Template on WhatsApp ---
-  const handleWhatsAppReminder = () => {
-    if (!selectedContact) return;
-    const balance = getContactBalance(selectedContact);
-    if (balance === 0) return;
-
-    const cleanName = selectedContact.name;
-    const formattedAmt = `₹${Math.abs(balance).toLocaleString('en-IN')}`;
-    let msg = '';
-
-    if (balance > 0) {
-      msg = `Hi ${cleanName},\n\nJust a quick reminder that you need to pay me ${formattedAmt}. Please let me know when you can send it over.\n\n—\nTracked via Udharwale by Naeem Navjivan 🚀\n🌐 https://udharwaale.vercel.app`;
-    } else {
-      msg = `Hi ${cleanName},\n\nJust letting you know that I need to pay you ${formattedAmt}. I'll make sure to send it to you soon!\n\n—\nTracked via Udharwale by Naeem Navjivan 🚀\n🌐 https://udharwaale.vercel.app`;
+  const getOrCreateShareUrl = async (contactId: string) => {
+    const res = await fetch(`/api/contacts/${contactId}/share`, { method: 'POST' });
+    if (!res.ok) {
+      throw new Error('Failed to create chat link');
     }
-
-    const whatsappUrl = `https://api.whatsapp.com/send?phone=${selectedContact.phone.replace(/[^0-9+]/g, '')}&text=${encodeURIComponent(msg)}`;
-    window.open(whatsappUrl, '_blank');
+    const data = await res.json();
+    // Keep token on local contact so later shares are instant
+    if (data.shareToken) {
+      setContacts((prev) =>
+        prev.map((c) => (c.id === contactId ? { ...c, shareToken: data.shareToken } : c))
+      );
+    }
+    return String(data.shareUrl || '');
   };
 
-  const handleShareLedger = async (option: 'all' | 'gave' | 'got') => {
+  const buildReminderMessage = (shareUrl?: string) => {
+    if (!selectedContact) return '';
+    const balance = getContactBalance(selectedContact);
+    if (balance === 0) return '';
+
+    const name = selectedContact.name;
+    const amount = `₹${Math.abs(balance).toLocaleString('en-IN')}`;
+
+    let text =
+      balance > 0
+        ? `Hi ${name},\n\nJust reminding you — ${amount} is still left from your side.\n\nSend it whenever you can. Thank you!`
+        : `Hi ${name},\n\nJust a quick note — I still have to give you ${amount}.\n\nI'll send it soon. Thanks!`;
+
+    if (shareUrl) {
+      text += `\n\nSee our chat here:\n${shareUrl}`;
+    }
+
+    return text;
+  };
+
+  const buildLedgerMessage = (option: 'all' | 'gave' | 'got', shareUrl?: string) => {
+    if (!selectedContact) return '';
+
+    const balance = getContactBalance(selectedContact);
+    const name = selectedContact.name;
+    let text = `Hi ${name},\n\nHere's what we have between us:\n\n`;
+
+    const txsToShare = selectedContact.transactions
+      .filter((t) => {
+        if (option === 'all') return true;
+        if (option === 'gave') return t.type === 'gave';
+        if (option === 'got') return t.type === 'got';
+        return true;
+      })
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    if (txsToShare.length === 0) {
+      text += `Nothing listed yet.\n`;
+    } else {
+      txsToShare.forEach((t) => {
+        const isGave = t.type === 'gave';
+        const formattedDate = new Date(t.date).toLocaleDateString('en-IN', {
+          day: 'numeric',
+          month: 'short',
+        });
+        const amountStr = `₹${t.amount.toLocaleString('en-IN')}`;
+        text += `• ${formattedDate}: ${t.remark} (${isGave ? 'I paid' : 'You paid'} ${amountStr})\n`;
+      });
+    }
+
+    text += `\n`;
+    if (option === 'all') {
+      if (balance > 0) {
+        text += `Left to clear: You need to give me ₹${balance.toLocaleString('en-IN')}\n`;
+      } else if (balance < 0) {
+        text += `Left to clear: I need to give you ₹${Math.abs(balance).toLocaleString('en-IN')}\n`;
+      } else {
+        text += `All settled. Nothing left to pay.\n`;
+      }
+    } else if (option === 'gave') {
+      text += `These are the amounts I paid.\n`;
+    } else {
+      text += `These are the amounts you paid.\n`;
+    }
+
+    if (shareUrl) {
+      text += `\nOpen the full chat here:\n${shareUrl}\n`;
+    }
+
+    text += `\nThank you!`;
+    return text;
+  };
+
+  const copyTextToClipboard = async (text: string, successMsg: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast(successMsg, 'success');
+      return true;
+    } catch (err) {
+      console.error('Copy failed', err);
+      showToast('Could not copy message', 'error');
+      return false;
+    }
+  };
+
+  const handleWhatsAppReminder = async () => {
+    if (!selectedContact) return;
+    try {
+      const shareUrl = await getOrCreateShareUrl(selectedContact.id);
+      const msg = buildReminderMessage(shareUrl);
+      if (!msg) return;
+
+      const whatsappUrl = `https://api.whatsapp.com/send?phone=${selectedContact.phone.replace(/[^0-9+]/g, '')}&text=${encodeURIComponent(msg)}`;
+      window.open(whatsappUrl, '_blank');
+    } catch (err) {
+      console.error(err);
+      showToast('Could not prepare reminder link', 'error');
+    }
+  };
+
+  const handleCopyReminder = async () => {
+    if (!selectedContact) return;
+    try {
+      const shareUrl = await getOrCreateShareUrl(selectedContact.id);
+      const msg = buildReminderMessage(shareUrl);
+      if (!msg) return;
+      await copyTextToClipboard(msg, 'Reminder copied — paste it anywhere');
+    } catch (err) {
+      console.error(err);
+      showToast('Could not prepare reminder link', 'error');
+    }
+  };
+
+  const handleCopyChatLink = async () => {
+    if (!selectedContact) return;
+    try {
+      const shareUrl = await getOrCreateShareUrl(selectedContact.id);
+      await copyTextToClipboard(shareUrl, 'Chat link copied');
+    } catch (err) {
+      console.error(err);
+      showToast('Could not create chat link', 'error');
+    }
+  };
+
+  const handleShareLedger = async (option: 'all' | 'gave' | 'got', action: 'copy' | 'share' = 'share') => {
     if (!selectedContact) return;
 
-    let text = `📊 Account Summary with ${selectedContact.name}\n\n`;
-
-    if (getContactBalance(selectedContact) > 0) {
-      text += `Status: YOU need to pay me ₹${getContactBalance(selectedContact).toLocaleString('en-IN')}\n\n`;
-    } else if (getContactBalance(selectedContact) < 0) {
-      text += `Status: I need to pay you ₹${Math.abs(getContactBalance(selectedContact)).toLocaleString('en-IN')}\n\n`;
-    } else {
-      text += `Status: All settled up! 🎉\n\n`;
-    }
-
-    text += `--- Transaction History ---\n`;
-
-    const txsToShare = selectedContact.transactions.filter(t => {
-      if (option === 'all') return true;
-      if (option === 'gave') return t.type === 'gave';
-      if (option === 'got') return t.type === 'got';
-      return true;
-    }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); // chronological
-
-    let runningTotal = 0;
-    txsToShare.forEach(t => {
-      const isGave = t.type === 'gave';
-      const formattedDate = new Date(t.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-      const amountStr = `₹${t.amount.toLocaleString('en-IN')}`;
-      runningTotal += isGave ? t.amount : -t.amount;
-      text += `• ${formattedDate}: ${t.remark} (${isGave ? 'I gave you' : 'You gave me'} ${amountStr})\n`;
-    });
-
-    if (option === 'all') {
-      text += `\nNet Balance: ${runningTotal > 0 ? `+₹${runningTotal.toLocaleString('en-IN')}` : `-₹${Math.abs(runningTotal).toLocaleString('en-IN')}`}\n\n`;
-    } else {
-      text += `\n`;
-    }
-
-    text += `—\nPowered by Udharwale by Naeem Navjivan 🚀\nStart tracking your own balances smartly and securely today!\n🌐 https://udharwaale.vercel.app`;
-
     try {
-      if (navigator.share) {
-        await navigator.share({
-          title: `Ledger with ${selectedContact.name}`,
-          text: text,
-        });
-      } else {
-        await navigator.clipboard.writeText(text);
-        showToast('Ledger copied to clipboard', 'success');
+      const shareUrl = await getOrCreateShareUrl(selectedContact.id);
+      const text = buildLedgerMessage(option, shareUrl);
+
+      if (action === 'copy') {
+        const ok = await copyTextToClipboard(text, 'Message copied — paste it in WhatsApp or anywhere');
+        if (ok) setIsShareModalOpen(false);
+        return;
       }
+
+      try {
+        if (navigator.share) {
+          await navigator.share({
+            title: `Money record with ${selectedContact.name}`,
+            text,
+            url: shareUrl,
+          });
+        } else {
+          await copyTextToClipboard(text, 'Sharing not available — message copied instead');
+        }
+      } catch (err) {
+        if ((err as Error)?.name !== 'AbortError') {
+          console.error('Share failed', err);
+          showToast('Could not share message', 'error');
+        }
+      }
+      setIsShareModalOpen(false);
     } catch (err) {
-      console.error('Share failed', err);
-      showToast('Could not share ledger', 'error');
+      console.error(err);
+      showToast('Could not prepare chat link', 'error');
     }
-    setIsShareModalOpen(false);
   };
 
   // --- Seed Avatar Visual Gradient Creator ---
@@ -1853,7 +1964,7 @@ export default function Dashboard() {
                                 {isContactMenuOpen && (
                                   <>
                                     <div className="fixed inset-0 z-10" onClick={() => setIsContactMenuOpen(false)} />
-                                    <div className="absolute right-0 mt-2 w-44 rounded-xl py-1.5 z-20 animate-fade-slide-down"
+                                    <div className="absolute right-0 mt-2 w-52 rounded-xl py-1.5 z-20 animate-fade-slide-down"
                                       style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border-soft)', boxShadow: 'var(--shadow-card)' }}>
 
                                       {contactBal !== 0 && (
@@ -1862,7 +1973,7 @@ export default function Dashboard() {
                                           style={{ color: '#10b981' }}
                                           onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(16,185,129,0.08)'}
                                           onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                          🤝 Full Settlement
+                                          🤝 Settle in full
                                         </button>
                                       )}
 
@@ -1872,7 +1983,7 @@ export default function Dashboard() {
                                           style={{ color: '#22d3ee' }}
                                           onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(6,182,212,0.08)'}
                                           onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                          ✂️ Partial Settlement
+                                          ✂️ Settle partly
                                         </button>
                                       )}
 
@@ -1882,9 +1993,27 @@ export default function Dashboard() {
                                           style={{ color: '#6366f1' }}
                                           onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,0.08)'}
                                           onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                          💬 Send Reminder
+                                          💬 WhatsApp reminder
                                         </button>
                                       )}
+
+                                      {contactBal !== 0 && (
+                                        <button onClick={() => { setIsContactMenuOpen(false); handleCopyReminder(); }}
+                                          className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                          style={{ color: '#38bdf8' }}
+                                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(56,189,248,0.08)'}
+                                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                          📋 Copy reminder
+                                        </button>
+                                      )}
+
+                                      <button onClick={() => { setIsContactMenuOpen(false); handleCopyChatLink(); }}
+                                        className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                        style={{ color: '#a78bfa' }}
+                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(167,139,250,0.08)'}
+                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                        🔗 Copy chat link
+                                      </button>
 
                                       <button onClick={() => { setIsContactMenuOpen(false); setIsShareModalOpen(true); }}
                                         className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
@@ -1892,7 +2021,7 @@ export default function Dashboard() {
                                         onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(139,92,246,0.08)'}
                                         onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
                                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
-                                        Share Ledger
+                                        Share / copy record
                                       </button>
 
 
@@ -2806,8 +2935,8 @@ export default function Dashboard() {
 
             <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--border-soft)' }}>
               <div>
-                <h3 className="font-extrabold text-base" style={{ color: 'var(--text-primary)' }}>Share Ledger</h3>
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>with {selectedContact.name}</p>
+                <h3 className="font-extrabold text-base" style={{ color: 'var(--text-primary)' }}>Share or copy</h3>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Send this to {selectedContact.name}</p>
               </div>
               <button onClick={() => setIsShareModalOpen(false)} className="p-1.5 rounded-xl" style={{ color: 'var(--text-muted)' }}>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2816,24 +2945,57 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <div className="p-5 space-y-2.5">
+            <div className="p-5 space-y-3">
+              <button
+                type="button"
+                onClick={async () => {
+                  await handleCopyChatLink();
+                  setIsShareModalOpen(false);
+                }}
+                className="w-full flex items-center gap-3 p-4 rounded-2xl text-left transition-all"
+                style={{ background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.25)' }}
+              >
+                <span className="text-2xl">🔗</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm" style={{ color: '#a78bfa' }}>Copy chat link only</p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                    Opens the live chat page for them — no login needed
+                  </p>
+                </div>
+              </button>
+
               {([
-                { opt: 'all' as const, icon: '📋', label: 'Full Ledger', desc: 'Complete history + net balance', color: '#818cf8', bg: 'rgba(99,102,241,0.08)', border: 'rgba(99,102,241,0.2)' },
-                { opt: 'gave' as const, icon: '↗️', label: 'Only What You Gave', desc: 'Share what you lent them', color: '#6ee7b7', bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.2)' },
-                { opt: 'got' as const, icon: '↙️', label: 'Only What You Got', desc: 'Share what you borrowed', color: '#fda4af', bg: 'rgba(244,63,94,0.08)', border: 'rgba(244,63,94,0.2)' },
+                { opt: 'all' as const, icon: '📋', label: 'Full record', desc: 'Everything + how much is left + chat link', color: '#818cf8', bg: 'rgba(99,102,241,0.08)', border: 'rgba(99,102,241,0.2)' },
+                { opt: 'gave' as const, icon: '↗️', label: 'What I paid', desc: 'Only money I gave them + chat link', color: '#6ee7b7', bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.2)' },
+                { opt: 'got' as const, icon: '↙️', label: 'What they paid', desc: 'Only money they gave me + chat link', color: '#fda4af', bg: 'rgba(244,63,94,0.08)', border: 'rgba(244,63,94,0.2)' },
               ] as const).map(({ opt, icon, label, desc, color, bg, border }) => (
-                <button key={opt} onClick={() => handleShareLedger(opt)}
-                  className="w-full flex items-center gap-4 p-4 rounded-2xl text-left transition-all hover:scale-[1.01]"
-                  style={{ background: bg, border: `1px solid ${border}` }}>
-                  <span className="text-2xl">{icon}</span>
-                  <div className="flex-1">
-                    <p className="font-bold text-sm" style={{ color }}>{label}</p>
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{desc}</p>
+                <div key={opt} className="rounded-2xl p-4" style={{ background: bg, border: `1px solid ${border}` }}>
+                  <div className="flex items-start gap-3 mb-3">
+                    <span className="text-2xl">{icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm" style={{ color }}>{label}</p>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{desc}</p>
+                    </div>
                   </div>
-                  <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--text-muted)' }}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleShareLedger(opt, 'copy')}
+                      className="py-2.5 rounded-xl text-xs font-bold transition-all active:scale-[0.98]"
+                      style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border-soft)' }}
+                    >
+                      📋 Copy
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleShareLedger(opt, 'share')}
+                      className="py-2.5 rounded-xl text-xs font-bold transition-all active:scale-[0.98]"
+                      style={{ background: color, color: '#0f172a' }}
+                    >
+                      📤 Share
+                    </button>
+                  </div>
+                </div>
               ))}
             </div>
           </div>

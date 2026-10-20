@@ -15,6 +15,7 @@ export interface Contact {
   name: string;
   phone: string;
   email?: string;
+  shareToken?: string;
   transactions: Transaction[];
   createdAt: string;
 }

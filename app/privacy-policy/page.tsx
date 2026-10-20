@@ -1,9 +1,19 @@
 import type { Metadata } from 'next';
 import LegalPage from '../components/LegalPage';
+import { absoluteUrl } from '@/lib/seo';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy | Udharwale',
-  description: 'Privacy Policy for Udharwale, a personal digital debt ledger and khata book app.',
+  title: 'Privacy Policy',
+  description:
+    'How Udharwale handles your account details, ledger entries, and privacy for this personal khata book app.',
+  alternates: {
+    canonical: absoluteUrl('/privacy-policy'),
+  },
+  openGraph: {
+    title: 'Privacy Policy | Udharwale',
+    description: 'Learn how Udharwale protects your personal ledger data.',
+    url: absoluteUrl('/privacy-policy'),
+  },
 };
 
 export default function PrivacyPolicyPage() {

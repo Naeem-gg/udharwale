@@ -1,9 +1,19 @@
 import type { Metadata } from 'next';
 import LegalPage from '../components/LegalPage';
+import { absoluteUrl } from '@/lib/seo';
 
 export const metadata: Metadata = {
-  title: 'Terms of Service | Udharwale',
-  description: 'Terms of Service for Udharwale, a personal digital debt ledger and khata book app.',
+  title: 'Terms of Service',
+  description:
+    'Terms for using Udharwale — a personal record-keeping tool for balances, loans, and reminders.',
+  alternates: {
+    canonical: absoluteUrl('/terms-of-service'),
+  },
+  openGraph: {
+    title: 'Terms of Service | Udharwale',
+    description: 'Basic rules for using the Udharwale personal ledger app.',
+    url: absoluteUrl('/terms-of-service'),
+  },
 };
 
 export default function TermsOfServicePage() {
