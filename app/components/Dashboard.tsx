@@ -2169,98 +2169,65 @@ export default function Dashboard() {
                                     return (
                                       <div
                                         key={tx.id}
-                                        className={`group flex w-full ${isGave ? 'justify-end' : 'justify-start'} animate-fade-slide-up`}
+                                        className={`flex w-full ${isGave ? 'justify-end' : 'justify-start'} animate-fade-slide-up`}
                                       >
                                         <div
-                                          className={`relative max-w-[78%] sm:max-w-[70%] md:max-w-[58%] ${compactLedgerView ? 'px-3 py-2' : 'px-3.5 py-2.5'} shadow-sm`}
+                                          className="max-w-[85%] rounded-2xl px-4 py-3"
                                           style={{
                                             background: isGave
-                                              ? 'linear-gradient(145deg, rgba(16,185,129,0.18), rgba(16,185,129,0.08))'
-                                              : 'var(--bg-surface)',
-                                            border: `1px solid ${isGave ? 'rgba(16,185,129,0.28)' : 'var(--border-soft)'}`,
-                                            borderRadius: isGave
-                                              ? '18px 18px 4px 18px'
-                                              : '18px 18px 18px 4px',
+                                              ? 'rgba(16,185,129,0.14)'
+                                              : 'rgba(244,63,94,0.12)',
+                                            border: `1px solid ${isGave ? 'rgba(16,185,129,0.28)' : 'rgba(244,63,94,0.28)'}`,
                                           }}
                                         >
-                                          <div className="flex items-center justify-between gap-3 mb-1">
-                                            <span
-                                              className="text-[9px] md:text-[10px] font-extrabold uppercase tracking-wider"
-                                              style={{ color: isGave ? '#34d399' : '#fb7185' }}
-                                            >
-                                              {isGave ? 'You paid' : 'You received'}
-                                            </span>
-                                            <span className="text-[9px] md:text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>
-                                              {tx.mode === 'Online Transfer' ? 'UPI / Online' : 'Cash'}
-                                            </span>
-                                          </div>
-
                                           <p
-                                            className={`${compactLedgerView ? 'text-base' : 'text-lg'} font-black tabular-nums leading-none`}
+                                            className="text-[11px] font-bold"
+                                            style={{ color: isGave ? '#34d399' : '#fb7185' }}
+                                          >
+                                            {isGave ? 'You gave' : 'You got'}
+                                          </p>
+                                          <p
+                                            className={`${compactLedgerView ? 'text-xl' : 'text-2xl'} font-black tabular-nums mt-0.5 leading-none`}
                                             style={{ color: isGave ? '#10b981' : '#f43f5e' }}
                                           >
-                                            {isGave ? '-' : '+'}₹{tx.amount.toLocaleString('en-IN')}
+                                            ₹{tx.amount.toLocaleString('en-IN')}
                                           </p>
-
                                           <p
-                                            className={`${compactLedgerView ? 'text-[11px] mt-1' : 'text-xs mt-1.5'} font-medium leading-snug`}
+                                            className="text-sm mt-2 font-medium leading-snug"
                                             style={{ color: 'var(--text-primary)' }}
                                           >
                                             {tx.remark}
                                           </p>
-
-                                          <div className="mt-2 space-y-0.5">
-                                            <p className="text-[9px] md:text-[10px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                                              For {formatEventDate(tx.date)}
-                                            </p>
-                                            {formatLoggedAt(tx.createdAt) ? (
-                                              <p className="text-[9px] md:text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>
-                                                Logged {formatLoggedAt(tx.createdAt)}
-                                              </p>
-                                            ) : (
-                                              <p className="text-[9px] md:text-[10px] font-medium" style={{ color: 'var(--text-muted)' }}>
-                                                Logged time unavailable
-                                              </p>
-                                            )}
-                                          </div>
-
-                                          <div className="mt-2 flex items-center justify-between gap-2">
-                                            <span className="text-[9px] font-semibold" style={{ color: 'var(--text-muted)' }}>
-                                              {isGave ? 'Debited' : 'Credited'}
-                                            </span>
-                                            <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                                              <button
-                                                onClick={() => setHistoryTx(tx)}
-                                                className="p-1 rounded-md transition-colors"
-                                                style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}
-                                                aria-label="View change history"
-                                                title="History"
-                                              >
-                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                </svg>
-                                              </button>
-                                              <button
-                                                onClick={() => handleOpenEditTx(tx)}
-                                                className="p-1 rounded-md transition-colors"
-                                                style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}
-                                                aria-label="Edit transaction"
-                                              >
-                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                                </svg>
-                                              </button>
-                                              <button
-                                                onClick={() => handleDeleteTransaction(tx.id)}
-                                                className="p-1 rounded-md transition-colors"
-                                                style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}
-                                                aria-label="Delete transaction"
-                                              >
-                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                </svg>
-                                              </button>
-                                            </div>
+                                          <p className="text-[11px] mt-2" style={{ color: 'var(--text-muted)' }}>
+                                            {formatEventDate(tx.date)}
+                                            {' · '}
+                                            {tx.mode === 'Online Transfer' ? 'Online' : 'Cash'}
+                                          </p>
+                                          <div className="mt-2.5 flex items-center gap-3">
+                                            <button
+                                              type="button"
+                                              onClick={() => handleOpenEditTx(tx)}
+                                              className="text-[11px] font-bold"
+                                              style={{ color: '#a5b4fc' }}
+                                            >
+                                              Edit
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => setHistoryTx(tx)}
+                                              className="text-[11px] font-bold"
+                                              style={{ color: 'var(--text-muted)' }}
+                                            >
+                                              History
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleDeleteTransaction(tx.id)}
+                                              className="text-[11px] font-bold"
+                                              style={{ color: '#fb7185' }}
+                                            >
+                                              Delete
+                                            </button>
                                           </div>
                                         </div>
                                       </div>
