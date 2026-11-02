@@ -41,6 +41,9 @@ export default function Dashboard() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [userName, setUserName] = useState<string>('');
   const [userEmail, setUserEmail] = useState<string>('');
+  const [userPhone, setUserPhone] = useState<string>('');
+  const [historyTx, setHistoryTx] = useState<Transaction | null>(null);
+  const [claimedOnce, setClaimedOnce] = useState(false);
 
   // Database connection status: connecting, connected, or error
   const [dbStatus, setDbStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
@@ -129,6 +132,20 @@ export default function Dashboard() {
     }
   };
 
+  const claimMatchingChats = async () => {
+    try {
+      const res = await fetch('/api/contacts/claim-matches', { method: 'POST' });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.linked > 0) {
+        showToast(data.message || `${data.linked} shared chats linked`, 'success');
+        await loadContacts();
+      }
+    } catch (err) {
+      console.error('claim-matches failed:', err);
+    }
+  };
+
   // --- Load Initial Data ---
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -144,11 +161,16 @@ export default function Dashboard() {
           if (!res.ok) throw new Error('API session load failed');
           return res.json();
         })
-        .then((data) => {
+        .then(async (data) => {
           if (data && data.authenticated) {
             setUserName(data.user.name);
             setUserEmail(data.user.email);
-            loadContacts();
+            setUserPhone(data.user.phone || '');
+            await loadContacts();
+            if (!claimedOnce) {
+              setClaimedOnce(true);
+              await claimMatchingChats();
+            }
           }
         })
         .catch((err) => {
@@ -746,7 +768,7 @@ export default function Dashboard() {
   const handleDeleteTransaction = async (txId: string) => {
     const confirmed = await confirmAction({
       title: 'Delete transaction?',
-      message: 'This will permanently modify the contact balance.',
+      message: 'The entry is soft-deleted and kept in change history so both sides stay accountable.',
       confirmLabel: 'Delete Transaction',
       tone: 'danger',
     });
@@ -758,23 +780,53 @@ export default function Dashboard() {
       });
 
       if (res.ok) {
-        const updatedContacts = contacts.map((c) => {
-          if (c.id !== selectedContactId) return c;
-          return {
-            ...c,
-            transactions: c.transactions.filter((t) => t.id !== txId),
-          };
-        });
-        saveContactsState(updatedContacts);
+        await loadContacts();
         setIsAddTransactionOpen(false);
         setEditingTransaction(null);
-        showToast('Transaction deleted', 'success');
+        showToast('Transaction deleted (saved in history)', 'success');
       } else {
         showToast('Failed to delete transaction on backend.', 'error');
       }
     } catch (err) {
       console.error('Error deleting transaction:', err);
       showToast('An error occurred while deleting the transaction.', 'error');
+    }
+  };
+
+  const handleUnlinkPeer = async () => {
+    if (!selectedContactId || selectedContact?.role === 'peer') return;
+    const confirmed = await confirmAction({
+      title: 'Unlink shared access?',
+      message: 'They will lose edit access until they claim this chat again with a matching phone/email.',
+      confirmLabel: 'Unlink',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    try {
+      const res = await fetch(`/api/contacts/${selectedContactId}/unlink`, { method: 'POST' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Failed to unlink');
+      }
+      showToast('Peer unlinked', 'success');
+      await loadContacts();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to unlink', 'error');
+    }
+  };
+
+  const handleRestoreTransaction = async (txId: string) => {
+    if (!selectedContactId) return;
+    try {
+      const res = await fetch(`/api/contacts/${selectedContactId}/transactions/${txId}/restore`, {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error('Restore failed');
+      showToast('Transaction restored', 'success');
+      setHistoryTx(null);
+      await loadContacts();
+    } catch {
+      showToast('Could not restore transaction', 'error');
     }
   };
 
@@ -1741,8 +1793,25 @@ export default function Dashboard() {
 
                                   {/* Info */}
                                   <div className="flex-1 min-w-0">
-                                    <p className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{contact.name}</p>
-                                    <p className="text-[11px] truncate" style={{ color: 'var(--text-muted)' }}>{contact.phone || 'No phone'}</p>
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      <p className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{contact.name}</p>
+                                      {(contact.role === 'peer' || contact.peerLinked) && (
+                                        <span
+                                          className="shrink-0 text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full"
+                                          style={{
+                                            background: contact.role === 'peer' ? 'rgba(6,182,212,0.15)' : 'rgba(167,139,250,0.15)',
+                                            color: contact.role === 'peer' ? '#22d3ee' : '#c4b5fd',
+                                          }}
+                                        >
+                                          {contact.role === 'peer' ? 'Linked' : 'Shared'}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] truncate" style={{ color: 'var(--text-muted)' }}>
+                                      {contact.role === 'peer'
+                                        ? `From ${contact.ownerName || 'someone'} · both can edit`
+                                        : contact.phone || 'No phone'}
+                                    </p>
                                   </div>
 
                                   {/* Balance + peek */}
@@ -1819,9 +1888,17 @@ export default function Dashboard() {
                                   {getInitials(selectedContact.name)}
                                 </div>
                                 <div className="min-w-0">
-                                  <p className="font-bold text-xs truncate leading-tight" style={{ color: 'var(--text-primary)' }}>
-                                    {selectedContact.name}
-                                  </p>
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <p className="font-bold text-xs truncate leading-tight" style={{ color: 'var(--text-primary)' }}>
+                                      {selectedContact.name}
+                                    </p>
+                                    {(selectedContact.role === 'peer' || selectedContact.peerLinked) && (
+                                      <span className="shrink-0 text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full"
+                                        style={{ background: 'rgba(6,182,212,0.18)', color: '#22d3ee' }}>
+                                        Both edit
+                                      </span>
+                                    )}
+                                  </div>
                                   <p
                                     className="text-[10px] font-semibold truncate leading-tight"
                                     style={{
@@ -1874,16 +1951,23 @@ export default function Dashboard() {
                                   >
                                     <div className="px-4 py-2.5 mb-1" style={{ borderBottom: '1px solid var(--border-soft)' }}>
                                       <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-                                        Contact
+                                        {selectedContact.role === 'peer' ? 'Shared ledger' : 'Contact'}
                                       </p>
                                       <p className="text-xs font-semibold mt-1 truncate" style={{ color: 'var(--text-primary)' }}>
-                                        {selectedContact.phone}
+                                        {selectedContact.role === 'peer'
+                                          ? (selectedContact.ownerName || 'Owner')
+                                          : selectedContact.phone}
                                       </p>
-                                      {selectedContact.email ? (
+                                      {selectedContact.role !== 'peer' && selectedContact.email ? (
                                         <p className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
                                           {selectedContact.email}
                                         </p>
                                       ) : null}
+                                      {(selectedContact.peerLinked || selectedContact.role === 'peer') && (
+                                        <p className="text-[10px] mt-1 font-semibold" style={{ color: '#22d3ee' }}>
+                                          Both parties can edit · changes are logged
+                                        </p>
+                                      )}
                                     </div>
 
                                     {contactBal !== 0 && (
@@ -1906,7 +1990,7 @@ export default function Dashboard() {
                                       </button>
                                     )}
 
-                                    {contactBal !== 0 && (
+                                    {contactBal !== 0 && selectedContact.role !== 'peer' && (
                                       <button onClick={() => { setIsContactMenuOpen(false); handleWhatsAppReminder(); }}
                                         className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
                                         style={{ color: '#6366f1' }}
@@ -1926,45 +2010,84 @@ export default function Dashboard() {
                                       </button>
                                     )}
 
-                                    <button onClick={() => { setIsContactMenuOpen(false); handleCopyChatLink(); }}
-                                      className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                      style={{ color: '#a78bfa' }}
-                                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(167,139,250,0.08)'}
-                                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                      🔗 Copy chat link
-                                    </button>
+                                    {selectedContact.role !== 'peer' && (
+                                      <button onClick={() => { setIsContactMenuOpen(false); handleCopyChatLink(); }}
+                                        className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                        style={{ color: '#a78bfa' }}
+                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(167,139,250,0.08)'}
+                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                        🔗 Copy chat link
+                                      </button>
+                                    )}
 
-                                    <button onClick={() => { setIsContactMenuOpen(false); setIsShareModalOpen(true); }}
-                                      className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                      style={{ color: '#8b5cf6' }}
-                                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(139,92,246,0.08)'}
-                                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
-                                      Share / copy record
-                                    </button>
+                                    {selectedContact.role !== 'peer' && (
+                                      <button onClick={() => { setIsContactMenuOpen(false); setIsShareModalOpen(true); }}
+                                        className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                        style={{ color: '#8b5cf6' }}
+                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(139,92,246,0.08)'}
+                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+                                        Share / copy record
+                                      </button>
+                                    )}
 
-                                    <button onClick={() => {
-                                      setIsContactMenuOpen(false);
-                                      setContactName(selectedContact.name);
-                                      setContactPhone(selectedContact.phone);
-                                      setContactEmail(selectedContact.email || '');
-                                      setIsEditContactOpen(true);
-                                    }}
+                                    {selectedContact.role !== 'peer' && (
+                                      <button onClick={() => {
+                                        setIsContactMenuOpen(false);
+                                        setContactName(selectedContact.name);
+                                        setContactPhone(selectedContact.phone);
+                                        setContactEmail(selectedContact.email || '');
+                                        setIsEditContactOpen(true);
+                                      }}
+                                        className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                        style={{ color: 'var(--text-primary)' }}
+                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-raised)'}
+                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                        Edit contact
+                                      </button>
+                                    )}
+
+                                    <button
+                                      onClick={() => {
+                                        setIsContactMenuOpen(false);
+                                        const deleted = (selectedContact.allTransactions || []).filter((t) => t.deletedAt);
+                                        const withHistory = (selectedContact.allTransactions || []).filter(
+                                          (t) => (t.history && t.history.length > 0) || t.deletedAt
+                                        );
+                                        if (withHistory.length === 0) {
+                                          showToast('No change history in this chat yet', 'info');
+                                          return;
+                                        }
+                                        setHistoryTx(deleted[0] || withHistory[withHistory.length - 1]);
+                                      }}
                                       className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                      style={{ color: 'var(--text-primary)' }}
+                                      style={{ color: '#94a3b8' }}
                                       onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-raised)'}
                                       onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                                      Edit contact
+                                      Change history
                                     </button>
-                                    <button onClick={() => { setIsContactMenuOpen(false); handleDeleteContact(selectedContact.id); }}
-                                      className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                      style={{ color: '#f43f5e' }}
-                                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(244,63,94,0.08)'}
-                                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                      Delete contact
-                                    </button>
+
+                                    {(selectedContact.role === 'owner' || !selectedContact.role) && selectedContact.peerLinked && (
+                                      <button onClick={() => { setIsContactMenuOpen(false); handleUnlinkPeer(); }}
+                                        className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                        style={{ color: '#fbbf24' }}
+                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(251,191,36,0.08)'}
+                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                        Unlink shared access
+                                      </button>
+                                    )}
+
+                                    {selectedContact.role !== 'peer' && (
+                                      <button onClick={() => { setIsContactMenuOpen(false); handleDeleteContact(selectedContact.id); }}
+                                        className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                        style={{ color: '#f43f5e' }}
+                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(244,63,94,0.08)'}
+                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                        Delete contact
+                                      </button>
+                                    )}
                                   </div>
                                 </>
                               )}
@@ -2106,6 +2229,17 @@ export default function Dashboard() {
                                               {isGave ? 'Debited' : 'Credited'}
                                             </span>
                                             <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                              <button
+                                                onClick={() => setHistoryTx(tx)}
+                                                className="p-1 rounded-md transition-colors"
+                                                style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}
+                                                aria-label="View change history"
+                                                title="History"
+                                              >
+                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                </svg>
+                                              </button>
                                               <button
                                                 onClick={() => handleOpenEditTx(tx)}
                                                 className="p-1 rounded-md transition-colors"
@@ -2514,6 +2648,9 @@ export default function Dashboard() {
                         <div className="min-w-0">
                           <h3 className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{userName || 'Account'}</h3>
                           <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{userEmail}</p>
+                          {userPhone ? (
+                            <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>Phone · {userPhone}</p>
+                          ) : null}
                         </div>
                       </div>
                       <Button type="button" variant="outline" onClick={handleLogout}>
@@ -3071,6 +3208,71 @@ export default function Dashboard() {
               <button type="submit" form="edit-contact-form" className="btn-primary w-full shadow-lg shadow-indigo-500/25">
                 Save Changes
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── TRANSACTION HISTORY SHEET ─────────────────── */}
+      {historyTx && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
+            onClick={() => setHistoryTx(null)} />
+          <div className="relative w-full max-w-md animate-slide-up rounded-t-3xl overflow-hidden"
+            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)', maxHeight: '80vh' }}>
+            <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--border-soft)' }}>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#818cf8' }}>Change log</p>
+                <h3 className="font-extrabold text-base mt-0.5" style={{ color: 'var(--text-primary)' }}>
+                  ₹{historyTx.amount.toLocaleString('en-IN')} · {historyTx.remark}
+                </h3>
+              </div>
+              <button type="button" onClick={() => setHistoryTx(null)} className="w-9 h-9 rounded-full flex items-center justify-center"
+                style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }} aria-label="Close history">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-5 overflow-y-auto space-y-3" style={{ maxHeight: '55vh' }}>
+              {historyTx.deletedAt && (
+                <div className="rounded-2xl p-3 text-xs" style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.25)', color: '#fda4af' }}>
+                  Soft-deleted {new Date(historyTx.deletedAt).toLocaleString('en-IN')}
+                  <button type="button" onClick={() => handleRestoreTransaction(historyTx.id)}
+                    className="mt-2 w-full py-2 rounded-xl font-bold text-xs text-white"
+                    style={{ background: 'linear-gradient(135deg,#34d399,#059669)' }}>
+                    Restore entry
+                  </button>
+                </div>
+              )}
+              {(historyTx.history && historyTx.history.length > 0) ? (
+                [...historyTx.history].reverse().map((entry, idx) => (
+                  <div key={`${entry.at}-${idx}`} className="rounded-2xl p-3" style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-wide" style={{ color: '#a5b4fc' }}>
+                        {entry.action}
+                      </span>
+                      <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                        {new Date(entry.at).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                    <p className="text-[11px] mt-1" style={{ color: 'var(--text-secondary)' }}>
+                      By user · {entry.byUserId?.slice(-6) || 'unknown'}
+                    </p>
+                    {entry.after && typeof entry.after === 'object' && (
+                      <p className="text-[11px] mt-1.5 font-medium" style={{ color: 'var(--text-primary)' }}>
+                        {(entry.after as any).type ? `${(entry.after as any).type} · ` : ''}
+                        {(entry.after as any).amount != null ? `₹${Number((entry.after as any).amount).toLocaleString('en-IN')}` : ''}
+                        {(entry.after as any).remark ? ` · ${(entry.after as any).remark}` : ''}
+                      </p>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>
+                  No change history on this entry yet.
+                </p>
+              )}
             </div>
           </div>
         </div>

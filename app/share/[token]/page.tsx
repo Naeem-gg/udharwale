@@ -40,7 +40,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
 
   const title = `Money chat with ${meta.contactName}`;
-  const description = `${meta.ownerName} shared a Udharwale money chat with ${meta.contactName}. View the record — no login needed.`;
+  const description = `${meta.ownerName} shared a Udharwale money chat with ${meta.contactName}. If you are ${meta.contactName}, log in or create an account to open it in your Udharwale.`;
 
   return {
     title,

@@ -1,11 +1,20 @@
 import { NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/session';
+import { connectToDatabase } from '@/lib/db';
+import User from '@/models/User';
+import { getAuthenticatedUserId } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const user = await getCurrentUser();
+    const userId = await getAuthenticatedUserId();
+
+    if (!userId) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    await connectToDatabase();
+    const user = await User.findById(userId).select('name email phone');
 
     if (!user) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
@@ -14,13 +23,14 @@ export async function GET() {
     return NextResponse.json({
       authenticated: true,
       user: {
-        id: user.id,
+        id: user._id.toString(),
         name: user.name,
-        email: user.email
+        email: user.email,
+        phone: user.phone,
       }
     });
   } catch (error: any) {
     console.error('Session verify error:', error);
-    return NextResponse.json({ error: 'Outfitnal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

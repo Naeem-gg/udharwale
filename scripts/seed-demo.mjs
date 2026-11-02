@@ -45,6 +45,7 @@ function hashPassword(password) {
 const DEMO = {
   name: 'Demo User',
   email: 'demo@udharwale.com',
+  phone: '9999900001',
   password: 'Demo@1234',
   recoveryPin: '2468',
   securityAnswer: 'mumbai',
@@ -179,6 +180,7 @@ async function main() {
 
   if (user) {
     user.name = DEMO.name;
+    user.phone = DEMO.phone;
     user.password = hashPassword(DEMO.password);
     user.recoveryPin = hashPassword(DEMO.recoveryPin);
     user.securityAnswer = hashPassword(DEMO.securityAnswer.toLowerCase().trim());
@@ -188,6 +190,7 @@ async function main() {
     user = await User.create({
       name: DEMO.name,
       email,
+      phone: DEMO.phone,
       password: hashPassword(DEMO.password),
       recoveryPin: hashPassword(DEMO.recoveryPin),
       securityAnswer: hashPassword(DEMO.securityAnswer.toLowerCase().trim()),
@@ -213,6 +216,7 @@ async function main() {
   console.log('  DEMO LOGIN (for teacher presentation)');
   console.log('══════════════════════════════════════');
   console.log(`  Email:            ${DEMO.email}`);
+  console.log(`  Phone:            ${DEMO.phone}`);
   console.log(`  Password:         ${DEMO.password}`);
   console.log(`  Recovery PIN:     ${DEMO.recoveryPin}`);
   console.log(`  Security answer:  ${DEMO.securityAnswer}`);

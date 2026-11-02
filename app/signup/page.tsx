@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { signIn } from 'next-auth/react';
-import { CheckCircle2, Eye, EyeOff, Loader2, Mail, ReceiptText, ShieldCheck, TriangleAlert, User } from 'lucide-react';
+import { CheckCircle2, Eye, EyeOff, Loader2, Mail, Phone, ReceiptText, ShieldCheck, TriangleAlert, User } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,9 +34,12 @@ function PasswordToggle({
   );
 }
 
-export default function SignupPage() {
+function SignupForm() {
+  const searchParams = useSearchParams();
+  const nextPath = searchParams.get('next') || '/dashboard';
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [recoveryPin, setRecoveryPin] = useState('');
@@ -61,7 +65,7 @@ export default function SignupPage() {
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password, recoveryPin, securityAnswer }),
+        body: JSON.stringify({ name, email, phone, password, recoveryPin, securityAnswer }),
       });
 
       const data = await res.json();
@@ -70,12 +74,14 @@ export default function SignupPage() {
       setSuccess(true);
 
       const loginRes = await signIn('credentials', {
+        identifier: email,
         email,
         password,
         redirect: false,
       });
 
-      window.location.href = loginRes?.error ? '/login' : '/dashboard';
+      const dest = nextPath.startsWith('/') ? nextPath : '/dashboard';
+      window.location.href = loginRes?.error ? `/login?next=${encodeURIComponent(dest)}` : dest;
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'An error occurred during registration');
       setLoading(false);
@@ -143,6 +149,24 @@ export default function SignupPage() {
                 </div>
               </div>
 
+              <div className="space-y-1.5">
+                <Label htmlFor="phone">Phone number</Label>
+                <div className="relative">
+                  <Phone className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <Input
+                    id="phone"
+                    type="tel"
+                    required
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="pl-10"
+                    placeholder="+91 98765 43210"
+                    autoComplete="tel"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground">Used to find money chats others already started with you.</p>
+              </div>
+
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="password">Password</Label>
@@ -193,7 +217,10 @@ export default function SignupPage() {
 
               <p className="text-center text-sm text-muted-foreground">
                 Already have an account?{' '}
-                <Link href="/login" className="font-semibold text-primary transition-colors hover:text-primary/80">
+                <Link
+                  href={nextPath !== '/dashboard' ? `/login?next=${encodeURIComponent(nextPath)}` : '/login'}
+                  className="font-semibold text-primary transition-colors hover:text-primary/80"
+                >
                   Sign in
                 </Link>
               </p>
@@ -206,5 +233,13 @@ export default function SignupPage() {
         </p>
       </section>
     </main>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={<div className="min-h-dvh bg-[var(--bg-base)]" />}>
+      <SignupForm />
+    </Suspense>
   );
 }

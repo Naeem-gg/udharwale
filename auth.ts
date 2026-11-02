@@ -3,6 +3,7 @@ import Credentials from 'next-auth/providers/credentials';
 import { connectToDatabase } from '@/lib/db';
 import { verifyPassword } from '@/lib/auth';
 import User from '@/models/User';
+import { looksLikePhone, normalizePhone } from '@/lib/phone';
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   session: {
@@ -15,19 +16,30 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Credentials({
       credentials: {
-        email: { label: 'Email', type: 'email' },
+        email: { label: 'Email or phone', type: 'text' },
+        identifier: { label: 'Email or phone', type: 'text' },
         password: { label: 'Password', type: 'password' }
       },
       async authorize(credentials) {
-        const email = String(credentials?.email || '').toLowerCase().trim();
+        const rawIdentifier = String(
+          credentials?.identifier || credentials?.email || ''
+        ).trim();
         const password = String(credentials?.password || '');
 
-        if (!email || !password) {
+        if (!rawIdentifier || !password) {
           return null;
         }
 
         await connectToDatabase();
-        const user = await User.findOne({ email });
+
+        let user = null;
+        if (looksLikePhone(rawIdentifier)) {
+          const phone = normalizePhone(rawIdentifier);
+          user = await User.findOne({ phone });
+        } else {
+          const email = rawIdentifier.toLowerCase();
+          user = await User.findOne({ email });
+        }
 
         if (!user || !verifyPassword(password, user.password)) {
           return null;

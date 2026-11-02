@@ -2,7 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, ReceiptText } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ArrowRight, Loader2, ReceiptText } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -17,10 +18,22 @@ type SharedTx = {
   mode: string;
 };
 
+type ViewerState = {
+  authenticated: boolean;
+  canClaim: boolean;
+  alreadyLinked: boolean;
+  isOwner: boolean;
+  mismatch: boolean;
+};
+
 type SharedLedger = {
   ownerName: string;
   contactName: string;
+  contactPhone?: string;
+  contactEmail?: string | null;
   balance: number;
+  peerLinked?: boolean;
+  viewer: ViewerState;
   transactions: SharedTx[];
 };
 
@@ -52,9 +65,16 @@ function formatEventDate(dateStr: string) {
 }
 
 export default function SharedChatClient({ token }: { token: string }) {
+  const router = useRouter();
   const [data, setData] = useState<SharedLedger | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [claiming, setClaiming] = useState(false);
+  const [claimError, setClaimError] = useState<string | null>(null);
+
+  const sharePath = `/share/${token}`;
+  const loginHref = `/login?next=${encodeURIComponent(sharePath)}`;
+  const signupHref = `/signup?next=${encodeURIComponent(sharePath)}`;
 
   useEffect(() => {
     if (!token) return;
@@ -95,6 +115,20 @@ export default function SharedChatClient({ token }: { token: string }) {
     return result;
   }, [data]);
 
+  const handleClaim = async () => {
+    setClaiming(true);
+    setClaimError(null);
+    try {
+      const res = await fetch(`/api/share/${token}/claim`, { method: 'POST' });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.error || 'Could not open this chat in your account');
+      router.push('/dashboard');
+    } catch (err: unknown) {
+      setClaimError(err instanceof Error ? err.message : 'Could not claim this chat');
+      setClaiming(false);
+    }
+  };
+
   return (
     <div className="min-h-dvh flex flex-col" style={{ background: 'var(--bg-base)', color: 'var(--text-primary)' }}>
       <header className="shrink-0 px-4 py-4 border-b" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-soft)' }}>
@@ -131,14 +165,79 @@ export default function SharedChatClient({ token }: { token: string }) {
 
         {!loading && data && (
           <>
+            {/* Claim CTA */}
+            <div
+              className="px-4 py-5 shrink-0 space-y-3"
+              style={{
+                background: 'linear-gradient(180deg, rgba(124,58,237,0.16) 0%, var(--bg-surface) 100%)',
+                borderBottom: '1px solid var(--border-soft)',
+              }}
+            >
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-primary">
+                Shared by {data.ownerName}
+              </p>
+              <h1 className="text-2xl font-black leading-tight">
+                Are you {data.contactName}?
+              </h1>
+              <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                Log in or create an account with the same phone
+                {data.contactEmail ? ' or email' : ''} saved here to open this chat in your Udharwale.
+                You’ll get edit access automatically once linked.
+              </p>
+
+              {!data.viewer.authenticated && (
+                <div className="flex flex-col gap-2 pt-1">
+                  <Link href={signupHref} className={cn(buttonVariants({ size: 'lg' }), 'w-full')}>
+                    Create account as {data.contactName}
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                  <Link href={loginHref} className={cn(buttonVariants({ variant: 'secondary', size: 'lg' }), 'w-full')}>
+                    I already have an account — Sign in
+                  </Link>
+                </div>
+              )}
+
+              {data.viewer.authenticated && (data.viewer.canClaim || data.viewer.alreadyLinked || data.viewer.isOwner) && (
+                <div className="space-y-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleClaim}
+                    disabled={claiming}
+                    className={cn(buttonVariants({ size: 'lg' }), 'w-full')}
+                  >
+                    {claiming ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Opening…
+                      </>
+                    ) : data.viewer.isOwner ? (
+                      'Open in my dashboard'
+                    ) : (
+                      'Open in my Udharwale'
+                    )}
+                  </button>
+                  {claimError && (
+                    <p className="text-xs text-center" style={{ color: '#fda4af' }}>{claimError}</p>
+                  )}
+                </div>
+              )}
+
+              {data.viewer.authenticated && data.viewer.mismatch && (
+                <div
+                  className="rounded-2xl p-3 text-xs leading-relaxed"
+                  style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', color: '#fcd34d' }}
+                >
+                  You’re signed in, but your phone/email doesn’t match this contact.
+                  Use the account that matches the details {data.ownerName} saved for {data.contactName}.
+                </div>
+              )}
+            </div>
+
             <div className="px-4 py-4 shrink-0 space-y-3" style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-soft)' }}>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-                  Shared by {data.ownerName}
-                </p>
-                <h1 className="text-xl font-extrabold mt-1">Chat with {data.contactName}</h1>
+                <h2 className="text-lg font-extrabold">Chat with {data.contactName}</h2>
                 <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-                  You can see the record. You can’t edit it from this link.
+                  Preview only on this page — claim it to edit together.
                 </p>
               </div>
 
@@ -238,16 +337,6 @@ export default function SharedChatClient({ token }: { token: string }) {
                   </div>
                 ))
               )}
-            </div>
-
-            <div className="shrink-0 p-4 border-t space-y-2" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-soft)' }}>
-              <p className="text-center text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                Want your own money chat like this?
-              </p>
-              <Link href="/signup" className={cn(buttonVariants({ size: 'lg' }), 'w-full')}>
-                Start free on Udharwale
-                <ArrowRight className="h-4 w-4" />
-              </Link>
             </div>
           </>
         )}

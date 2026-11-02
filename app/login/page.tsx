@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { Eye, EyeOff, Loader2, Lock, Mail, ReceiptText, TriangleAlert } from 'lucide-react';
 import { Alert } from '@/components/ui/alert';
@@ -10,8 +11,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-export default function LoginPage() {
-  const [email, setEmail] = useState('');
+function LoginForm() {
+  const searchParams = useSearchParams();
+  const nextPath = searchParams.get('next') || '/dashboard';
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -24,13 +27,14 @@ export default function LoginPage() {
 
     try {
       const res = await signIn('credentials', {
-        email,
+        identifier,
+        email: identifier,
         password,
         redirect: false,
       });
 
-      if (res?.error) throw new Error('Invalid email or password');
-      window.location.href = '/dashboard';
+      if (res?.error) throw new Error('Invalid email/phone or password');
+      window.location.href = nextPath.startsWith('/') ? nextPath : '/dashboard';
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'An error occurred during sign in');
       setLoading(false);
@@ -61,7 +65,7 @@ export default function LoginPage() {
         <Card className="overflow-hidden border-primary/20 bg-card/85 backdrop-blur-2xl">
           <CardHeader className="border-b border-border">
             <CardTitle>Welcome back</CardTitle>
-            <CardDescription>Sign in to your account</CardDescription>
+            <CardDescription>Sign in with email or phone</CardDescription>
           </CardHeader>
 
           <CardContent className="pt-6">
@@ -74,17 +78,18 @@ export default function LoginPage() {
               )}
 
               <div className="space-y-1.5">
-                <Label htmlFor="email">Email Address</Label>
+                <Label htmlFor="identifier">Email or phone</Label>
                 <div className="relative">
                   <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
                   <Input
-                    id="email"
-                    type="email"
+                    id="identifier"
+                    type="text"
                     required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
                     className="pl-10"
-                    placeholder="you@example.com"
+                    placeholder="you@example.com or 9876543210"
+                    autoComplete="username"
                   />
                 </div>
               </div>
@@ -133,7 +138,10 @@ export default function LoginPage() {
 
               <p className="text-center text-sm text-muted-foreground">
                 No account?{' '}
-                <Link href="/signup" className="font-semibold text-primary transition-colors hover:text-primary/80">
+                <Link
+                  href={nextPath !== '/dashboard' ? `/signup?next=${encodeURIComponent(nextPath)}` : '/signup'}
+                  className="font-semibold text-primary transition-colors hover:text-primary/80"
+                >
                   Create one free
                 </Link>
               </p>
@@ -146,5 +154,13 @@ export default function LoginPage() {
         </p>
       </section>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-dvh bg-[var(--bg-base)]" />}>
+      <LoginForm />
+    </Suspense>
   );
 }

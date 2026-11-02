@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
 import Contact from '@/models/Contact';
 import { getAuthenticatedUserId } from '@/lib/session';
+import { normalizePhone } from '@/lib/phone';
+import { serializeContactForUser } from '@/lib/ledger-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,11 +29,11 @@ export async function PUT(
     }
 
     if (name !== undefined) contact.name = name;
-    if (phone !== undefined) contact.phone = phone;
-    if (email !== undefined) contact.email = email || undefined;
+    if (phone !== undefined) contact.phone = normalizePhone(phone) || phone;
+    if (email !== undefined) contact.email = email ? String(email).toLowerCase().trim() : undefined;
 
     await contact.save();
-    return NextResponse.json(contact);
+    return NextResponse.json(serializeContactForUser(contact, 'owner'));
   } catch (error: any) {
     console.error('Error updating contact:', error);
     return NextResponse.json(
