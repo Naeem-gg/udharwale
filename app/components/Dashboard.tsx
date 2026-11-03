@@ -44,6 +44,10 @@ export default function Dashboard() {
   const [userPhone, setUserPhone] = useState<string>('');
   const [historyTx, setHistoryTx] = useState<Transaction | null>(null);
   const [claimedOnce, setClaimedOnce] = useState(false);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [profileName, setProfileName] = useState('');
+  const [profilePhone, setProfilePhone] = useState('');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   // Database connection status: connecting, connected, or error
   const [dbStatus, setDbStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
@@ -207,6 +211,36 @@ export default function Dashboard() {
     setIsLedgerSearchOpen(false);
   }, [selectedContactId]);
 
+
+  const openEditProfile = () => {
+    setProfileName(userName);
+    setProfilePhone(userPhone);
+    setIsEditProfileOpen(true);
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingProfile(true);
+    try {
+      const res = await fetch('/api/auth/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: profileName, phone: profilePhone }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not update profile');
+      setUserName(data.user.name);
+      setUserPhone(data.user.phone || '');
+      setIsEditProfileOpen(false);
+      showToast('Profile updated', 'success');
+      // Re-claim matches if phone changed
+      await claimMatchingChats();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not update profile', 'error');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -2392,34 +2426,61 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* ── SETTINGS TAB ──────────────────────────────── */}
+            {/* ── ACCOUNT / PROFILE TAB ─────────────────────── */}
             {dbStatus === 'connected' && activeTab === 'settings' && (
               <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-5">
-                <div className="px-1 pt-1">
-                  <h1 className="text-xl font-black leading-none" style={{ color: 'var(--text-primary)' }}>Settings</h1>
-                  <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>Preferences & account</p>
-                </div>
+                {/* Profile hero */}
+                <div
+                  className="relative overflow-hidden rounded-3xl p-5"
+                  style={{
+                    background: 'linear-gradient(145deg, rgba(124,58,237,0.22), rgba(6,182,212,0.08) 55%, var(--bg-surface))',
+                    border: '1px solid var(--border-soft)',
+                  }}
+                >
+                  <div className="flex items-start gap-4">
+                    <div
+                      className={`w-16 h-16 rounded-full shrink-0 bg-gradient-to-tr ${getAvatarGradient(userName || 'U')} flex items-center justify-center font-black text-xl text-white shadow-lg`}
+                    >
+                      {getInitials(userName || 'U')}
+                    </div>
+                    <div className="min-w-0 flex-1 pt-0.5">
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-primary">Your account</p>
+                      <h1 className="text-xl font-black leading-tight mt-1 truncate" style={{ color: 'var(--text-primary)' }}>
+                        {userName || 'Your name'}
+                      </h1>
+                      <p className="text-xs mt-1 truncate" style={{ color: 'var(--text-secondary)' }}>{userEmail || '—'}</p>
+                      <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
+                        {userPhone ? `Phone · ${userPhone}` : 'No phone on file'}
+                      </p>
+                    </div>
+                  </div>
 
-                {/* Ledger overview */}
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { label: 'Contacts', value: ledgerSummary.contactCount.toLocaleString('en-IN'), tone: '#818cf8' },
-                    { label: 'Transactions', value: ledgerSummary.transactionCount.toLocaleString('en-IN'), tone: '#22d3ee' },
-                    {
-                      label: 'Last Activity',
-                      value: ledgerSummary.lastActivity
-                        ? ledgerSummary.lastActivity.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
-                        : 'No activity',
-                      tone: '#34d399',
-                    },
-                  ].map(({ label, value, tone }) => (
-                    <Card key={label} className="border-primary/15 bg-card/80">
-                      <CardContent className="p-4">
-                        <p className="text-[10px] font-bold uppercase" style={{ color: 'var(--text-muted)' }}>{label}</p>
-                        <p className="mt-1 text-xl font-black tabular-nums" style={{ color: tone }}>{value}</p>
-                      </CardContent>
-                    </Card>
-                  ))}
+                  <div className="mt-4 grid grid-cols-3 gap-2">
+                    {[
+                      { label: 'Friends', value: ledgerSummary.contactCount.toLocaleString('en-IN') },
+                      { label: 'Entries', value: ledgerSummary.transactionCount.toLocaleString('en-IN') },
+                      {
+                        label: 'Active',
+                        value: ledgerSummary.lastActivity
+                          ? ledgerSummary.lastActivity.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+                          : '—',
+                      },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="rounded-2xl px-2.5 py-2 text-center" style={{ background: 'color-mix(in srgb, var(--bg-base) 55%, transparent)', border: '1px solid var(--border-soft)' }}>
+                        <p className="text-sm font-black tabular-nums" style={{ color: 'var(--text-primary)' }}>{value}</p>
+                        <p className="text-[10px] font-bold mt-0.5" style={{ color: 'var(--text-muted)' }}>{label}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 flex gap-2">
+                    <Button type="button" className="flex-1" onClick={openEditProfile}>
+                      Edit profile
+                    </Button>
+                    <Button type="button" variant="outline" onClick={handleLogout}>
+                      Sign out
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Preferences */}
@@ -2606,27 +2667,6 @@ export default function Dashboard() {
                   </CardContent>
                 </Card>
 
-                {/* Account */}
-                <Card className="border-primary/15 bg-card/80">
-                  <CardContent className="p-5 space-y-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'rgba(99,102,241,0.1)' }}>👤</div>
-                        <div className="min-w-0">
-                          <h3 className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{userName || 'Account'}</h3>
-                          <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{userEmail}</p>
-                          {userPhone ? (
-                            <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>Phone · {userPhone}</p>
-                          ) : null}
-                        </div>
-                      </div>
-                      <Button type="button" variant="outline" onClick={handleLogout}>
-                        Sign Out
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-
                 {/* Demo data (for presentations) */}
                 <Card className="border-primary/15 bg-card/80">
                   <CardContent className="p-5 space-y-4">
@@ -2707,11 +2747,8 @@ export default function Dashboard() {
                   )
                 },
                 {
-                  tab: 'settings' as const, label: 'Settings', icon: (
-                    <>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'settings' ? 2.5 : 2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'settings' ? 2.5 : 2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </>
+                  tab: 'settings' as const, label: 'Account', icon: (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'settings' ? 2.5 : 2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   )
                 },
               ] as const).map(({ tab, label, icon }) => (
@@ -3176,6 +3213,59 @@ export default function Dashboard() {
                 Save Changes
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── EDIT PROFILE SHEET ───────────────────────── */}
+      {isEditProfileOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
+            onClick={() => !isSavingProfile && setIsEditProfileOpen(false)} />
+          <div className="relative w-full max-w-md animate-slide-up rounded-t-3xl overflow-hidden"
+            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
+            <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--border-soft)' }}>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#818cf8' }}>Profile</p>
+                <h3 className="font-extrabold text-base mt-0.5" style={{ color: 'var(--text-primary)' }}>Edit account</h3>
+              </div>
+              <button type="button" disabled={isSavingProfile} onClick={() => setIsEditProfileOpen(false)}
+                className="w-9 h-9 rounded-full flex items-center justify-center"
+                style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }} aria-label="Close">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <form onSubmit={handleSaveProfile} className="p-5 space-y-4">
+              <div className="flex justify-center">
+                <div className={`w-20 h-20 rounded-full bg-gradient-to-tr ${getAvatarGradient(profileName || userName || 'U')} flex items-center justify-center font-black text-2xl text-white`}>
+                  {getInitials(profileName || userName || 'U')}
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Display name</label>
+                <input type="text" required value={profileName} onChange={(e) => setProfileName(e.target.value)}
+                  className="input-field rounded-2xl" placeholder="Your name" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Phone</label>
+                <input type="tel" required value={profilePhone} onChange={(e) => setProfilePhone(e.target.value)}
+                  className="input-field rounded-2xl" placeholder="9876543210" />
+                <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                  Used to find chats others already started with you.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Email</label>
+                <input type="email" disabled value={userEmail}
+                  className="input-field rounded-2xl opacity-70" />
+                <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Email can’t be changed here.</p>
+              </div>
+              <button type="submit" disabled={isSavingProfile} className="btn-primary w-full py-3.5 rounded-2xl">
+                {isSavingProfile ? 'Saving…' : 'Save profile'}
+              </button>
+            </form>
           </div>
         </div>
       )}
