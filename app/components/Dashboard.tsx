@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { signOut } from 'next-auth/react';
 import { Contact, Transaction, ModeType, ActiveTab } from './types';
 import UpcomingFeatures from './UpcomingFeatures';
+import TripExpensesView from './TripExpensesView';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -827,6 +828,79 @@ export default function Dashboard() {
     }
   };
 
+  const handleRecordTripSettlement = async (
+    contactId: string,
+    amount: number,
+    type: 'gave' | 'got',
+    remark: string
+  ) => {
+    const newTxId = 'tx_' + Date.now();
+    const today = new Date().toISOString().split('T')[0];
+
+    try {
+      const res = await fetch(`/api/contacts/${contactId}/transactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: newTxId,
+          amount,
+          type,
+          remark,
+          mode: defaultTxMode || 'Online Transfer',
+          date: today,
+        }),
+      });
+
+      if (res.ok) {
+        const createdTx = await res.json();
+        const updatedContacts = contacts.map((c) => {
+          if (c.id !== contactId) return c;
+          return {
+            ...c,
+            transactions: [...c.transactions, createdTx],
+          };
+        });
+        saveContactsState(updatedContacts);
+      } else {
+        const fallbackTx: Transaction = {
+          id: newTxId,
+          amount,
+          type,
+          remark,
+          mode: defaultTxMode || 'Online Transfer',
+          date: today,
+          createdAt: new Date().toISOString(),
+        };
+        const updatedContacts = contacts.map((c) => {
+          if (c.id !== contactId) return c;
+          return {
+            ...c,
+            transactions: [...c.transactions, fallbackTx],
+          };
+        });
+        saveContactsState(updatedContacts);
+      }
+    } catch {
+      const fallbackTx: Transaction = {
+        id: newTxId,
+        amount,
+        type,
+        remark,
+        mode: defaultTxMode || 'Online Transfer',
+        date: today,
+        createdAt: new Date().toISOString(),
+      };
+      const updatedContacts = contacts.map((c) => {
+        if (c.id !== contactId) return c;
+        return {
+          ...c,
+          transactions: [...c.transactions, fallbackTx],
+        };
+      });
+      saveContactsState(updatedContacts);
+    }
+  };
+
   const handleUnlinkPeer = async () => {
     if (!selectedContactId || selectedContact?.role === 'peer') return;
     const confirmed = await confirmAction({
@@ -1192,16 +1266,16 @@ export default function Dashboard() {
       ...contacts.flatMap((contact) =>
         contact.transactions.length > 0
           ? contact.transactions.map((transaction) => [
-              contact.name,
-              contact.phone,
-              contact.email || '',
-              transaction.date,
-              transaction.createdAt || '',
-              transaction.type === 'gave' ? 'You gave' : 'You got',
-              transaction.mode,
-              transaction.remark,
-              transaction.amount,
-            ])
+            contact.name,
+            contact.phone,
+            contact.email || '',
+            transaction.date,
+            transaction.createdAt || '',
+            transaction.type === 'gave' ? 'You gave' : 'You got',
+            transaction.mode,
+            transaction.remark,
+            transaction.amount,
+          ])
           : [[contact.name, contact.phone, contact.email || '', '', '', '', '', 'No transactions yet', '']]
       ),
     ];
@@ -1297,8 +1371,8 @@ export default function Dashboard() {
             </thead>
             <tbody>
               ${rows.length === 0
-                ? '<tr><td colspan="7">No transactions yet.</td></tr>'
-                : rows.map((row) => `
+        ? '<tr><td colspan="7">No transactions yet.</td></tr>'
+        : rows.map((row) => `
                   <tr>
                     <td>${escapeHtml(row.date)}</td>
                     <td>${escapeHtml(row.loggedAt)}</td>
@@ -1695,638 +1769,654 @@ export default function Dashboard() {
             {/* ── FRIENDS LIST (full screen) ─────────────────── */}
             {dbStatus === 'connected' && activeTab === 'ledgers' && !isChatOpen && (
               <div className="flex-1 flex flex-col overflow-hidden">
-                    {/* App bar */}
-                    <div className="px-4 pt-3 pb-2 shrink-0" style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-soft)' }}>
-                      <div className="flex items-center justify-between gap-3 mb-3">
-                        <div className="min-w-0">
-                          <h1 className="text-xl font-black leading-none" style={{ color: 'var(--text-primary)' }}>Friends</h1>
-                          <p className="text-[11px] mt-1 truncate" style={{ color: 'var(--text-muted)' }}>
-                            {dbStatus === 'connected' ? 'Synced' : 'Syncing…'} · {userName || 'You'}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button onClick={() => setShowBalances(!showBalances)}
-                            className="w-9 h-9 rounded-full flex items-center justify-center"
-                            style={{ background: showBalances ? 'rgba(99,102,241,0.15)' : 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: showBalances ? '#818cf8' : 'var(--text-muted)' }}
-                            aria-label={showBalances ? 'Hide balances' : 'Show balances'}>
-                            {showBalances
-                              ? <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                              : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" /></svg>}
-                          </button>
-                          <button onClick={() => { setIsAddContactOpen(true); setImportStatus(null); }}
-                            className="w-9 h-9 rounded-full flex items-center justify-center text-white"
-                            style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}
-                            aria-label="Add contact">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="relative">
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-muted)' }}>
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                          </svg>
-                        </div>
-                        <input type="text" placeholder="Search friends…" value={searchQuery}
-                          onChange={e => setSearchQuery(e.target.value)}
-                          className="w-full pl-8 pr-3 py-2.5 text-xs rounded-full font-medium outline-none"
-                          style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }} />
-                      </div>
+                {/* App bar */}
+                <div className="px-4 pt-3 pb-2 shrink-0" style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-soft)' }}>
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="min-w-0">
+                      <h1 className="text-xl font-black leading-none" style={{ color: 'var(--text-primary)' }}>Friends</h1>
+                      <p className="text-[11px] mt-1 truncate" style={{ color: 'var(--text-muted)' }}>
+                        {dbStatus === 'connected' ? 'Synced' : 'Syncing…'} · {userName || 'You'}
+                      </p>
                     </div>
-
-                    {/* Filter chips */}
-                    <div className="px-4 py-2 shrink-0 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
-                      {(['all', 'credit', 'debit', 'settled'] as const).map(f => (
-                        <button key={f} onClick={() => setStatusFilter(f)}
-                          className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all"
-                          style={{
-                            background: statusFilter === f
-                              ? f === 'credit' ? 'rgba(16,185,129,0.15)' : f === 'debit' ? 'rgba(244,63,94,0.15)' : f === 'settled' ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.15)'
-                              : 'var(--bg-raised)',
-                            color: statusFilter === f
-                              ? f === 'credit' ? '#6ee7b7' : f === 'debit' ? '#fda4af' : f === 'settled' ? '#a5b4fc' : '#a5b4fc'
-                              : 'var(--text-muted)',
-                            border: `1px solid ${statusFilter === f ? 'rgba(255,255,255,0.1)' : 'var(--border-muted)'}`,
-                          }}>
-                          {f === 'all' ? 'All' : f === 'credit' ? "You'll get" : f === 'debit' ? 'You owe' : 'Settled'}
-                        </button>
-                      ))}
-                      <div className="flex-1" />
-                      <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)}
-                        className="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full outline-none cursor-pointer"
-                        style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-muted)' }}>
-                        <option value="recent">Recent</option>
-                        <option value="name">Name</option>
-                        <option value="balance">Balance</option>
-                      </select>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button onClick={() => { setActiveTab('trips'); setMobileView('list'); }}
+                        className="h-8 px-2.5 rounded-full flex items-center gap-1.5 text-xs font-bold transition-all text-violet-300 shadow-sm"
+                        style={{ background: 'rgba(124,58,237,0.12)', border: '1px solid rgba(139,92,246,0.3)' }}
+                        title="Trip Expenses & Split Calculator">
+                        <span>✈️ Trips</span>
+                      </button>
+                      <button onClick={() => setShowBalances(!showBalances)}
+                        className="w-9 h-9 rounded-full flex items-center justify-center"
+                        style={{ background: showBalances ? 'rgba(99,102,241,0.15)' : 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: showBalances ? '#818cf8' : 'var(--text-muted)' }}
+                        aria-label={showBalances ? 'Hide balances' : 'Show balances'}>
+                        {showBalances
+                          ? <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                          : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" /></svg>}
+                      </button>
+                      <button onClick={() => { setIsAddContactOpen(true); setImportStatus(null); }}
+                        className="w-9 h-9 rounded-full flex items-center justify-center text-white"
+                        style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}
+                        aria-label="Add contact">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                        </svg>
+                      </button>
                     </div>
+                  </div>
 
-                    {/* Contact list */}
-                    <div className="flex-1 overflow-y-auto scrollbar-thin">
-                      {contacts.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-4">
-                          <div className="w-20 h-20 rounded-3xl flex items-center justify-center text-4xl animate-fade-slide-up"
-                            style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>📖</div>
-                          <div className="space-y-1 animate-fade-slide-up" style={{ animationDelay: '0.1s' }}>
-                            <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>No contacts yet</p>
-                            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Add a friend to start tracking shared balances</p>
-                          </div>
-                          <button onClick={() => setIsAddContactOpen(true)} className="btn-primary text-sm px-6 animate-fade-slide-up" style={{ animationDelay: '0.2s' }}>
-                            ➕ Add First Contact
-                          </button>
-                        </div>
-                      ) : (() => {
-                        const filtered = contacts.filter(c => {
-                          const bal = getContactBalance(c);
-                          if (statusFilter === 'credit' && bal <= 0) return false;
-                          if (statusFilter === 'debit' && bal >= 0) return false;
-                          if (statusFilter === 'settled' && bal !== 0) return false;
-                          if (searchQuery && !c.name.toLowerCase().includes(searchQuery.toLowerCase()) && !c.phone.includes(searchQuery)) return false;
-                          return true;
-                        }).sort((a, b) => {
-                          if (sortBy === 'name') return a.name.localeCompare(b.name);
-                          if (sortBy === 'balance') return Math.abs(getContactBalance(b)) - Math.abs(getContactBalance(a));
-                          const lastA = a.transactions.length ? new Date(a.transactions[a.transactions.length - 1].date).getTime() : new Date(a.createdAt).getTime();
-                          const lastB = b.transactions.length ? new Date(b.transactions[b.transactions.length - 1].date).getTime() : new Date(b.createdAt).getTime();
-                          return lastB - lastA;
-                        });
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-muted)' }}>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </div>
+                    <input type="text" placeholder="Search friends…" value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      className="w-full pl-8 pr-3 py-2.5 text-xs rounded-full font-medium outline-none"
+                      style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }} />
+                  </div>
+                </div>
 
-                        return filtered.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-3">
-                            <div className="text-3xl">🔍</div>
-                            <p className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>No contacts match your filter</p>
-                          </div>
-                        ) : (
-                          <div className="py-2">
-                            {filtered.map(contact => {
-                              const balance = getContactBalance(contact);
-                              const isSelected = selectedContactId === contact.id;
-                              const isPeekingThis = peekingContactId === contact.id;
-                              const revealed = showBalances || isPeekingThis;
-                              const avatarGradient = getAvatarGradient(contact.name);
-                              const balanceColor = balance > 0 ? '#10b981' : balance < 0 ? '#f43f5e' : 'var(--text-muted)';
-                              const borderColor = balance > 0 ? '#10b981' : balance < 0 ? '#f43f5e' : 'transparent';
+                {/* Filter chips */}
+                <div className="px-4 py-2 shrink-0 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+                  {(['all', 'credit', 'debit', 'settled'] as const).map(f => (
+                    <button key={f} onClick={() => setStatusFilter(f)}
+                      className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all"
+                      style={{
+                        background: statusFilter === f
+                          ? f === 'credit' ? 'rgba(16,185,129,0.15)' : f === 'debit' ? 'rgba(244,63,94,0.15)' : f === 'settled' ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.15)'
+                          : 'var(--bg-raised)',
+                        color: statusFilter === f
+                          ? f === 'credit' ? '#6ee7b7' : f === 'debit' ? '#fda4af' : f === 'settled' ? '#a5b4fc' : '#a5b4fc'
+                          : 'var(--text-muted)',
+                        border: `1px solid ${statusFilter === f ? 'rgba(255,255,255,0.1)' : 'var(--border-muted)'}`,
+                      }}>
+                      {f === 'all' ? 'All' : f === 'credit' ? "You'll get" : f === 'debit' ? 'You owe' : 'Settled'}
+                    </button>
+                  ))}
+                  <div className="flex-1" />
+                  <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)}
+                    className="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full outline-none cursor-pointer"
+                    style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-muted)' }}>
+                    <option value="recent">Recent</option>
+                    <option value="name">Name</option>
+                    <option value="balance">Balance</option>
+                  </select>
+                </div>
 
-                              return (
-                                <div key={contact.id}
-                                  className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-all duration-150`}
-                                  style={{
-                                    background: isSelected ? 'rgba(99,102,241,0.08)' : 'transparent',
-                                    borderLeft: `3px solid ${isSelected ? '#6366f1' : borderColor}`,
-                                  }}
-                                  onClick={() => { setSelectedContactId(contact.id); setMobileView('ledger'); }}>
+                {/* Contact list */}
+                <div className="flex-1 overflow-y-auto scrollbar-thin">
+                  {contacts.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-4">
+                      <div className="w-20 h-20 rounded-3xl flex items-center justify-center text-4xl animate-fade-slide-up"
+                        style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>📖</div>
+                      <div className="space-y-1 animate-fade-slide-up" style={{ animationDelay: '0.1s' }}>
+                        <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>No contacts yet</p>
+                        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Add a friend to start tracking shared balances</p>
+                      </div>
+                      <button onClick={() => setIsAddContactOpen(true)} className="btn-primary text-sm px-6 animate-fade-slide-up" style={{ animationDelay: '0.2s' }}>
+                        ➕ Add First Contact
+                      </button>
+                    </div>
+                  ) : (() => {
+                    const filtered = contacts.filter(c => {
+                      const bal = getContactBalance(c);
+                      if (statusFilter === 'credit' && bal <= 0) return false;
+                      if (statusFilter === 'debit' && bal >= 0) return false;
+                      if (statusFilter === 'settled' && bal !== 0) return false;
+                      if (searchQuery && !c.name.toLowerCase().includes(searchQuery.toLowerCase()) && !c.phone.includes(searchQuery)) return false;
+                      return true;
+                    }).sort((a, b) => {
+                      if (sortBy === 'name') return a.name.localeCompare(b.name);
+                      if (sortBy === 'balance') return Math.abs(getContactBalance(b)) - Math.abs(getContactBalance(a));
+                      const lastA = a.transactions.length ? new Date(a.transactions[a.transactions.length - 1].date).getTime() : new Date(a.createdAt).getTime();
+                      const lastB = b.transactions.length ? new Date(b.transactions[b.transactions.length - 1].date).getTime() : new Date(b.createdAt).getTime();
+                      return lastB - lastA;
+                    });
 
-                                  {/* Avatar */}
-                                  <div className={`w-11 h-11 rounded-full shrink-0 bg-gradient-to-tr ${avatarGradient} flex items-center justify-center font-black text-sm text-white`}
-                                    style={{ boxShadow: isSelected ? `0 0 0 2px #6366f1` : 'none' }}>
-                                    {getInitials(contact.name)}
-                                  </div>
+                    return filtered.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-3">
+                        <div className="text-3xl">🔍</div>
+                        <p className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>No contacts match your filter</p>
+                      </div>
+                    ) : (
+                      <div className="py-2">
+                        {filtered.map(contact => {
+                          const balance = getContactBalance(contact);
+                          const isSelected = selectedContactId === contact.id;
+                          const isPeekingThis = peekingContactId === contact.id;
+                          const revealed = showBalances || isPeekingThis;
+                          const avatarGradient = getAvatarGradient(contact.name);
+                          const balanceColor = balance > 0 ? '#10b981' : balance < 0 ? '#f43f5e' : 'var(--text-muted)';
+                          const borderColor = balance > 0 ? '#10b981' : balance < 0 ? '#f43f5e' : 'transparent';
 
-                                  {/* Info */}
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-1.5 min-w-0">
-                                      <p className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{contact.name}</p>
-                                      {(contact.role === 'peer' || contact.peerLinked) && (
-                                        <span
-                                          className="shrink-0 text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full"
-                                          style={{
-                                            background: contact.role === 'peer' ? 'rgba(6,182,212,0.15)' : 'rgba(167,139,250,0.15)',
-                                            color: contact.role === 'peer' ? '#22d3ee' : '#c4b5fd',
-                                          }}
-                                        >
-                                          {contact.role === 'peer' ? 'Linked' : 'Shared'}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <p className="text-[11px] truncate" style={{ color: 'var(--text-muted)' }}>
-                                      {contact.role === 'peer'
-                                        ? `From ${contact.ownerName || 'someone'} · both can edit`
-                                        : contact.phone || 'No phone'}
-                                    </p>
-                                  </div>
+                          return (
+                            <div key={contact.id}
+                              className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-all duration-150`}
+                              style={{
+                                background: isSelected ? 'rgba(99,102,241,0.08)' : 'transparent',
+                                borderLeft: `3px solid ${isSelected ? '#6366f1' : borderColor}`,
+                              }}
+                              onClick={() => { setSelectedContactId(contact.id); setMobileView('ledger'); }}>
 
-                                  {/* Balance + peek */}
-                                  <div className="flex items-center gap-1.5 shrink-0">
-                                    <div className="text-right">
-                                      {balance !== 0 && (
-                                        <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-                                          {balance > 0 ? "you'll get" : 'you owe'}
-                                        </p>
-                                      )}
-                                      <p className="text-sm font-black" style={{ color: balanceColor }}>
-                                        {balance === 0 ? (
-                                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}>Settled</span>
-                                        ) : revealed ? (
-                                          `${balance > 0 ? '+' : '-'}₹${Math.abs(balance).toLocaleString('en-IN')}`
-                                        ) : '•••'}
-                                      </p>
-                                    </div>
-                                    {balance !== 0 && (
-                                      <button
-                                        onMouseDown={e => { e.stopPropagation(); setPeekingContactId(contact.id); }}
-                                        onMouseUp={e => { e.stopPropagation(); setPeekingContactId(null); }}
-                                        onMouseLeave={() => setPeekingContactId(null)}
-                                        onTouchStart={e => { e.stopPropagation(); setPeekingContactId(contact.id); }}
-                                        onTouchEnd={e => { e.stopPropagation(); setPeekingContactId(null); }}
-                                        className="p-1 rounded-md transition-all select-none"
-                                        title="Hold to peek"
-                                        style={{ color: isPeekingThis ? '#818cf8' : 'var(--text-muted)' }}>
-                                        {isPeekingThis
-                                          ? <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                                          : <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" /></svg>
-                                        }
-                                      </button>
-                                    )}
-                                  </div>
+                              {/* Avatar */}
+                              <div className={`w-11 h-11 rounded-full shrink-0 bg-gradient-to-tr ${avatarGradient} flex items-center justify-center font-black text-sm text-white`}
+                                style={{ boxShadow: isSelected ? `0 0 0 2px #6366f1` : 'none' }}>
+                                {getInitials(contact.name)}
+                              </div>
 
+                              {/* Info */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <p className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{contact.name}</p>
+                                  {(contact.role === 'peer' || contact.peerLinked) && (
+                                    <span
+                                      className="shrink-0 text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full"
+                                      style={{
+                                        background: contact.role === 'peer' ? 'rgba(6,182,212,0.15)' : 'rgba(167,139,250,0.15)',
+                                        color: contact.role === 'peer' ? '#22d3ee' : '#c4b5fd',
+                                      }}
+                                    >
+                                      {contact.role === 'peer' ? 'Linked' : 'Shared'}
+                                    </span>
+                                  )}
                                 </div>
-                              );
-                            })}
+                                <p className="text-[11px] truncate" style={{ color: 'var(--text-muted)' }}>
+                                  {contact.role === 'peer'
+                                    ? `From ${contact.ownerName || 'someone'} · both can edit`
+                                    : contact.phone || 'No phone'}
+                                </p>
+                              </div>
 
-                          </div>
-                        );
-                      })()}
-                    </div>
+                              {/* Balance + peek */}
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <div className="text-right">
+                                  {balance !== 0 && (
+                                    <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                                      {balance > 0 ? "you'll get" : 'you owe'}
+                                    </p>
+                                  )}
+                                  <p className="text-sm font-black" style={{ color: balanceColor }}>
+                                    {balance === 0 ? (
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}>Settled</span>
+                                    ) : revealed ? (
+                                      `${balance > 0 ? '+' : '-'}₹${Math.abs(balance).toLocaleString('en-IN')}`
+                                    ) : '•••'}
+                                  </p>
+                                </div>
+                                {balance !== 0 && (
+                                  <button
+                                    onMouseDown={e => { e.stopPropagation(); setPeekingContactId(contact.id); }}
+                                    onMouseUp={e => { e.stopPropagation(); setPeekingContactId(null); }}
+                                    onMouseLeave={() => setPeekingContactId(null)}
+                                    onTouchStart={e => { e.stopPropagation(); setPeekingContactId(contact.id); }}
+                                    onTouchEnd={e => { e.stopPropagation(); setPeekingContactId(null); }}
+                                    className="p-1 rounded-md transition-all select-none"
+                                    title="Hold to peek"
+                                    style={{ color: isPeekingThis ? '#818cf8' : 'var(--text-muted)' }}>
+                                    {isPeekingThis
+                                      ? <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                      : <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" /></svg>
+                                    }
+                                  </button>
+                                )}
+                              </div>
+
+                            </div>
+                          );
+                        })}
+
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
             )}
 
             {/* ── CHAT (full screen) ─────────────────────────── */}
             {dbStatus === 'connected' && activeTab === 'ledgers' && isChatOpen && selectedContact && (() => {
-                    const contactBal = getContactBalance(selectedContact);
+              const contactBal = getContactBalance(selectedContact);
 
-                    return (
-                      <div className="relative flex-1 flex flex-col overflow-hidden animate-scale-in" style={{ background: 'var(--bg-base)' }}>
-                        {/* Floating chat controls (no solid header/footer chrome) */}
-                        <div className="absolute top-0 inset-x-0 z-20 pointer-events-none">
-                          <div className="pointer-events-auto px-3 pt-3 pb-2 flex items-center gap-2">
-                            <button
-                              onClick={() => setMobileView('list')}
-                              className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 backdrop-blur-md"
-                              style={{ background: 'color-mix(in srgb, var(--bg-surface) 88%, transparent)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }}
-                              aria-label="Back to friends"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
-                              </svg>
-                            </button>
+              return (
+                <div className="relative flex-1 flex flex-col overflow-hidden animate-scale-in" style={{ background: 'var(--bg-base)' }}>
+                  {/* Floating chat controls (no solid header/footer chrome) */}
+                  <div className="absolute top-0 inset-x-0 z-20 pointer-events-none">
+                    <div className="pointer-events-auto px-3 pt-3 pb-2 flex items-center gap-2">
+                      <button
+                        onClick={() => setMobileView('list')}
+                        className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 backdrop-blur-md"
+                        style={{ background: 'color-mix(in srgb, var(--bg-surface) 88%, transparent)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }}
+                        aria-label="Back to friends"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+                        </svg>
+                      </button>
 
-                            <div
-                              className="min-w-0 flex-1 rounded-full px-3 py-1.5 backdrop-blur-md"
-                              style={{ background: 'color-mix(in srgb, var(--bg-surface) 88%, transparent)', border: '1px solid var(--border-soft)' }}
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <div className={`w-7 h-7 rounded-full shrink-0 bg-gradient-to-tr ${getAvatarGradient(selectedContact.name)} flex items-center justify-center font-black text-[10px] text-white`}>
-                                  {getInitials(selectedContact.name)}
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-1.5 min-w-0">
-                                    <p className="font-bold text-xs truncate leading-tight" style={{ color: 'var(--text-primary)' }}>
-                                      {selectedContact.name}
-                                    </p>
-                                    {(selectedContact.role === 'peer' || selectedContact.peerLinked) && (
-                                      <span className="shrink-0 text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full"
-                                        style={{ background: 'rgba(6,182,212,0.18)', color: '#22d3ee' }}>
-                                        Both edit
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p
-                                    className="text-[10px] font-semibold truncate leading-tight"
-                                    style={{
-                                      color:
-                                        contactBal > 0 ? '#34d399' : contactBal < 0 ? '#fb7185' : 'var(--text-muted)',
-                                    }}
-                                  >
-                                    {contactBal === 0
-                                      ? 'Settled'
-                                      : contactBal > 0
-                                        ? `Owes you ₹${contactBal.toLocaleString('en-IN')}`
-                                        : `You owe ₹${Math.abs(contactBal).toLocaleString('en-IN')}`}
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-
-                            <button
-                              onClick={() => setIsLedgerSearchOpen((open) => !open)}
-                              className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 backdrop-blur-md"
-                              style={{
-                                background: 'color-mix(in srgb, var(--bg-surface) 88%, transparent)',
-                                border: '1px solid var(--border-soft)',
-                                color: isLedgerSearchOpen || ledgerSearchQuery ? '#818cf8' : 'var(--text-muted)',
-                              }}
-                              aria-label="Search in chat"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                              </svg>
-                            </button>
-
-                            <div className="relative shrink-0">
-                              <button
-                                onClick={() => setIsContactMenuOpen(!isContactMenuOpen)}
-                                className="w-9 h-9 rounded-full flex items-center justify-center backdrop-blur-md"
-                                style={{ background: 'color-mix(in srgb, var(--bg-surface) 88%, transparent)', border: '1px solid var(--border-soft)', color: 'var(--text-muted)' }}
-                                aria-label="More options"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                                </svg>
-                              </button>
-                              {isContactMenuOpen && (
-                                <>
-                                  <div className="fixed inset-0 z-10" onClick={() => setIsContactMenuOpen(false)} />
-                                  <div
-                                    className="absolute right-0 mt-2 w-56 rounded-xl py-1.5 z-20 animate-fade-slide-down"
-                                    style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border-soft)', boxShadow: 'var(--shadow-card)' }}
-                                  >
-                                    <div className="px-4 py-2.5 mb-1" style={{ borderBottom: '1px solid var(--border-soft)' }}>
-                                      <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-                                        {selectedContact.role === 'peer' ? 'Shared ledger' : 'Contact'}
-                                      </p>
-                                      <p className="text-xs font-semibold mt-1 truncate" style={{ color: 'var(--text-primary)' }}>
-                                        {selectedContact.role === 'peer'
-                                          ? (selectedContact.ownerName || 'Owner')
-                                          : selectedContact.phone}
-                                      </p>
-                                      {selectedContact.role !== 'peer' && selectedContact.email ? (
-                                        <p className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
-                                          {selectedContact.email}
-                                        </p>
-                                      ) : null}
-                                      {(selectedContact.peerLinked || selectedContact.role === 'peer') && (
-                                        <p className="text-[10px] mt-1 font-semibold" style={{ color: '#22d3ee' }}>
-                                          Both parties can edit · changes are logged
-                                        </p>
-                                      )}
-                                    </div>
-
-                                    {contactBal !== 0 && (
-                                      <button onClick={() => { setIsContactMenuOpen(false); handleOpenSettlement('full'); }}
-                                        className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                        style={{ color: '#10b981' }}
-                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(16,185,129,0.08)'}
-                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                        🤝 Settle in full
-                                      </button>
-                                    )}
-
-                                    {contactBal !== 0 && (
-                                      <button onClick={() => { setIsContactMenuOpen(false); handleOpenSettlement('partial'); }}
-                                        className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                        style={{ color: '#22d3ee' }}
-                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(6,182,212,0.08)'}
-                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                        ✂️ Settle partly
-                                      </button>
-                                    )}
-
-                                    {contactBal !== 0 && selectedContact.role !== 'peer' && (
-                                      <button onClick={() => { setIsContactMenuOpen(false); handleWhatsAppReminder(); }}
-                                        className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                        style={{ color: '#6366f1' }}
-                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,0.08)'}
-                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                        💬 WhatsApp reminder
-                                      </button>
-                                    )}
-
-                                    {contactBal !== 0 && (
-                                      <button onClick={() => { setIsContactMenuOpen(false); handleCopyReminder(); }}
-                                        className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                        style={{ color: '#38bdf8' }}
-                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(56,189,248,0.08)'}
-                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                        📋 Copy reminder
-                                      </button>
-                                    )}
-
-                                    {selectedContact.role !== 'peer' && (
-                                      <button onClick={() => { setIsContactMenuOpen(false); handleCopyChatLink(); }}
-                                        className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                        style={{ color: '#a78bfa' }}
-                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(167,139,250,0.08)'}
-                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                        🔗 Copy chat link
-                                      </button>
-                                    )}
-
-                                    {selectedContact.role !== 'peer' && (
-                                      <button onClick={() => { setIsContactMenuOpen(false); setIsShareModalOpen(true); }}
-                                        className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                        style={{ color: '#8b5cf6' }}
-                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(139,92,246,0.08)'}
-                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
-                                        Share / copy record
-                                      </button>
-                                    )}
-
-                                    {selectedContact.role !== 'peer' && (
-                                      <button onClick={() => {
-                                        setIsContactMenuOpen(false);
-                                        setContactName(selectedContact.name);
-                                        setContactPhone(selectedContact.phone);
-                                        setContactEmail(selectedContact.email || '');
-                                        setIsEditContactOpen(true);
-                                      }}
-                                        className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                        style={{ color: 'var(--text-primary)' }}
-                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-raised)'}
-                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                                        Edit contact
-                                      </button>
-                                    )}
-
-                                    <button
-                                      onClick={() => {
-                                        setIsContactMenuOpen(false);
-                                        const deleted = (selectedContact.allTransactions || []).filter((t) => t.deletedAt);
-                                        const withHistory = (selectedContact.allTransactions || []).filter(
-                                          (t) => (t.history && t.history.length > 0) || t.deletedAt
-                                        );
-                                        if (withHistory.length === 0) {
-                                          showToast('No change history in this chat yet', 'info');
-                                          return;
-                                        }
-                                        setHistoryTx(deleted[0] || withHistory[withHistory.length - 1]);
-                                      }}
-                                      className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                      style={{ color: '#94a3b8' }}
-                                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-raised)'}
-                                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                      Change history
-                                    </button>
-
-                                    {(selectedContact.role === 'owner' || !selectedContact.role) && selectedContact.peerLinked && (
-                                      <button onClick={() => { setIsContactMenuOpen(false); handleUnlinkPeer(); }}
-                                        className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                        style={{ color: '#fbbf24' }}
-                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(251,191,36,0.08)'}
-                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                        Unlink shared access
-                                      </button>
-                                    )}
-
-                                    {selectedContact.role !== 'peer' && (
-                                      <button onClick={() => { setIsContactMenuOpen(false); handleDeleteContact(selectedContact.id); }}
-                                        className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                        style={{ color: '#f43f5e' }}
-                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(244,63,94,0.08)'}
-                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                        Delete contact
-                                      </button>
-                                    )}
-                                  </div>
-                                </>
+                      <div
+                        className="min-w-0 flex-1 rounded-full px-3 py-1.5 backdrop-blur-md"
+                        style={{ background: 'color-mix(in srgb, var(--bg-surface) 88%, transparent)', border: '1px solid var(--border-soft)' }}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className={`w-7 h-7 rounded-full shrink-0 bg-gradient-to-tr ${getAvatarGradient(selectedContact.name)} flex items-center justify-center font-black text-[10px] text-white`}>
+                            {getInitials(selectedContact.name)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <p className="font-bold text-xs truncate leading-tight" style={{ color: 'var(--text-primary)' }}>
+                                {selectedContact.name}
+                              </p>
+                              {(selectedContact.role === 'peer' || selectedContact.peerLinked) && (
+                                <span className="shrink-0 text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full"
+                                  style={{ background: 'rgba(6,182,212,0.18)', color: '#22d3ee' }}>
+                                  Both edit
+                                </span>
                               )}
                             </div>
+                            <p
+                              className="text-[10px] font-semibold truncate leading-tight"
+                              style={{
+                                color:
+                                  contactBal > 0 ? '#34d399' : contactBal < 0 ? '#fb7185' : 'var(--text-muted)',
+                              }}
+                            >
+                              {contactBal === 0
+                                ? 'Settled'
+                                : contactBal > 0
+                                  ? `Owes you ₹${contactBal.toLocaleString('en-IN')}`
+                                  : `You owe ₹${Math.abs(contactBal).toLocaleString('en-IN')}`}
+                            </p>
                           </div>
+                        </div>
+                      </div>
 
-                          {isLedgerSearchOpen && (
-                            <div className="pointer-events-auto px-3 pb-2">
-                              <div className="relative">
-                                <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-muted)' }}>
-                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                  </svg>
-                                </div>
-                                <input
-                                  type="text"
-                                  autoFocus
-                                  placeholder="Search remarks, amount, mode…"
-                                  value={ledgerSearchQuery}
-                                  onChange={(e) => setLedgerSearchQuery(e.target.value)}
-                                  className="w-full pl-9 pr-9 py-2 text-xs rounded-full outline-none backdrop-blur-md"
-                                  style={{ background: 'color-mix(in srgb, var(--bg-surface) 92%, transparent)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }}
-                                />
-                                {ledgerSearchQuery && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setLedgerSearchQuery('')}
-                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-full"
-                                    style={{ color: 'var(--text-muted)' }}
-                                    aria-label="Clear search"
-                                  >
-                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                  </button>
+                      <button
+                        onClick={() => setIsLedgerSearchOpen((open) => !open)}
+                        className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 backdrop-blur-md"
+                        style={{
+                          background: 'color-mix(in srgb, var(--bg-surface) 88%, transparent)',
+                          border: '1px solid var(--border-soft)',
+                          color: isLedgerSearchOpen || ledgerSearchQuery ? '#818cf8' : 'var(--text-muted)',
+                        }}
+                        aria-label="Search in chat"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                      </button>
+
+                      <div className="relative shrink-0">
+                        <button
+                          onClick={() => setIsContactMenuOpen(!isContactMenuOpen)}
+                          className="w-9 h-9 rounded-full flex items-center justify-center backdrop-blur-md"
+                          style={{ background: 'color-mix(in srgb, var(--bg-surface) 88%, transparent)', border: '1px solid var(--border-soft)', color: 'var(--text-muted)' }}
+                          aria-label="More options"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                          </svg>
+                        </button>
+                        {isContactMenuOpen && (
+                          <>
+                            <div className="fixed inset-0 z-10" onClick={() => setIsContactMenuOpen(false)} />
+                            <div
+                              className="absolute right-0 mt-2 w-56 rounded-xl py-1.5 z-20 animate-fade-slide-down"
+                              style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border-soft)', boxShadow: 'var(--shadow-card)' }}
+                            >
+                              <div className="px-4 py-2.5 mb-1" style={{ borderBottom: '1px solid var(--border-soft)' }}>
+                                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                                  {selectedContact.role === 'peer' ? 'Shared ledger' : 'Contact'}
+                                </p>
+                                <p className="text-xs font-semibold mt-1 truncate" style={{ color: 'var(--text-primary)' }}>
+                                  {selectedContact.role === 'peer'
+                                    ? (selectedContact.ownerName || 'Owner')
+                                    : selectedContact.phone}
+                                </p>
+                                {selectedContact.role !== 'peer' && selectedContact.email ? (
+                                  <p className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
+                                    {selectedContact.email}
+                                  </p>
+                                ) : null}
+                                {(selectedContact.peerLinked || selectedContact.role === 'peer') && (
+                                  <p className="text-[10px] mt-1 font-semibold" style={{ color: '#22d3ee' }}>
+                                    Both parties can edit · changes are logged
+                                  </p>
                                 )}
                               </div>
+
+                              {contactBal !== 0 && (
+                                <button onClick={() => { setIsContactMenuOpen(false); handleOpenSettlement('full'); }}
+                                  className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                  style={{ color: '#10b981' }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(16,185,129,0.08)'}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                  🤝 Settle in full
+                                </button>
+                              )}
+
+                              {contactBal !== 0 && (
+                                <button onClick={() => { setIsContactMenuOpen(false); handleOpenSettlement('partial'); }}
+                                  className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                  style={{ color: '#22d3ee' }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(6,182,212,0.08)'}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                  ✂️ Settle partly
+                                </button>
+                              )}
+
+                              {contactBal !== 0 && selectedContact.role !== 'peer' && (
+                                <button onClick={() => { setIsContactMenuOpen(false); handleWhatsAppReminder(); }}
+                                  className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                  style={{ color: '#6366f1' }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,0.08)'}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                  💬 WhatsApp reminder
+                                </button>
+                              )}
+
+                              {contactBal !== 0 && (
+                                <button onClick={() => { setIsContactMenuOpen(false); handleCopyReminder(); }}
+                                  className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                  style={{ color: '#38bdf8' }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(56,189,248,0.08)'}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                  📋 Copy reminder
+                                </button>
+                              )}
+
+                              {selectedContact.role !== 'peer' && (
+                                <button onClick={() => { setIsContactMenuOpen(false); handleCopyChatLink(); }}
+                                  className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                  style={{ color: '#a78bfa' }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(167,139,250,0.08)'}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                  🔗 Copy chat link
+                                </button>
+                              )}
+
+                              {selectedContact.role !== 'peer' && (
+                                <button onClick={() => { setIsContactMenuOpen(false); setIsShareModalOpen(true); }}
+                                  className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                  style={{ color: '#8b5cf6' }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(139,92,246,0.08)'}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+                                  Share / copy record
+                                </button>
+                              )}
+
+                              {selectedContact.role !== 'peer' && (
+                                <button onClick={() => {
+                                  setIsContactMenuOpen(false);
+                                  setContactName(selectedContact.name);
+                                  setContactPhone(selectedContact.phone);
+                                  setContactEmail(selectedContact.email || '');
+                                  setIsEditContactOpen(true);
+                                }}
+                                  className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                  style={{ color: 'var(--text-primary)' }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-raised)'}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                  Edit contact
+                                </button>
+                              )}
+
+                              <button
+                                onClick={() => {
+                                  setIsContactMenuOpen(false);
+                                  const deleted = (selectedContact.allTransactions || []).filter((t) => t.deletedAt);
+                                  const withHistory = (selectedContact.allTransactions || []).filter(
+                                    (t) => (t.history && t.history.length > 0) || t.deletedAt
+                                  );
+                                  if (withHistory.length === 0) {
+                                    showToast('No change history in this chat yet', 'info');
+                                    return;
+                                  }
+                                  setHistoryTx(deleted[0] || withHistory[withHistory.length - 1]);
+                                }}
+                                className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                style={{ color: '#94a3b8' }}
+                                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-raised)'}
+                                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                Change history
+                              </button>
+
+                              {(selectedContact.role === 'owner' || !selectedContact.role) && selectedContact.peerLinked && (
+                                <button onClick={() => { setIsContactMenuOpen(false); handleUnlinkPeer(); }}
+                                  className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                  style={{ color: '#fbbf24' }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(251,191,36,0.08)'}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                  Unlink shared access
+                                </button>
+                              )}
+
+                              {selectedContact.role !== 'peer' && (
+                                <button onClick={() => { setIsContactMenuOpen(false); handleDeleteContact(selectedContact.id); }}
+                                  className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                  style={{ color: '#f43f5e' }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(244,63,94,0.08)'}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                  Delete contact
+                                </button>
+                              )}
                             </div>
-                          )}
-                        </div>
-
-                        {/* Full-bleed payment chat */}
-                        <div
-                          ref={chatScrollRef}
-                          className="flex-1 overflow-y-auto scrollbar-thin px-3 pt-16 pb-24 md:px-5"
-                          style={{
-                            background: 'var(--bg-base)',
-                            backgroundImage: 'radial-gradient(rgba(148,163,184,0.08) 1px, transparent 1px)',
-                            backgroundSize: '18px 18px',
-                          }}
-                        >
-                          {filteredTransactions.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
-                              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>💬</div>
-                              <div>
-                                <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>No payments yet</p>
-                                <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>Add a record — it will appear here like a chat</p>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex flex-col gap-3 pb-2">
-                              {chatTransactionGroups.map((group) => (
-                                <div key={group.date} className="flex flex-col gap-2.5">
-                                  <div className="sticky top-1 z-10 flex justify-center py-1">
-                                    <span
-                                      className="px-3 py-1 rounded-full text-[10px] font-bold tracking-wide shadow-sm"
-                                      style={{
-                                        background: 'var(--bg-surface)',
-                                        color: 'var(--text-secondary)',
-                                        border: '1px solid var(--border-soft)',
-                                      }}
-                                    >
-                                      {formatChatDateLabel(group.date)}
-                                    </span>
-                                  </div>
-
-                                  {group.items.map((tx) => {
-                                    const isGave = tx.type === 'gave';
-                                    return (
-                                      <div
-                                        key={tx.id}
-                                        className={`flex w-full ${isGave ? 'justify-end' : 'justify-start'} animate-fade-slide-up`}
-                                      >
-                                        <div
-                                          className="max-w-[85%] rounded-2xl px-4 py-3"
-                                          style={{
-                                            background: isGave
-                                              ? 'rgba(16,185,129,0.14)'
-                                              : 'rgba(244,63,94,0.12)',
-                                            border: `1px solid ${isGave ? 'rgba(16,185,129,0.28)' : 'rgba(244,63,94,0.28)'}`,
-                                          }}
-                                        >
-                                          <p
-                                            className="text-[11px] font-bold"
-                                            style={{ color: isGave ? '#34d399' : '#fb7185' }}
-                                          >
-                                            {isGave ? 'You gave' : 'You got'}
-                                          </p>
-                                          <p
-                                            className={`${compactLedgerView ? 'text-xl' : 'text-2xl'} font-black tabular-nums mt-0.5 leading-none`}
-                                            style={{ color: isGave ? '#10b981' : '#f43f5e' }}
-                                          >
-                                            ₹{tx.amount.toLocaleString('en-IN')}
-                                          </p>
-                                          <p
-                                            className="text-sm mt-2 font-medium leading-snug"
-                                            style={{ color: 'var(--text-primary)' }}
-                                          >
-                                            {tx.remark}
-                                          </p>
-                                          <p className="text-[11px] mt-2" style={{ color: 'var(--text-muted)' }}>
-                                            {formatEventDate(tx.date)}
-                                            {' · '}
-                                            {tx.mode === 'Online Transfer' ? 'Online' : 'Cash'}
-                                          </p>
-                                          <div className="mt-2.5 flex items-center gap-3">
-                                            <button
-                                              type="button"
-                                              onClick={() => handleOpenEditTx(tx)}
-                                              className="text-[11px] font-bold"
-                                              style={{ color: '#a5b4fc' }}
-                                            >
-                                              Edit
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={() => setHistoryTx(tx)}
-                                              className="text-[11px] font-bold"
-                                              style={{ color: 'var(--text-muted)' }}
-                                            >
-                                              History
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={() => handleDeleteTransaction(tx.id)}
-                                              className="text-[11px] font-bold"
-                                              style={{ color: '#fb7185' }}
-                                            >
-                                              Delete
-                                            </button>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Floating Gave / Got dock */}
-                        <div className="absolute bottom-5 inset-x-0 z-20 flex justify-center px-4 pointer-events-none">
-                          <div
-                            className="pointer-events-auto flex items-center gap-2 p-1.5 rounded-full backdrop-blur-xl"
-                            style={{
-                              background: 'color-mix(in srgb, var(--bg-surface) 88%, transparent)',
-                              border: '1px solid var(--border-soft)',
-                              boxShadow: '0 14px 44px rgba(0,0,0,0.32)',
-                            }}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => handleOpenAddTx('got')}
-                              className="flex items-center gap-2 pl-2 pr-4 py-1.5 rounded-full text-sm font-bold active:scale-[0.97] transition-all"
-                              style={{
-                                background: 'linear-gradient(135deg, rgba(251,113,133,0.22), rgba(225,29,72,0.10))',
-                                border: '1px solid rgba(251,113,133,0.35)',
-                                color: '#fb7185',
-                                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)',
-                              }}
-                            >
-                              <span
-                                className="w-8 h-8 rounded-full flex items-center justify-center text-white text-base font-black leading-none"
-                                style={{ background: 'linear-gradient(145deg, #fda4af, #e11d48)', boxShadow: '0 6px 16px rgba(244,63,94,0.4)' }}
-                              >
-                                ↓
-                              </span>
-                              Got
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenAddTx('gave')}
-                              className="flex items-center gap-2 pl-2 pr-4 py-1.5 rounded-full text-sm font-bold active:scale-[0.97] transition-all"
-                              style={{
-                                background: 'linear-gradient(135deg, rgba(52,211,153,0.22), rgba(5,150,105,0.10))',
-                                border: '1px solid rgba(52,211,153,0.35)',
-                                color: '#34d399',
-                                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)',
-                              }}
-                            >
-                              <span
-                                className="w-8 h-8 rounded-full flex items-center justify-center text-white text-base font-black leading-none"
-                                style={{ background: 'linear-gradient(145deg, #6ee7b7, #059669)', boxShadow: '0 6px 16px rgba(16,185,129,0.4)' }}
-                              >
-                                ↑
-                              </span>
-                              Gave
-                            </button>
-                          </div>
-                        </div>
-
+                          </>
+                        )}
                       </div>
-                    );
+                    </div>
+
+                    {isLedgerSearchOpen && (
+                      <div className="pointer-events-auto px-3 pb-2">
+                        <div className="relative">
+                          <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-muted)' }}>
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                          </div>
+                          <input
+                            type="text"
+                            autoFocus
+                            placeholder="Search remarks, amount, mode…"
+                            value={ledgerSearchQuery}
+                            onChange={(e) => setLedgerSearchQuery(e.target.value)}
+                            className="w-full pl-9 pr-9 py-2 text-xs rounded-full outline-none backdrop-blur-md"
+                            style={{ background: 'color-mix(in srgb, var(--bg-surface) 92%, transparent)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }}
+                          />
+                          {ledgerSearchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setLedgerSearchQuery('')}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-full"
+                              style={{ color: 'var(--text-muted)' }}
+                              aria-label="Clear search"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Full-bleed payment chat */}
+                  <div
+                    ref={chatScrollRef}
+                    className="flex-1 overflow-y-auto scrollbar-thin px-3 pt-16 pb-24 md:px-5"
+                    style={{
+                      background: 'var(--bg-base)',
+                      backgroundImage: 'radial-gradient(rgba(148,163,184,0.08) 1px, transparent 1px)',
+                      backgroundSize: '18px 18px',
+                    }}
+                  >
+                    {filteredTransactions.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
+                        <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>💬</div>
+                        <div>
+                          <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>No payments yet</p>
+                          <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>Add a record — it will appear here like a chat</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-3 pb-2">
+                        {chatTransactionGroups.map((group) => (
+                          <div key={group.date} className="flex flex-col gap-2.5">
+                            <div className="sticky top-1 z-10 flex justify-center py-1">
+                              <span
+                                className="px-3 py-1 rounded-full text-[10px] font-bold tracking-wide shadow-sm"
+                                style={{
+                                  background: 'var(--bg-surface)',
+                                  color: 'var(--text-secondary)',
+                                  border: '1px solid var(--border-soft)',
+                                }}
+                              >
+                                {formatChatDateLabel(group.date)}
+                              </span>
+                            </div>
+
+                            {group.items.map((tx) => {
+                              const isGave = tx.type === 'gave';
+                              return (
+                                <div
+                                  key={tx.id}
+                                  className={`flex w-full ${isGave ? 'justify-end' : 'justify-start'} animate-fade-slide-up`}
+                                >
+                                  <div
+                                    className="max-w-[85%] rounded-2xl px-4 py-3"
+                                    style={{
+                                      background: isGave
+                                        ? 'rgba(16,185,129,0.14)'
+                                        : 'rgba(244,63,94,0.12)',
+                                      border: `1px solid ${isGave ? 'rgba(16,185,129,0.28)' : 'rgba(244,63,94,0.28)'}`,
+                                    }}
+                                  >
+                                    <p
+                                      className="text-[11px] font-bold"
+                                      style={{ color: isGave ? '#34d399' : '#fb7185' }}
+                                    >
+                                      {isGave ? 'You gave' : 'You got'}
+                                    </p>
+                                    <p
+                                      className={`${compactLedgerView ? 'text-xl' : 'text-2xl'} font-black tabular-nums mt-0.5 leading-none`}
+                                      style={{ color: isGave ? '#10b981' : '#f43f5e' }}
+                                    >
+                                      ₹{tx.amount.toLocaleString('en-IN')}
+                                    </p>
+                                    <p
+                                      className="text-sm mt-2 font-medium leading-snug"
+                                      style={{ color: 'var(--text-primary)' }}
+                                    >
+                                      {tx.remark}
+                                    </p>
+                                    <p className="text-[11px] mt-2" style={{ color: 'var(--text-muted)' }}>
+                                      {formatEventDate(tx.date)}
+                                      {' · '}
+                                      {tx.mode === 'Online Transfer' ? 'Online' : 'Cash'}
+                                    </p>
+                                    <div className="mt-2.5 flex items-center gap-3">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenEditTx(tx)}
+                                        className="text-[11px] font-bold"
+                                        style={{ color: '#a5b4fc' }}
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setHistoryTx(tx)}
+                                        className="text-[11px] font-bold"
+                                        style={{ color: 'var(--text-muted)' }}
+                                      >
+                                        History
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteTransaction(tx.id)}
+                                        className="text-[11px] font-bold"
+                                        style={{ color: '#fb7185' }}
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Floating Gave / Got dock */}
+                  <div className="absolute bottom-5 inset-x-0 z-20 flex justify-center px-4 pointer-events-none">
+                    <div
+                      className="pointer-events-auto flex items-center gap-2 p-1.5 rounded-full backdrop-blur-xl"
+                      style={{
+                        background: 'color-mix(in srgb, var(--bg-surface) 88%, transparent)',
+                        border: '1px solid var(--border-soft)',
+                        boxShadow: '0 14px 44px rgba(0,0,0,0.32)',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAddTx('got')}
+                        className="flex items-center gap-2 pl-2 pr-4 py-1.5 rounded-full text-sm font-bold active:scale-[0.97] transition-all"
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(251,113,133,0.22), rgba(225,29,72,0.10))',
+                          border: '1px solid rgba(251,113,133,0.35)',
+                          color: '#fb7185',
+                          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)',
+                        }}
+                      >
+                        <span
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-base font-black leading-none"
+                          style={{ background: 'linear-gradient(145deg, #fda4af, #e11d48)', boxShadow: '0 6px 16px rgba(244,63,94,0.4)' }}
+                        >
+                          ↓
+                        </span>
+                        Got
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAddTx('gave')}
+                        className="flex items-center gap-2 pl-2 pr-4 py-1.5 rounded-full text-sm font-bold active:scale-[0.97] transition-all"
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(52,211,153,0.22), rgba(5,150,105,0.10))',
+                          border: '1px solid rgba(52,211,153,0.35)',
+                          color: '#34d399',
+                          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)',
+                        }}
+                      >
+                        <span
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-base font-black leading-none"
+                          style={{ background: 'linear-gradient(145deg, #6ee7b7, #059669)', boxShadow: '0 6px 16px rgba(16,185,129,0.4)' }}
+                        >
+                          ↑
+                        </span>
+                        Gave
+                      </button>
+                    </div>
+                  </div>
+
+                </div>
+              );
             })()}
+
+            {/* ── TRIP EXPENSES TAB ──────────────────────────── */}
+            {activeTab === 'trips' && (
+              <TripExpensesView
+                contacts={contacts}
+                userName={userName || 'You'}
+                onRecordToLedger={handleRecordTripSettlement}
+                showToast={showToast}
+              />
+            )}
 
             {/* ── OVERVIEW TAB ──────────────────────────────── */}
             {dbStatus === 'connected' && activeTab === 'insights' && (
@@ -2381,6 +2471,27 @@ export default function Dashboard() {
                       ))}
                     </div>
                   </div>
+                </div>
+
+                {/* Trip Expenses Highlight Banner */}
+                <div
+                  onClick={() => { setActiveTab('trips'); setMobileView('list'); }}
+                  className="p-4 rounded-3xl flex items-center justify-between gap-3 cursor-pointer transition-all hover:scale-[1.01]"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(124,58,237,0.12), rgba(99,102,241,0.06))',
+                    border: '1px solid rgba(139,92,246,0.25)',
+                  }}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-violet-600 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-md">
+                      ✈️
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="font-extrabold text-sm text-white truncate">Trip Expenses & Bill Splits</h4>
+                      <p className="text-xs text-slate-400 truncate">Calculate per-head costs, partial payer splits & settlements</p>
+                    </div>
+                  </div>
+                  <span className="text-xs font-bold text-violet-400 shrink-0">Open →</span>
                 </div>
 
                 {/* Contact breakdown */}
@@ -2742,6 +2853,11 @@ export default function Dashboard() {
                   )
                 },
                 {
+                  tab: 'trips' as const, label: 'Trips', icon: (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'trips' ? 2.5 : 2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  )
+                },
+                {
                   tab: 'insights' as const, label: 'Overview', icon: (
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'insights' ? 2.5 : 2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   )
@@ -2915,177 +3031,177 @@ export default function Dashboard() {
           : 'radial-gradient(ellipse at top, rgba(16,185,129,0.22) 0%, transparent 55%)';
 
         return (
-        <div className="fixed inset-0 z-50 flex items-end justify-center">
-          <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(10px)' }}
-            onClick={() => setIsAddTransactionOpen(false)} />
-          <div className="relative w-full max-w-md animate-slide-up rounded-t-[28px] overflow-hidden"
-            style={{ background: sheetBg, border: '1px solid var(--border-soft)', maxHeight: '92vh', overflowY: 'auto' }}>
+          <div className="fixed inset-0 z-50 flex items-end justify-center">
+            <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(10px)' }}
+              onClick={() => setIsAddTransactionOpen(false)} />
+            <div className="relative w-full max-w-md animate-slide-up rounded-t-[28px] overflow-hidden"
+              style={{ background: sheetBg, border: '1px solid var(--border-soft)', maxHeight: '92vh', overflowY: 'auto' }}>
 
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-40" style={{ background: glow }} />
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-40" style={{ background: glow }} />
 
-            {/* Handle + header */}
-            <div className="relative px-5 pt-3 pb-2">
-              <div className="mx-auto mb-4 h-1 w-10 rounded-full" style={{ background: 'var(--border-bright)' }} />
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: accentSoft }}>
-                    {editingTransaction ? 'Edit entry' : 'New entry'}
-                  </p>
-                  <h3 className="mt-1 text-xl font-black leading-tight" style={{ color: 'var(--text-primary)' }}>
-                    {editingTransaction ? 'Edit Transaction' : isGot ? 'You got money' : 'You gave money'}
-                  </h3>
-                  <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {isGot ? 'Someone paid you or you borrowed' : 'You lent or paid for someone'}
-                  </p>
+              {/* Handle + header */}
+              <div className="relative px-5 pt-3 pb-2">
+                <div className="mx-auto mb-4 h-1 w-10 rounded-full" style={{ background: 'var(--border-bright)' }} />
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: accentSoft }}>
+                      {editingTransaction ? 'Edit entry' : 'New entry'}
+                    </p>
+                    <h3 className="mt-1 text-xl font-black leading-tight" style={{ color: 'var(--text-primary)' }}>
+                      {editingTransaction ? 'Edit Transaction' : isGot ? 'You got money' : 'You gave money'}
+                    </h3>
+                    <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                      {isGot ? 'Someone paid you or you borrowed' : 'You lent or paid for someone'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddTransactionOpen(false)}
+                    className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+                    style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)', border: '1px solid var(--border-soft)' }}
+                    aria-label="Close"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsAddTransactionOpen(false)}
-                  className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
-                  style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)', border: '1px solid var(--border-soft)' }}
-                  aria-label="Close"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
               </div>
-            </div>
 
-            <form onSubmit={handleTransactionSubmit} className="relative px-5 pb-6 pt-2 space-y-5">
-              {/* Type toggle */}
-              <div className="grid grid-cols-2 gap-2">
-                {([
-                  { val: 'got' as const, label: 'Got', hint: 'Received', arrow: '↓', color: '#fb7185', grad: 'linear-gradient(135deg, #fb7185, #e11d48)' },
-                  { val: 'gave' as const, label: 'Gave', hint: 'Paid out', arrow: '↑', color: '#34d399', grad: 'linear-gradient(135deg, #34d399, #059669)' },
-                ] as const).map(({ val, label, hint, arrow, color, grad }) => {
-                  const active = txType === val;
-                  return (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setTxType(val)}
-                      className="flex items-center gap-3 p-3 rounded-2xl text-left transition-all active:scale-[0.98]"
-                      style={{
-                        background: active
-                          ? `color-mix(in srgb, ${color} 16%, var(--bg-raised))`
-                          : 'var(--bg-raised)',
-                        border: `1px solid ${active ? `${color}55` : 'var(--border-soft)'}`,
-                        boxShadow: active ? `0 8px 24px ${color}22` : 'none',
-                      }}
-                    >
-                      <span
-                        className="w-10 h-10 rounded-full flex items-center justify-center text-white text-lg font-black"
+              <form onSubmit={handleTransactionSubmit} className="relative px-5 pb-6 pt-2 space-y-5">
+                {/* Type toggle */}
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { val: 'got' as const, label: 'Got', hint: 'Received', arrow: '↓', color: '#fb7185', grad: 'linear-gradient(135deg, #fb7185, #e11d48)' },
+                    { val: 'gave' as const, label: 'Gave', hint: 'Paid out', arrow: '↑', color: '#34d399', grad: 'linear-gradient(135deg, #34d399, #059669)' },
+                  ] as const).map(({ val, label, hint, arrow, color, grad }) => {
+                    const active = txType === val;
+                    return (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setTxType(val)}
+                        className="flex items-center gap-3 p-3 rounded-2xl text-left transition-all active:scale-[0.98]"
                         style={{
-                          background: active ? grad : 'var(--bg-overlay)',
-                          color: active ? 'white' : 'var(--text-muted)',
-                          opacity: active ? 1 : 0.7,
+                          background: active
+                            ? `color-mix(in srgb, ${color} 16%, var(--bg-raised))`
+                            : 'var(--bg-raised)',
+                          border: `1px solid ${active ? `${color}55` : 'var(--border-soft)'}`,
+                          boxShadow: active ? `0 8px 24px ${color}22` : 'none',
                         }}
                       >
-                        {arrow}
-                      </span>
-                      <span>
-                        <span className="block text-sm font-black" style={{ color: active ? color : 'var(--text-primary)' }}>{label}</span>
-                        <span className="block text-[10px] font-semibold" style={{ color: 'var(--text-muted)' }}>{hint}</span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Amount hero */}
-              <div
-                className="rounded-3xl px-4 py-5 text-center"
-                style={{
-                  background: isGot ? 'rgba(244,63,94,0.08)' : 'rgba(16,185,129,0.08)',
-                  border: `1px solid ${isGot ? 'rgba(244,63,94,0.2)' : 'rgba(16,185,129,0.2)'}`,
-                }}
-              >
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] mb-2" style={{ color: accentSoft }}>Amount</p>
-                <div className="relative inline-flex items-center justify-center gap-1.5 w-full">
-                  <span className="text-3xl font-black" style={{ color: accentSoft }}>₹</span>
-                  <input
-                    type="number"
-                    required
-                    min="0.01"
-                    step="0.01"
-                    autoFocus
-                    value={txAmount}
-                    onChange={e => setTxAmount(e.target.value)}
-                    className="w-full max-w-[220px] bg-transparent text-center text-4xl font-black outline-none tabular-nums"
-                    style={{ color: 'var(--text-primary)' }}
-                    placeholder="0"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>For what?</label>
-                <input type="text" required value={txRemark} onChange={e => setTxRemark(e.target.value)}
-                  className="input-field rounded-2xl" placeholder="e.g. Dinner, cab share, rent…" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Date</label>
-                  <input type="date" required value={txDate} onChange={e => setTxDate(e.target.value)}
-                    className="input-field rounded-2xl" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Mode</label>
-                  <div className="grid grid-cols-2 gap-1.5 h-[42px]">
-                    {([
-                      { mode: 'Cash' as const, icon: '💵' },
-                      { mode: 'Online Transfer' as const, icon: '🏦' },
-                    ]).map(({ mode, icon }) => {
-                      const selected = txMode === mode;
-                      return (
-                        <button
-                          key={mode}
-                          type="button"
-                          onClick={() => setTxMode(mode)}
-                          title={mode}
-                          className="rounded-xl text-sm font-bold transition-all"
+                        <span
+                          className="w-10 h-10 rounded-full flex items-center justify-center text-white text-lg font-black"
                           style={{
-                            background: selected
-                              ? `color-mix(in srgb, ${accent} 18%, var(--bg-raised))`
-                              : 'var(--bg-raised)',
-                            color: selected ? accentSoft : 'var(--text-muted)',
-                            border: `1px solid ${selected ? `${accent}44` : 'var(--border-soft)'}`,
+                            background: active ? grad : 'var(--bg-overlay)',
+                            color: active ? 'white' : 'var(--text-muted)',
+                            opacity: active ? 1 : 0.7,
                           }}
                         >
-                          {icon}
-                        </button>
-                      );
-                    })}
-                  </div>
+                          {arrow}
+                        </span>
+                        <span>
+                          <span className="block text-sm font-black" style={{ color: active ? color : 'var(--text-primary)' }}>{label}</span>
+                          <span className="block text-[10px] font-semibold" style={{ color: 'var(--text-muted)' }}>{hint}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
-              </div>
 
-              <div className="flex gap-3 pt-1">
-                <button type="button" onClick={() => setIsAddTransactionOpen(false)}
-                  className="flex-1 py-3.5 rounded-2xl font-bold text-sm"
-                  style={{ background: 'var(--bg-raised)', color: 'var(--text-secondary)', border: '1px solid var(--border-soft)' }}>
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-[1.4] py-3.5 rounded-2xl font-black text-sm text-white active:scale-[0.98] transition-transform"
+                {/* Amount hero */}
+                <div
+                  className="rounded-3xl px-4 py-5 text-center"
                   style={{
-                    background: isGot
-                      ? 'linear-gradient(135deg, #fb7185, #e11d48)'
-                      : 'linear-gradient(135deg, #34d399, #059669)',
-                    boxShadow: isGot
-                      ? '0 10px 28px rgba(244,63,94,0.35)'
-                      : '0 10px 28px rgba(16,185,129,0.35)',
+                    background: isGot ? 'rgba(244,63,94,0.08)' : 'rgba(16,185,129,0.08)',
+                    border: `1px solid ${isGot ? 'rgba(244,63,94,0.2)' : 'rgba(16,185,129,0.2)'}`,
                   }}
                 >
-                  {editingTransaction ? 'Save changes' : isGot ? 'Record Got' : 'Record Gave'}
-                </button>
-              </div>
-            </form>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] mb-2" style={{ color: accentSoft }}>Amount</p>
+                  <div className="relative inline-flex items-center justify-center gap-1.5 w-full">
+                    <span className="text-3xl font-black" style={{ color: accentSoft }}>₹</span>
+                    <input
+                      type="number"
+                      required
+                      min="0.01"
+                      step="0.01"
+                      autoFocus
+                      value={txAmount}
+                      onChange={e => setTxAmount(e.target.value)}
+                      className="w-full max-w-[220px] bg-transparent text-center text-4xl font-black outline-none tabular-nums"
+                      style={{ color: 'var(--text-primary)' }}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>For what?</label>
+                  <input type="text" required value={txRemark} onChange={e => setTxRemark(e.target.value)}
+                    className="input-field rounded-2xl" placeholder="e.g. Dinner, cab share, rent…" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Date</label>
+                    <input type="date" required value={txDate} onChange={e => setTxDate(e.target.value)}
+                      className="input-field rounded-2xl" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Mode</label>
+                    <div className="grid grid-cols-2 gap-1.5 h-[42px]">
+                      {([
+                        { mode: 'Cash' as const, icon: '💵' },
+                        { mode: 'Online Transfer' as const, icon: '🏦' },
+                      ]).map(({ mode, icon }) => {
+                        const selected = txMode === mode;
+                        return (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => setTxMode(mode)}
+                            title={mode}
+                            className="rounded-xl text-sm font-bold transition-all"
+                            style={{
+                              background: selected
+                                ? `color-mix(in srgb, ${accent} 18%, var(--bg-raised))`
+                                : 'var(--bg-raised)',
+                              color: selected ? accentSoft : 'var(--text-muted)',
+                              border: `1px solid ${selected ? `${accent}44` : 'var(--border-soft)'}`,
+                            }}
+                          >
+                            {icon}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-1">
+                  <button type="button" onClick={() => setIsAddTransactionOpen(false)}
+                    className="flex-1 py-3.5 rounded-2xl font-bold text-sm"
+                    style={{ background: 'var(--bg-raised)', color: 'var(--text-secondary)', border: '1px solid var(--border-soft)' }}>
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-[1.4] py-3.5 rounded-2xl font-black text-sm text-white active:scale-[0.98] transition-transform"
+                    style={{
+                      background: isGot
+                        ? 'linear-gradient(135deg, #fb7185, #e11d48)'
+                        : 'linear-gradient(135deg, #34d399, #059669)',
+                      boxShadow: isGot
+                        ? '0 10px 28px rgba(244,63,94,0.35)'
+                        : '0 10px 28px rgba(16,185,129,0.35)',
+                    }}
+                  >
+                    {editingTransaction ? 'Save changes' : isGot ? 'Record Got' : 'Record Gave'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
         );
       })()}
 

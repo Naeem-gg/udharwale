@@ -41,4 +41,4 @@ export interface Contact {
   ownerUserId?: string;
 }
 
-export type ActiveTab = 'ledgers' | 'insights' | 'settings';
+export type ActiveTab = 'ledgers' | 'trips' | 'insights' | 'settings';
