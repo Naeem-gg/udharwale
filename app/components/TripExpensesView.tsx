@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { motion, AnimatePresence, useInView } from 'framer-motion';
 import {
   Plus,
   Share2,
@@ -20,10 +21,13 @@ import {
   ExternalLink,
   ArrowRight,
   TrendingUp,
+  TrendingDown,
   X,
   Calendar,
   AlertCircle,
   FolderPlus,
+  Zap,
+  MapPin,
 } from 'lucide-react';
 import { Contact } from './types';
 import {
@@ -42,6 +46,47 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 const STORAGE_KEY = 'udharwale-trips-v1';
+
+/* ─── Avatar color generator ─── */
+const AVATAR_GRADIENTS = [
+  'from-violet-500 to-indigo-600',
+  'from-emerald-500 to-teal-600',
+  'from-amber-500 to-orange-600',
+  'from-pink-500 to-rose-600',
+  'from-cyan-500 to-blue-600',
+  'from-fuchsia-500 to-purple-600',
+];
+function avatarGradient(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  return AVATAR_GRADIENTS[Math.abs(hash) % AVATAR_GRADIENTS.length];
+}
+
+/* ─── Animated Number Counter ─── */
+function Counter({ to, prefix = '', duration = 1.2 }: { to: number; prefix?: string; duration?: number }) {
+  const [val, setVal] = useState(0);
+  const ref = useRef<HTMLSpanElement>(null);
+  const inView = useInView(ref, { once: true, margin: '-20px' });
+
+  useEffect(() => {
+    if (!inView) return;
+    const start = Date.now();
+    const tick = () => {
+      const elapsed = (Date.now() - start) / 1000;
+      const pct = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - pct, 3);
+      setVal(Math.round(eased * to));
+      if (pct < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, [inView, to, duration]);
+
+  return (
+    <span ref={ref}>
+      {prefix}{val.toLocaleString('en-IN')}
+    </span>
+  );
+}
 
 interface TripExpensesViewProps {
   contacts: Contact[];
@@ -262,7 +307,6 @@ export default function TripExpensesView({
       }
       paidBy = [{ participantId: singlePayerId, amount: amt }];
     } else {
-      // Multiple payers check
       if (!isPayerBalanced) {
         showToast(`Payer amounts must sum to ${currentTrip.currency}${amt}. Remaining: ${currentTrip.currency}${payerRemainingBalance}`, 'error');
         return;
@@ -398,7 +442,6 @@ export default function TripExpensesView({
     setSelectedTripId(newTrip.id);
     setIsNewTripModalOpen(false);
 
-    // Persist
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       await fetch('/api/trips', {
@@ -433,7 +476,6 @@ export default function TripExpensesView({
         const body = await res.json();
         setPublicShareUrl(body.shareUrl);
       } else {
-        // Fallback local share URL preview
         const token = currentTrip.shareToken || 'demo_trip_' + currentTrip.id;
         const host = window.location.host;
         setPublicShareUrl(`${window.location.protocol}//${host}/share/trip/${token}`);
@@ -481,14 +523,12 @@ export default function TripExpensesView({
     toContactId?: string;
   }) => {
     if (!currentTrip) return;
-    // Determine which contact is involved with "You"
     const isFromMe = settlement.fromName.toLowerCase().includes('you') || settlement.fromName === userName;
     const isToMe = settlement.toName.toLowerCase().includes('you') || settlement.toName === userName;
 
     let targetContactId = isFromMe ? settlement.toContactId : settlement.fromContactId;
     const otherPersonName = isFromMe ? settlement.toName : settlement.fromName;
 
-    // If no direct contact ID linked, try searching by name
     if (!targetContactId) {
       const match = contacts.find(
         (c) => c.name.toLowerCase() === otherPersonName.toLowerCase()
@@ -504,7 +544,7 @@ export default function TripExpensesView({
       return;
     }
 
-    const type = isToMe ? 'gave' : 'got'; // If to me, they owe me (gave); if from me, I owe them (got)
+    const type = isToMe ? 'gave' : 'got';
     const remark = `Trip: ${currentTrip.name} settlement`;
 
     try {
@@ -535,14 +575,21 @@ export default function TripExpensesView({
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ background: 'var(--bg-base)' }}>
       {/* ── TOP BAR: TRIP SELECTOR & ACTIONS ── */}
-      <div
+      <motion.div
+        initial={{ y: -10, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.3 }}
         className="px-4 py-3 shrink-0 flex flex-wrap items-center justify-between gap-3 border-b"
         style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-soft)' }}
       >
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-violet-600 via-indigo-600 to-purple-600 text-white shadow-lg shadow-violet-500/20 shrink-0">
+          <motion.div
+            whileHover={{ scale: 1.05, rotate: 5 }}
+            whileTap={{ scale: 0.95 }}
+            className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-violet-600 via-indigo-600 to-purple-600 text-white shadow-lg shadow-violet-500/20 shrink-0"
+          >
             <Compass className="h-5 w-5" />
-          </div>
+          </motion.div>
 
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -564,7 +611,7 @@ export default function TripExpensesView({
             <p className="text-[11px] truncate flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
               <span>{currentTrip?.destination ? `📍 ${currentTrip.destination}` : 'Trip Calculator'}</span>
               <span>·</span>
-              <span className={syncStatus === 'synced' ? 'text-emerald-400' : 'text-slate-400'}>
+              <span className={syncStatus === 'synced' ? 'text-emerald-400 font-semibold' : 'text-slate-400'}>
                 {syncStatus === 'synced' ? 'Synced ☁️' : 'Local Storage 💾'}
               </span>
             </p>
@@ -573,7 +620,8 @@ export default function TripExpensesView({
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2 shrink-0">
-          <button
+          <motion.button
+            whileTap={{ scale: 0.94 }}
             onClick={() => setIsNewTripModalOpen(true)}
             className="h-9 px-3 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border"
             style={{
@@ -585,11 +633,12 @@ export default function TripExpensesView({
           >
             <FolderPlus className="w-4 h-4 text-violet-400" />
             <span className="hidden sm:inline">New Trip</span>
-          </button>
+          </motion.button>
 
-          <button
+          <motion.button
+            whileTap={{ scale: 0.94 }}
             onClick={handleShareToWhatsApp}
-            className="h-9 px-3 rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 text-white flex items-center gap-1.5"
+            className="h-9 px-3 rounded-xl text-xs font-bold transition-all shadow-md text-white flex items-center gap-1.5"
             style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
             title="Share formatted chat summary to WhatsApp"
           >
@@ -604,37 +653,43 @@ export default function TripExpensesView({
                 <span className="hidden sm:inline">WhatsApp</span>
               </>
             )}
-          </button>
+          </motion.button>
 
-          <button
+          <motion.button
+            whileTap={{ scale: 0.94 }}
             onClick={openAddExpenseModal}
-            className="h-9 px-3.5 rounded-xl text-xs font-extrabold transition-all shadow-md active:scale-95 text-white flex items-center gap-1.5"
+            className="h-9 px-3.5 rounded-xl text-xs font-extrabold transition-all shadow-md text-white flex items-center gap-1.5"
             style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)' }}
           >
             <Plus className="w-4 h-4" />
             <span>Add Expense</span>
-          </button>
+          </motion.button>
         </div>
-      </div>
+      </motion.div>
 
       {/* ── SUB-HEADER: TRIP SUMMARY HERO CARD ── */}
       {currentTrip && tripSummary && (
-        <div className="px-4 py-3 shrink-0" style={{ background: 'var(--bg-base)' }}>
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="px-4 py-3 shrink-0"
+          style={{ background: 'var(--bg-base)' }}
+        >
           <div
             className="rounded-3xl p-4 sm:p-5 relative overflow-hidden"
             style={{
-              background:
-                'linear-gradient(135deg, rgba(124,58,237,0.18), rgba(99,102,241,0.08))',
+              background: 'linear-gradient(135deg, rgba(124,58,237,0.18), rgba(99,102,241,0.08))',
               border: '1px solid rgba(139,92,246,0.22)',
             }}
           >
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
               <div>
                 <span className="text-[10px] uppercase font-bold tracking-wider text-violet-400">
                   Total Trip Spending
                 </span>
                 <div className="text-3xl sm:text-4xl font-black tabular-nums text-white mt-0.5">
-                  {currency}{tripSummary.totalSpend.toLocaleString('en-IN')}
+                  <Counter to={tripSummary.totalSpend} prefix={currency} />
                 </div>
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-xs text-slate-300">
@@ -661,7 +716,7 @@ export default function TripExpensesView({
 
                 return (
                   <div
-                    className="w-full sm:w-auto p-3 rounded-2xl flex items-center justify-between sm:justify-start gap-3"
+                    className="w-full sm:w-auto p-3 rounded-2xl flex items-center justify-between sm:justify-start gap-3 backdrop-blur-md"
                     style={{
                       background: 'rgba(255,255,255,0.05)',
                       border: '1px solid var(--border-soft)',
@@ -681,14 +736,15 @@ export default function TripExpensesView({
                       </p>
                     </div>
 
-                    <button
+                    <motion.button
+                      whileTap={{ scale: 0.92 }}
                       onClick={handleGenerateShareLink}
                       className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-violet-600/30 hover:bg-violet-600/50 text-violet-200 transition-colors inline-flex items-center gap-1 shrink-0"
                       title="Public shareable link"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
                       <span>Link</span>
-                    </button>
+                    </motion.button>
                   </div>
                 );
               })()}
@@ -696,7 +752,7 @@ export default function TripExpensesView({
 
             {/* Quick demo trip loader if low expenses */}
             {currentTrip.expenses.length === 0 && (
-              <div className="mt-4 pt-3 border-t border-violet-500/20 flex items-center justify-between">
+              <div className="mt-4 pt-3 border-t border-violet-500/20 flex items-center justify-between relative z-10">
                 <span className="text-xs text-slate-400">
                   Want to explore with real sample data?
                 </span>
@@ -710,13 +766,13 @@ export default function TripExpensesView({
               </div>
             )}
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* ── NAVIGATION PILLS: CHAT FEED vs SETTLEMENT vs ALL EXPENSES ── */}
       <div className="px-4 py-1 shrink-0 flex items-center gap-2">
         <div
-          className="flex-1 flex items-center p-1 rounded-2xl"
+          className="flex-1 flex items-center p-1 rounded-2xl relative"
           style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
         >
           {[
@@ -730,13 +786,19 @@ export default function TripExpensesView({
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as typeof activeTab)}
                 className={cn(
-                  'flex-1 py-1.5 text-xs font-extrabold rounded-xl transition-all text-center',
-                  isActive
-                    ? 'bg-violet-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-white'
+                  'relative flex-1 py-1.5 text-xs font-extrabold rounded-xl transition-colors text-center z-10',
+                  isActive ? 'text-white' : 'text-slate-400 hover:text-slate-200'
                 )}
               >
-                {tab.label}
+                {isActive && (
+                  <motion.div
+                    layoutId="trip-tab-pill"
+                    className="absolute inset-0 rounded-xl bg-violet-600 shadow-md shadow-violet-600/40"
+                    style={{ zIndex: -1 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 38 }}
+                  />
+                )}
+                <span>{tab.label}</span>
               </button>
             );
           })}
@@ -745,1122 +807,1268 @@ export default function TripExpensesView({
 
       {/* ── TAB CONTENT SCROLL AREA ── */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* VIEW 1: CHAT FEED VIEW (Rich interactive chat bubbles like WhatsApp) */}
-        {activeTab === 'chat' && (
-          <div className="space-y-3 max-w-3xl mx-auto">
-            {/* System welcome event */}
-            <div className="flex justify-center my-2">
-              <span
-                className="px-3 py-1 rounded-full text-[11px] font-semibold flex items-center gap-1.5"
-                style={{
-                  background: 'var(--bg-surface)',
-                  border: '1px solid var(--border-soft)',
-                  color: 'var(--text-muted)',
-                }}
-              >
-                <span>✈️</span>
-                <span>{currentTrip?.name} expense log started</span>
-              </span>
-            </div>
-
-            {filteredExpenses.length === 0 ? (
-              <div
-                className="rounded-3xl p-8 text-center space-y-3"
-                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
-              >
-                <div className="w-12 h-12 mx-auto rounded-2xl bg-violet-500/10 text-violet-400 flex items-center justify-center text-xl">
-                  💬
-                </div>
-                <h3 className="font-extrabold text-base text-white">No expenses in this trip yet</h3>
-                <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                  Add dinner, flights, hotel, or fuel expenses. You can even split who paid partially!
-                </p>
-                <button
-                  onClick={openAddExpenseModal}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-violet-600 hover:bg-violet-500 transition-colors inline-flex items-center gap-1.5 shadow-md shadow-violet-600/30"
+        <AnimatePresence mode="wait">
+          {/* VIEW 1: CHAT FEED VIEW (Rich interactive chat bubbles like WhatsApp) */}
+          {activeTab === 'chat' && (
+            <motion.div
+              key="chat"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.25 }}
+              className="space-y-3 max-w-3xl mx-auto"
+            >
+              {/* System welcome event */}
+              <div className="flex justify-center my-2">
+                <span
+                  className="px-3 py-1 rounded-full text-[11px] font-semibold flex items-center gap-1.5"
+                  style={{
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-soft)',
+                    color: 'var(--text-muted)',
+                  }}
                 >
-                  <Plus className="w-4 h-4" />
-                  Add First Expense
-                </button>
+                  <Compass className="w-3 h-3 text-violet-400" />
+                  <span>{currentTrip?.name} expense log started</span>
+                </span>
               </div>
-            ) : (
-              filteredExpenses.map((expense) => {
-                const cat = CATEGORY_CONFIG[expense.category] || CATEGORY_CONFIG.general;
-                const perHead =
-                  expense.splitAmong.length > 0
-                    ? Math.round((expense.amount / expense.splitAmong.length) * 100) / 100
-                    : expense.amount;
-                const isExpanded = expandedExpenseId === expense.id;
-                const hasMultiplePayers = expense.paidBy.length > 1;
 
-                return (
-                  <div
-                    key={expense.id}
-                    className="rounded-3xl p-4 sm:p-5 transition-all space-y-3 hover:border-violet-500/40"
-                    style={{
-                      background: 'var(--bg-surface)',
-                      border: '1px solid var(--border-soft)',
-                    }}
+              {filteredExpenses.length === 0 ? (
+                <div
+                  className="rounded-3xl p-8 text-center space-y-3"
+                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+                >
+                  <div className="w-12 h-12 mx-auto rounded-2xl bg-violet-500/10 text-violet-400 flex items-center justify-center text-xl">
+                    💬
+                  </div>
+                  <h3 className="font-extrabold text-base text-white">No expenses in this trip yet</h3>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                    Add dinner, flights, hotel, or fuel expenses. You can even split who paid partially!
+                  </p>
+                  <motion.button
+                    whileTap={{ scale: 0.94 }}
+                    onClick={openAddExpenseModal}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-violet-600 hover:bg-violet-500 transition-colors inline-flex items-center gap-1.5 shadow-md shadow-violet-600/30"
                   >
-                    {/* Header: Category Badge, Date, Amount */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="px-2.5 py-1 rounded-xl text-xs font-bold inline-flex items-center gap-1.5"
-                          style={{ background: cat.bg, color: cat.tone }}
-                        >
-                          <span>{cat.icon}</span>
-                          <span>{cat.label}</span>
-                        </span>
-                        <span className="text-[11px] font-medium text-slate-500">
-                          {expense.date}
-                        </span>
-                      </div>
+                    <Plus className="w-4 h-4" />
+                    Add First Expense
+                  </motion.button>
+                </div>
+              ) : (
+                filteredExpenses.map((expense, idx) => {
+                  const cat = CATEGORY_CONFIG[expense.category] || CATEGORY_CONFIG.general;
+                  const perHead =
+                    expense.splitAmong.length > 0
+                      ? Math.round((expense.amount / expense.splitAmong.length) * 100) / 100
+                      : expense.amount;
+                  const isExpanded = expandedExpenseId === expense.id;
+                  const hasMultiplePayers = expense.paidBy.length > 1;
 
-                      <div className="text-right">
-                        <div className="text-xl sm:text-2xl font-black tabular-nums text-white">
-                          {currency}{expense.amount.toLocaleString('en-IN')}
-                        </div>
-                        <span className="text-[10px] font-bold text-violet-400 block">
-                          {currency}{perHead.toLocaleString('en-IN')}/head
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Title and Remark */}
-                    <div>
-                      <h3 className="text-base sm:text-lg font-extrabold text-white">
-                        {expense.title}
-                      </h3>
-                      {expense.notes && (
-                        <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                          &ldquo;{expense.notes}&rdquo;
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Who Paid Section — HIGHLIGHTING PARTIAL PAYERS! */}
-                    <div
-                      className="p-3 rounded-2xl flex flex-col gap-2"
+                  return (
+                    <motion.div
+                      key={expense.id}
+                      initial={{ opacity: 0, y: 16 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.04, duration: 0.3 }}
+                      className="rounded-3xl p-4 sm:p-5 transition-all space-y-3 hover:border-violet-500/40"
                       style={{
-                        background: 'rgba(255,255,255,0.03)',
+                        background: 'var(--bg-surface)',
                         border: '1px solid var(--border-soft)',
                       }}
                     >
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-slate-400 flex items-center gap-1.5">
-                          <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
-                          {hasMultiplePayers ? 'Split Payment by:' : 'Paid by:'}
-                        </span>
-                        {hasMultiplePayers && (
-                          <span className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                            Multiple Partial Payers
+                      {/* Header: Category Badge, Date, Amount */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="px-2.5 py-1 rounded-xl text-xs font-bold inline-flex items-center gap-1.5"
+                            style={{ background: cat.bg, color: cat.tone }}
+                          >
+                            <span>{cat.icon}</span>
+                            <span>{cat.label}</span>
                           </span>
+                          <span className="text-[11px] font-medium text-slate-500">
+                            {expense.date}
+                          </span>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="text-xl sm:text-2xl font-black tabular-nums text-white">
+                            {currency}{expense.amount.toLocaleString('en-IN')}
+                          </div>
+                          <span className="text-[10px] font-bold text-violet-400 block">
+                            {currency}{perHead.toLocaleString('en-IN')}/head
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Title and Remark */}
+                      <div>
+                        <h3 className="text-base sm:text-lg font-extrabold text-white">
+                          {expense.title}
+                        </h3>
+                        {expense.notes && (
+                          <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                            &ldquo;{expense.notes}&rdquo;
+                          </p>
                         )}
                       </div>
 
-                      <div className="flex flex-wrap gap-2">
-                        {expense.paidBy.map((payer) => {
-                          const pName =
-                            currentTrip?.participants.find((pt) => pt.id === payer.participantId)?.name ||
-                            'Friend';
-                          const pct = Math.round((payer.amount / expense.amount) * 100);
-                          return (
-                            <span
-                              key={payer.participantId}
-                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold"
-                              style={{
-                                background: 'rgba(16,185,129,0.12)',
-                                color: '#34d399',
-                                border: '1px solid rgba(16,185,129,0.25)',
-                              }}
-                            >
-                              <span>{pName}</span>
-                              <span className="font-black">
-                                {currency}{payer.amount.toLocaleString('en-IN')}
-                              </span>
-                              <span className="text-[10px] opacity-75">({pct}%)</span>
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Beneficiaries & Action Footer */}
-                    <div className="flex items-center justify-between pt-1 text-xs">
-                      <span className="text-slate-400 flex items-center gap-1.5">
-                        <Users className="w-3.5 h-3.5 text-violet-400" />
-                        Split among {expense.splitAmong.length} friends
-                      </span>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() =>
-                            setExpandedExpenseId(isExpanded ? null : expense.id)
-                          }
-                          className="text-violet-400 hover:text-violet-300 font-bold inline-flex items-center gap-1"
-                        >
-                          <span>{isExpanded ? 'Hide' : 'Transparency'}</span>
-                          <ChevronDown
-                            className={cn(
-                              'w-3.5 h-3.5 transition-transform',
-                              isExpanded && 'rotate-180'
-                            )}
-                          />
-                        </button>
-
-                        <button
-                          onClick={() => openEditExpenseModal(expense)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                          title="Edit"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-
-                        <button
-                          onClick={() => handleDeleteExpense(expense.id)}
-                          className="p-1.5 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Detailed Math Breakdown Dropdown */}
-                    {isExpanded && (
+                      {/* Who Paid Section — HIGHLIGHTING PARTIAL PAYERS! */}
                       <div
-                        className="p-3 rounded-2xl space-y-2.5 mt-2 animate-in fade-in duration-200"
+                        className="p-3 rounded-2xl flex flex-col gap-2"
                         style={{
-                          background: 'rgba(124,58,237,0.06)',
-                          border: '1px solid rgba(139,92,246,0.2)',
+                          background: 'rgba(255,255,255,0.03)',
+                          border: '1px solid var(--border-soft)',
                         }}
                       >
-                        <p className="text-[10px] font-extrabold text-violet-300 uppercase tracking-wider">
-                          Transparent Share Calculation:
-                        </p>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                          {expense.splitAmong.map((split) => {
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-slate-400 flex items-center gap-1.5">
+                            <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
+                            {hasMultiplePayers ? 'Split Payment by:' : 'Paid by:'}
+                          </span>
+                          {hasMultiplePayers && (
+                            <span className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                              Multiple Partial Payers
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          {expense.paidBy.map((payer) => {
                             const pName =
-                              currentTrip?.participants.find((pt) => pt.id === split.participantId)?.name ||
+                              currentTrip?.participants.find((pt) => pt.id === payer.participantId)?.name ||
                               'Friend';
+                            const pct = Math.round((payer.amount / expense.amount) * 100);
                             return (
-                              <div
-                                key={split.participantId}
-                                className="flex items-center justify-between p-2 rounded-xl text-xs"
-                                style={{ background: 'var(--bg-raised)' }}
+                              <span
+                                key={payer.participantId}
+                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold"
+                                style={{
+                                  background: 'rgba(16,185,129,0.12)',
+                                  color: '#34d399',
+                                  border: '1px solid rgba(16,185,129,0.25)',
+                                }}
                               >
-                                <span className="font-semibold text-slate-300 truncate mr-2">
-                                  {pName}
+                                <span>{pName}</span>
+                                <span className="font-black">
+                                  {currency}{payer.amount.toLocaleString('en-IN')}
                                 </span>
-                                <span className="font-black tabular-nums text-white shrink-0">
-                                  {currency}{split.amount.toLocaleString('en-IN')}
-                                </span>
-                              </div>
+                                <span className="text-[10px] opacity-75">({pct}%)</span>
+                              </span>
                             );
                           })}
                         </div>
                       </div>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        )}
 
-        {/* VIEW 2: SETTLEMENT & WHO OWES WHOM */}
-        {activeTab === 'settlement' && tripSummary && (
-          <div className="space-y-5 max-w-3xl mx-auto">
-            {/* Minimal Debt Settlements */}
-            <div
-              className="rounded-3xl p-5 space-y-4"
-              style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-black text-white flex items-center gap-2">
-                    <span>⚖️ Optimal Settlements</span>
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Minimal transaction path to square off all trip balances completely.
-                  </p>
-                </div>
-
-                <button
-                  onClick={handleShareToWhatsApp}
-                  className="px-3 py-1.5 rounded-xl text-xs font-bold text-violet-300 bg-violet-600/20 hover:bg-violet-600/30 transition-colors inline-flex items-center gap-1.5"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>Copy Plan</span>
-                </button>
-              </div>
-
-              {tripSummary.settlements.length === 0 ? (
-                <div className="p-6 rounded-2xl bg-emerald-500/10 text-center space-y-1">
-                  <p className="text-base font-extrabold text-emerald-400">
-                    🎉 Group is 100% Settled Up!
-                  </p>
-                  <p className="text-xs text-emerald-300/80">
-                    No debts remaining. Everyone has paid their exact consumption share.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {tripSummary.settlements.map((st, i) => (
-                    <div
-                      key={i}
-                      className="p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
-                      style={{
-                        background: 'rgba(255,255,255,0.03)',
-                        border: '1px solid var(--border-soft)',
-                      }}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-9 h-9 rounded-xl bg-rose-500/20 text-rose-400 font-black text-xs flex items-center justify-center shrink-0">
-                          {st.fromName[0]}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-bold text-slate-200">
-                            <span className="text-rose-400">{st.fromName}</span> owes{' '}
-                            <span className="text-emerald-400">{st.toName}</span>
-                          </p>
-                          <span className="text-[11px] text-slate-500">
-                            Debt to clear trip share
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-                        <div className="text-lg font-black tabular-nums text-white">
-                          {currency}{st.amount.toLocaleString('en-IN')}
-                        </div>
-
-                        {/* Direct Button to add to Udharwale contact ledger! */}
-                        {onRecordToLedger && (
-                          <button
-                            onClick={() => handleRecordSettlement(st)}
-                            className="px-3 py-1.5 rounded-xl text-xs font-bold text-violet-200 bg-violet-600 hover:bg-violet-500 transition-colors inline-flex items-center gap-1 shadow-md"
-                            title="Record in Udharwale contact ledger"
-                          >
-                            <TrendingUp className="w-3.5 h-3.5" />
-                            <span>Record in Ledger</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Individual Participant Balance Sheet */}
-            <div
-              className="rounded-3xl p-5 space-y-4"
-              style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
-            >
-              <div>
-                <h3 className="text-base font-black text-white">
-                  👥 Participant Contribution & Share Matrix
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Compare how much each friend paid out of pocket versus their actual consumption share.
-                </p>
-              </div>
-
-              <div className="space-y-2.5">
-                {tripSummary.participantSummaries.map((s) => {
-                  const isOwed = s.netBalance > 0;
-                  const owes = s.netBalance < 0;
-
-                  return (
-                    <div
-                      key={s.participant.id}
-                      className="p-3.5 rounded-2xl flex items-center justify-between gap-3"
-                      style={{
-                        background: isOwed
-                          ? 'rgba(16,185,129,0.06)'
-                          : owes
-                          ? 'rgba(244,63,94,0.06)'
-                          : 'rgba(255,255,255,0.02)',
-                        border: `1px solid ${
-                          isOwed
-                            ? 'rgba(16,185,129,0.2)'
-                            : owes
-                            ? 'rgba(244,63,94,0.2)'
-                            : 'var(--border-soft)'
-                        }`,
-                      }}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-9 h-9 rounded-xl bg-violet-600/30 text-violet-300 font-black text-xs flex items-center justify-center shrink-0">
-                          {s.participant.name[0]}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-bold text-white truncate">
-                            {s.participant.name}{' '}
-                            {s.participant.isCurrentUser && (
-                              <span className="text-[10px] text-violet-400">(You)</span>
-                            )}
-                          </p>
-                          <p className="text-[11px] text-slate-400">
-                            Paid {currency}{s.totalPaid.toLocaleString('en-IN')} · Consumed{' '}
-                            {currency}{s.totalShare.toLocaleString('en-IN')}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="text-right shrink-0">
-                        <p
-                          className={cn(
-                            'text-base font-black tabular-nums',
-                            isOwed ? 'text-emerald-400' : owes ? 'text-rose-400' : 'text-slate-400'
-                          )}
-                        >
-                          {isOwed ? '+' : ''}{currency}{s.netBalance.toLocaleString('en-IN')}
-                        </p>
-                        <span className="text-[9px] uppercase font-extrabold tracking-wider text-slate-400">
-                          {isOwed ? 'Gets Back' : owes ? 'Needs to Pay' : 'Settled'}
+                      {/* Beneficiaries & Action Footer */}
+                      <div className="flex items-center justify-between pt-1 text-xs">
+                        <span className="text-slate-400 flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5 text-violet-400" />
+                          Split among {expense.splitAmong.length} friends
                         </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* VIEW 3: ALL EXPENSES LIST & SEARCH */}
-        {activeTab === 'expenses' && (
-          <div className="space-y-4 max-w-3xl mx-auto">
-            {/* Filter chips & Search input */}
-            <div className="space-y-3">
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search expenses by title or memo…"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 text-xs rounded-2xl outline-none font-medium"
-                  style={{
-                    background: 'var(--bg-surface)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--text-primary)',
-                  }}
-                />
-              </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() =>
+                              setExpandedExpenseId(isExpanded ? null : expense.id)
+                            }
+                            className="text-violet-400 hover:text-violet-300 font-bold inline-flex items-center gap-1"
+                          >
+                            <span>{isExpanded ? 'Hide' : 'Transparency'}</span>
+                            <ChevronDown
+                              className={cn(
+                                'w-3.5 h-3.5 transition-transform duration-200',
+                                isExpanded && 'rotate-180'
+                              )}
+                            />
+                          </button>
 
-              {/* Category filter pills */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                <button
-                  onClick={() => setCategoryFilter('all')}
-                  className={cn(
-                    'px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0',
-                    categoryFilter === 'all'
-                      ? 'bg-violet-600 text-white'
-                      : 'bg-slate-800/80 text-slate-400 hover:text-white'
-                  )}
-                >
-                  All ({currentTrip?.expenses.length || 0})
-                </button>
-                {Object.entries(CATEGORY_CONFIG).map(([catKey, config]) => (
-                  <button
-                    key={catKey}
-                    onClick={() => setCategoryFilter(catKey)}
-                    className={cn(
-                      'px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 inline-flex items-center gap-1',
-                      categoryFilter === catKey
-                        ? 'bg-violet-600 text-white'
-                        : 'bg-slate-800/80 text-slate-400 hover:text-white'
-                    )}
-                  >
-                    <span>{config.icon}</span>
-                    <span>{config.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+                          <button
+                            onClick={() => openEditExpenseModal(expense)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                            title="Edit"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
 
-            {/* List */}
-            <div
-              className="rounded-3xl p-5 divide-y divide-slate-800"
-              style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
-            >
-              {filteredExpenses.length === 0 ? (
-                <p className="text-center text-xs py-8 text-slate-400">
-                  No matching expenses found.
-                </p>
-              ) : (
-                filteredExpenses.map((expense) => {
-                  const cat = CATEGORY_CONFIG[expense.category] || CATEGORY_CONFIG.general;
-                  const payersStr = expense.paidBy
-                    .map((p) => {
-                      const name =
-                        currentTrip?.participants.find((pt) => pt.id === p.participantId)?.name ||
-                        'Friend';
-                      return `${name} (${currency}${p.amount.toLocaleString('en-IN')})`;
-                    })
-                    .join(' + ');
-
-                  return (
-                    <div key={expense.id} className="py-3 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div
-                          className="w-10 h-10 rounded-2xl flex items-center justify-center text-lg shrink-0"
-                          style={{ background: cat.bg, color: cat.tone }}
-                        >
-                          {cat.icon}
-                        </div>
-                        <div className="min-w-0">
-                          <h4 className="text-sm font-bold text-white truncate">{expense.title}</h4>
-                          <p className="text-[11px] text-slate-400 truncate">Paid by {payersStr}</p>
-                          <span className="text-[10px] text-slate-500">{expense.date}</span>
+                          <button
+                            onClick={() => handleDeleteExpense(expense.id)}
+                            className="p-1.5 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3 shrink-0">
-                        <div className="text-right">
-                          <p className="text-base font-black tabular-nums text-white">
-                            {currency}{expense.amount.toLocaleString('en-IN')}
-                          </p>
-                          <span className="text-[10px] text-violet-400">
-                            {currency}
-                            {Math.round((expense.amount / expense.splitAmong.length) * 100) / 100}
-                            /head
-                          </span>
-                        </div>
-
-                        <button
-                          onClick={() => openEditExpenseModal(expense)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-white"
-                          title="Edit"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
+                      {/* Detailed Math Breakdown Dropdown */}
+                      <AnimatePresence>
+                        {isExpanded && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.25, ease: 'easeInOut' }}
+                            className="overflow-hidden"
+                          >
+                            <div
+                              className="p-3 rounded-2xl space-y-2.5 mt-2"
+                              style={{
+                                background: 'rgba(124,58,237,0.06)',
+                                border: '1px solid rgba(139,92,246,0.2)',
+                              }}
+                            >
+                              <p className="text-[10px] font-extrabold text-violet-300 uppercase tracking-wider">
+                                Transparent Share Calculation:
+                              </p>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                {expense.splitAmong.map((split) => {
+                                  const pName =
+                                    currentTrip?.participants.find((pt) => pt.id === split.participantId)?.name ||
+                                    'Friend';
+                                  return (
+                                    <div
+                                      key={split.participantId}
+                                      className="flex items-center justify-between p-2 rounded-xl text-xs"
+                                      style={{ background: 'var(--bg-raised)' }}
+                                    >
+                                      <span className="font-semibold text-slate-300 truncate mr-2">
+                                        {pName}
+                                      </span>
+                                      <span className="font-black tabular-nums text-white shrink-0">
+                                        {currency}{split.amount.toLocaleString('en-IN')}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </motion.div>
                   );
                 })
               )}
-            </div>
-          </div>
-        )}
-      </div>
+            </motion.div>
+          )}
 
-      {/* ══════════════════════════════════════════════════════
-          ADD / EDIT EXPENSE MODAL (WITH PARTIAL PAYERS!)
-      ══════════════════════════════════════════════════════ */}
-      {isExpenseModalOpen && currentTrip && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-          <div
-            className="absolute inset-0"
-            style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
-            onClick={() => setIsExpenseModalOpen(false)}
-          />
-
-          <div
-            className="relative w-full max-w-lg rounded-3xl overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 duration-200"
-            style={{
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-soft)',
-              maxHeight: '92vh',
-            }}
-          >
-            {/* Modal Header */}
-            <div
-              className="flex items-center justify-between px-5 py-4 border-b shrink-0"
-              style={{ borderColor: 'var(--border-soft)' }}
+          {/* VIEW 2: SETTLEMENT & WHO OWES WHOM */}
+          {activeTab === 'settlement' && tripSummary && (
+            <motion.div
+              key="settlement"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.25 }}
+              className="space-y-5 max-w-3xl mx-auto"
             >
-              <h3 className="font-black text-base text-white">
-                {editingExpense ? 'Edit Trip Expense' : 'Add Trip Expense'}
-              </h3>
-              <button
-                onClick={() => setIsExpenseModalOpen(false)}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-white"
+              {/* Minimal Debt Settlements */}
+              <div
+                className="rounded-3xl p-5 space-y-4"
+                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
               >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-black text-white flex items-center gap-2">
+                      <span>⚖️ Optimal Settlements</span>
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Minimal transaction path to square off all trip balances completely.
+                    </p>
+                  </div>
 
-            {/* Modal Form */}
-            <form onSubmit={handleSaveExpense} className="p-5 space-y-4 overflow-y-auto flex-1">
-              {/* Title & Category */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-300">Item / Expense Title</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Seafood Dinner at Beach Shack, Villa Stay, Cab"
-                  value={expTitle}
-                  onChange={(e) => setExpTitle(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl text-xs outline-none font-medium text-white"
-                  style={{
-                    background: 'var(--bg-raised)',
-                    border: '1px solid var(--border-soft)',
-                  }}
-                  required
-                />
-              </div>
-
-              {/* Amount & Date */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-300">Total Bill Amount (₹)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="e.g. 5000"
-                    value={expAmount}
-                    onChange={(e) => setExpAmount(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl text-sm font-black outline-none text-emerald-400"
-                    style={{
-                      background: 'var(--bg-raised)',
-                      border: '1px solid var(--border-soft)',
-                    }}
-                    required
-                  />
+                  <motion.button
+                    whileTap={{ scale: 0.94 }}
+                    onClick={handleShareToWhatsApp}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold text-violet-300 bg-violet-600/20 hover:bg-violet-600/30 transition-colors inline-flex items-center gap-1.5"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy Plan</span>
+                  </motion.button>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-300">Date</label>
-                  <input
-                    type="date"
-                    value={expDate}
-                    onChange={(e) => setExpDate(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl text-xs outline-none font-medium text-white"
-                    style={{
-                      background: 'var(--bg-raised)',
-                      border: '1px solid var(--border-soft)',
-                    }}
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Category selector */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-300">Category</label>
-                <div className="grid grid-cols-4 gap-2">
-                  {Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => {
-                    const isSelected = expCategory === key;
-                    return (
-                      <button
-                        type="button"
-                        key={key}
-                        onClick={() => setExpCategory(key as ExpenseCategory)}
-                        className={cn(
-                          'p-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all',
-                          isSelected
-                            ? 'bg-violet-600 text-white shadow-md'
-                            : 'bg-slate-800/60 text-slate-400 hover:text-white'
-                        )}
+                {tripSummary.settlements.length === 0 ? (
+                  <motion.div
+                    initial={{ scale: 0.95, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="p-6 rounded-2xl bg-emerald-500/10 text-center space-y-1 border border-emerald-500/20"
+                  >
+                    <p className="text-base font-extrabold text-emerald-400">
+                      🎉 Group is 100% Settled Up!
+                    </p>
+                    <p className="text-xs text-emerald-300/80">
+                      No debts remaining. Everyone has paid their exact consumption share.
+                    </p>
+                  </motion.div>
+                ) : (
+                  <div className="space-y-3">
+                    {tripSummary.settlements.map((st, i) => (
+                      <motion.div
+                        key={i}
+                        initial={{ opacity: 0, x: -16 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.05 }}
+                        className="p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+                        style={{
+                          background: 'rgba(255,255,255,0.03)',
+                          border: '1px solid var(--border-soft)',
+                        }}
                       >
-                        <span className="text-base">{cfg.icon}</span>
-                        <span className="text-[10px] truncate max-w-full">{cfg.label.split(' ')[0]}</span>
-                      </button>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={cn(
+                            'w-9 h-9 rounded-xl bg-gradient-to-tr flex items-center justify-center font-black text-xs text-white shrink-0',
+                            avatarGradient(st.fromName)
+                          )}>
+                            {st.fromName[0]}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-slate-200">
+                              <span className="text-rose-400 font-extrabold">{st.fromName}</span>
+                              <span className="text-slate-500 mx-1.5 font-normal">owes</span>
+                              <span className="text-emerald-400 font-extrabold">{st.toName}</span>
+                            </p>
+                            <span className="text-[11px] text-slate-500">
+                              Direct settlement transfer
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                          <div className="text-lg font-black tabular-nums text-white">
+                            {currency}{st.amount.toLocaleString('en-IN')}
+                          </div>
+
+                          {onRecordToLedger && (
+                            <motion.button
+                              whileTap={{ scale: 0.94 }}
+                              onClick={() => handleRecordSettlement(st)}
+                              className="px-3 py-1.5 rounded-xl text-xs font-bold text-violet-200 bg-violet-600 hover:bg-violet-500 transition-colors inline-flex items-center gap-1 shadow-md"
+                              title="Record in Udharwale contact ledger"
+                            >
+                              <TrendingUp className="w-3.5 h-3.5" />
+                              <span>Record in Ledger</span>
+                            </motion.button>
+                          )}
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Individual Participant Balance Sheet */}
+              <div
+                className="rounded-3xl p-5 space-y-4"
+                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+              >
+                <div>
+                  <h3 className="text-base font-black text-white flex items-center gap-2">
+                    <Users className="w-4 h-4 text-violet-400" />
+                    Participant Balance Matrix
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Compare how much each friend paid out of pocket versus their actual consumption share.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  {tripSummary.participantSummaries.map((s, i) => {
+                    const isOwed = s.netBalance > 0.01;
+                    const owes = s.netBalance < -0.01;
+                    const maxPaid = Math.max(...tripSummary.participantSummaries.map((x) => x.totalPaid), 1);
+                    const barPct = Math.min(100, Math.max(0, (s.totalPaid / maxPaid) * 100));
+
+                    return (
+                      <motion.div
+                        key={s.participant.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: i * 0.06 }}
+                        className="p-4 rounded-2xl space-y-2.5"
+                        style={{
+                          background: isOwed
+                            ? 'rgba(16,185,129,0.06)'
+                            : owes
+                            ? 'rgba(244,63,94,0.06)'
+                            : 'rgba(255,255,255,0.02)',
+                          border: `1px solid ${
+                            isOwed
+                              ? 'rgba(16,185,129,0.2)'
+                              : owes
+                              ? 'rgba(244,63,94,0.2)'
+                              : 'var(--border-soft)'
+                          }`,
+                        }}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={cn(
+                              'w-9 h-9 rounded-xl bg-gradient-to-tr flex items-center justify-center font-black text-xs text-white shrink-0',
+                              avatarGradient(s.participant.name)
+                            )}>
+                              {s.participant.name[0]}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-white truncate">
+                                {s.participant.name}{' '}
+                                {s.participant.isCurrentUser && (
+                                  <span className="text-[10px] text-violet-400 font-extrabold">(You)</span>
+                                )}
+                              </p>
+                              <p className="text-[11px] text-slate-400">
+                                Paid {currency}{s.totalPaid.toLocaleString('en-IN')} · Consumed{' '}
+                                {currency}{s.totalShare.toLocaleString('en-IN')}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <p
+                              className={cn(
+                                'text-base font-black tabular-nums flex items-center justify-end gap-1',
+                                isOwed ? 'text-emerald-400' : owes ? 'text-rose-400' : 'text-slate-400'
+                              )}
+                            >
+                              {isOwed ? <TrendingUp className="w-3.5 h-3.5" /> : owes ? <TrendingDown className="w-3.5 h-3.5" /> : null}
+                              {isOwed ? '+' : ''}{currency}{s.netBalance.toLocaleString('en-IN')}
+                            </p>
+                            <span className={cn(
+                              'text-[9px] uppercase font-extrabold tracking-wider',
+                              isOwed ? 'text-emerald-400' : owes ? 'text-rose-400' : 'text-slate-500'
+                            )}>
+                              {isOwed ? 'Gets Back' : owes ? 'Needs to Pay' : 'Settled'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Animated progress bar showing relative payment */}
+                        <div className="h-1.5 rounded-full bg-slate-800/80 overflow-hidden">
+                          <motion.div
+                            className={cn('h-full rounded-full', isOwed ? 'bg-emerald-500' : owes ? 'bg-rose-500' : 'bg-slate-500')}
+                            initial={{ width: 0 }}
+                            animate={{ width: `${barPct}%` }}
+                            transition={{ duration: 0.8, delay: i * 0.06 + 0.1, ease: 'easeOut' }}
+                          />
+                        </div>
+                      </motion.div>
                     );
                   })}
                 </div>
               </div>
 
-              {/* ── WHO PAID (SINGLE vs MULTIPLE/PARTIAL PAYERS) ── */}
-              <div
-                className="p-4 rounded-2xl space-y-3"
-                style={{
-                  background: 'rgba(255,255,255,0.02)',
-                  border: '1px solid var(--border-soft)',
-                }}
-              >
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                    <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
-                    Who Paid for This?
-                  </label>
+              {/* Spending by Category Breakdown */}
+              {(() => {
+                const cats = Object.entries(tripSummary.categoryTotals)
+                  .filter(([, v]) => v > 0)
+                  .sort(([, a], [, b]) => b - a);
+                if (cats.length === 0) return null;
+                const total = cats.reduce((a, [, v]) => a + v, 0);
 
-                  {/* Mode switcher */}
+                return (
                   <div
-                    className="flex p-0.5 rounded-xl text-[10px] font-bold"
-                    style={{ background: 'var(--bg-raised)' }}
+                    className="rounded-3xl p-5 space-y-3.5"
+                    style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
                   >
-                    <button
-                      type="button"
-                      onClick={() => setPayerMode('single')}
-                      className={cn(
-                        'px-2.5 py-1 rounded-lg transition-colors',
-                        payerMode === 'single' ? 'bg-violet-600 text-white' : 'text-slate-400'
-                      )}
-                    >
-                      Single Payer
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPayerMode('multiple');
-                        // Pre-populate single payer amount into multiple payers
-                        if (singlePayerId && parsedTotalAmount > 0 && Object.keys(multiplePayers).length === 0) {
-                          setMultiplePayers({ [singlePayerId]: String(parsedTotalAmount) });
-                        }
-                      }}
-                      className={cn(
-                        'px-2.5 py-1 rounded-lg transition-colors',
-                        payerMode === 'multiple' ? 'bg-violet-600 text-white' : 'text-slate-400'
-                      )}
-                    >
-                      Multiple Payers ✨
-                    </button>
-                  </div>
-                </div>
-
-                {payerMode === 'single' ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    {currentTrip.participants.map((p) => (
-                      <button
-                        type="button"
-                        key={p.id}
-                        onClick={() => setSinglePayerId(p.id)}
-                        className={cn(
-                          'p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all text-left',
-                          singlePayerId === p.id
-                            ? 'bg-emerald-600/30 text-emerald-300 border border-emerald-500/40'
-                            : 'bg-slate-800/40 text-slate-300 border border-transparent hover:border-slate-700'
-                        )}
-                      >
-                        <span className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[10px] font-black">
-                          {p.name[0]}
-                        </span>
-                        <span className="truncate">{p.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  /* MULTIPLE / PARTIAL PAYERS LIST */
-                  <div className="space-y-2.5">
-                    <p className="text-[11px] text-slate-400">
-                      Enter what each person paid (e.g. You paid ₹2,000, Rahul paid ₹3,000):
-                    </p>
-
-                    <div className="space-y-2">
-                      {currentTrip.participants.map((p) => {
-                        const currentVal = multiplePayers[p.id] || '';
+                    <h3 className="text-sm font-black text-white">Spending by Category</h3>
+                    <div className="space-y-3">
+                      {cats.map(([cat, amt], i) => {
+                        const cfg = CATEGORY_CONFIG[cat as keyof typeof CATEGORY_CONFIG] || CATEGORY_CONFIG.general;
+                        const pct = Math.round((amt / total) * 100);
                         return (
-                          <div
-                            key={p.id}
-                            className="p-2.5 rounded-xl flex items-center justify-between gap-3"
-                            style={{ background: 'var(--bg-raised)' }}
-                          >
-                            <span className="text-xs font-bold text-white truncate min-w-[80px]">
-                              {p.name}
-                            </span>
-
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="number"
-                                step="0.01"
-                                placeholder="0"
-                                value={currentVal}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setMultiplePayers((prev) => ({ ...prev, [p.id]: val }));
-                                }}
-                                className="w-24 px-2.5 py-1 text-xs font-black text-right outline-none rounded-lg text-emerald-400"
-                                style={{
-                                  background: 'var(--bg-surface)',
-                                  border: '1px solid var(--border-soft)',
-                                }}
+                          <div key={cat} className="space-y-1.5">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="flex items-center gap-1.5 font-bold" style={{ color: cfg.tone }}>
+                                <span>{cfg.icon}</span> {cfg.label}
+                              </span>
+                              <span className="font-black tabular-nums text-white">
+                                {currency}{amt.toLocaleString('en-IN')}
+                                <span className="text-slate-500 font-normal ml-1">({pct}%)</span>
+                              </span>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                              <motion.div
+                                className="h-full rounded-full"
+                                style={{ background: cfg.tone }}
+                                initial={{ width: 0 }}
+                                animate={{ width: `${pct}%` }}
+                                transition={{ duration: 0.8, delay: i * 0.05 + 0.1, ease: 'easeOut' }}
                               />
-
-                              {/* Autofill remainder button */}
-                              {payerRemainingBalance > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const assignedToOthers = Object.entries(multiplePayers)
-                                      .filter(([k]) => k !== p.id)
-                                      .reduce((acc, [, v]) => acc + (Number(v) || 0), 0);
-                                    const remainder = Math.max(0, parsedTotalAmount - assignedToOthers);
-                                    setMultiplePayers((prev) => ({
-                                      ...prev,
-                                      [p.id]: String(remainder),
-                                    }));
-                                  }}
-                                  className="text-[10px] font-bold text-violet-400 hover:text-violet-300 underline shrink-0"
-                                >
-                                  +Fill
-                                </button>
-                              )}
                             </div>
                           </div>
                         );
                       })}
                     </div>
-
-                    {/* Balance Status Banner */}
-                    <div
-                      className={cn(
-                        'p-2.5 rounded-xl text-xs font-bold flex items-center justify-between',
-                        isPayerBalanced
-                          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-                          : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
-                      )}
-                    >
-                      <span>
-                        {isPayerBalanced
-                          ? '✨ Perfectly balanced!'
-                          : `Remaining to allocate: ${currency}${payerRemainingBalance}`}
-                      </span>
-                      <span>
-                        {currency}{currentAssignedPayersTotal} / {currency}{parsedTotalAmount}
-                      </span>
-                    </div>
                   </div>
-                )}
-              </div>
+                );
+              })()}
+            </motion.div>
+          )}
 
-              {/* ── SPLIT BENEFICIARIES (EQUAL / CUSTOM) ── */}
-              <div
-                className="p-4 rounded-2xl space-y-3"
-                style={{
-                  background: 'rgba(255,255,255,0.02)',
-                  border: '1px solid var(--border-soft)',
-                }}
-              >
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                    <Split className="w-3.5 h-3.5 text-violet-400" />
-                    Split Among (Beneficiaries)
-                  </label>
-
-                  <div
-                    className="flex p-0.5 rounded-xl text-[10px] font-bold"
-                    style={{ background: 'var(--bg-raised)' }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSplitMode('all');
-                        setSelectedBeneficiaries(currentTrip.participants.map((p) => p.id));
-                      }}
-                      className={cn(
-                        'px-2.5 py-1 rounded-lg transition-colors',
-                        splitMode === 'all' ? 'bg-violet-600 text-white' : 'text-slate-400'
-                      )}
-                    >
-                      All (Equal)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSplitMode('custom')}
-                      className={cn(
-                        'px-2.5 py-1 rounded-lg transition-colors',
-                        splitMode === 'custom' ? 'bg-violet-600 text-white' : 'text-slate-400'
-                      )}
-                    >
-                      Select People
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  {currentTrip.participants.map((p) => {
-                    const isChecked = selectedBeneficiaries.includes(p.id);
-                    return (
-                      <label
-                        key={p.id}
-                        className={cn(
-                          'p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-all',
-                          isChecked
-                            ? 'bg-violet-600/20 text-violet-200 border border-violet-500/30'
-                            : 'bg-slate-800/40 text-slate-500 border border-transparent'
-                        )}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedBeneficiaries([...selectedBeneficiaries, p.id]);
-                            } else {
-                              if (selectedBeneficiaries.length > 1) {
-                                setSelectedBeneficiaries(selectedBeneficiaries.filter((id) => id !== p.id));
-                              }
-                            }
-                          }}
-                          className="rounded text-violet-600 focus:ring-0"
-                        />
-                        <span className="truncate">{p.name}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-
-                {/* Per-Head Calculation Preview */}
-                {parsedTotalAmount > 0 && selectedBeneficiaries.length > 0 && (
-                  <div className="text-[11px] text-violet-300 font-semibold pt-1">
-                    💡 Per-head: {currency}
-                    {Math.round((parsedTotalAmount / selectedBeneficiaries.length) * 100) / 100} for{' '}
-                    {selectedBeneficiaries.length} friends
-                  </div>
-                )}
-              </div>
-
-              {/* Notes */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-300">Notes / Remarks (Optional)</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Lobster special, 2 beers included, Innova cab"
-                  value={expNotes}
-                  onChange={(e) => setExpNotes(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl text-xs outline-none font-medium text-white"
-                  style={{
-                    background: 'var(--bg-raised)',
-                    border: '1px solid var(--border-soft)',
-                  }}
-                />
-              </div>
-
-              {/* Submit Button */}
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  disabled={payerMode === 'multiple' && !isPayerBalanced}
-                  className={cn(
-                    'w-full py-3 rounded-2xl text-xs font-black text-white shadow-xl transition-all',
-                    payerMode === 'multiple' && !isPayerBalanced
-                      ? 'bg-slate-700 opacity-50 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500'
-                  )}
-                >
-                  {editingExpense ? 'Save Changes' : 'Post to Trip Chat 💸'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════════════════
-          CREATE NEW TRIP MODAL
-      ══════════════════════════════════════════════════════ */}
-      {isNewTripModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-          <div
-            className="absolute inset-0"
-            style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
-            onClick={() => setIsNewTripModalOpen(false)}
-          />
-
-          <div
-            className="relative w-full max-w-md rounded-3xl overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 duration-200"
-            style={{
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-soft)',
-              maxHeight: '90vh',
-            }}
-          >
-            <div
-              className="flex items-center justify-between px-5 py-4 border-b shrink-0"
-              style={{ borderColor: 'var(--border-soft)' }}
+          {/* VIEW 3: ALL EXPENSES LIST & SEARCH */}
+          {activeTab === 'expenses' && (
+            <motion.div
+              key="expenses"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.25 }}
+              className="space-y-4 max-w-3xl mx-auto"
             >
-              <h3 className="font-black text-base text-white">Create New Trip</h3>
-              <button
-                onClick={() => setIsNewTripModalOpen(false)}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateTrip} className="p-5 space-y-4 overflow-y-auto">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-300">Trip Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Manali Vacation, Goa Trip, Friday Dinner"
-                  value={newTripName}
-                  onChange={(e) => setNewTripName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl text-xs outline-none font-medium text-white"
-                  style={{
-                    background: 'var(--bg-raised)',
-                    border: '1px solid var(--border-soft)',
-                  }}
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-300">Destination</label>
+              {/* Filter chips & Search input */}
+              <div className="space-y-3">
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                   <input
                     type="text"
-                    placeholder="e.g. North Goa"
-                    value={newTripDestination}
-                    onChange={(e) => setNewTripDestination(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl text-xs outline-none font-medium text-white"
+                    placeholder="Search expenses by title or memo…"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 text-xs rounded-2xl outline-none font-medium"
                     style={{
-                      background: 'var(--bg-raised)',
+                      background: 'var(--bg-surface)',
                       border: '1px solid var(--border-soft)',
+                      color: 'var(--text-primary)',
                     }}
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-300">Start Date</label>
-                  <input
-                    type="date"
-                    value={newTripStartDate}
-                    onChange={(e) => setNewTripStartDate(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl text-xs outline-none font-medium text-white"
-                    style={{
-                      background: 'var(--bg-raised)',
-                      border: '1px solid var(--border-soft)',
-                    }}
-                  />
+                {/* Category filter pills */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                  <button
+                    onClick={() => setCategoryFilter('all')}
+                    className={cn(
+                      'px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0',
+                      categoryFilter === 'all'
+                        ? 'bg-violet-600 text-white'
+                        : 'bg-slate-800/80 text-slate-400 hover:text-white'
+                    )}
+                  >
+                    All ({currentTrip?.expenses.length || 0})
+                  </button>
+                  {Object.entries(CATEGORY_CONFIG).map(([catKey, config]) => (
+                    <button
+                      key={catKey}
+                      onClick={() => setCategoryFilter(catKey)}
+                      className={cn(
+                        'px-3 py-1 rounded-full text-xs font-bold transition-all shrink-0 inline-flex items-center gap-1',
+                        categoryFilter === catKey
+                          ? 'bg-violet-600 text-white'
+                          : 'bg-slate-800/80 text-slate-400 hover:text-white'
+                      )}
+                    >
+                      <span>{config.icon}</span>
+                      <span>{config.label}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {/* Add friends from contacts */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-                  <span>Add Friends from Contacts</span>
-                  <span className="text-[10px] text-violet-400">
-                    {selectedContactIds.length} selected
-                  </span>
-                </label>
-
-                {contacts.length === 0 ? (
-                  <p className="text-[11px] text-slate-500">No contacts saved yet.</p>
+              {/* List */}
+              <div
+                className="rounded-3xl p-5 divide-y divide-slate-800"
+                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+              >
+                {filteredExpenses.length === 0 ? (
+                  <p className="text-center text-xs py-8 text-slate-400">
+                    No matching expenses found.
+                  </p>
                 ) : (
-                  <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
-                    {contacts.map((c) => {
-                      const isSelected = selectedContactIds.includes(c.id);
+                  filteredExpenses.map((expense) => {
+                    const cat = CATEGORY_CONFIG[expense.category] || CATEGORY_CONFIG.general;
+                    const payersStr = expense.paidBy
+                      .map((p) => {
+                        const name =
+                          currentTrip?.participants.find((pt) => pt.id === p.participantId)?.name ||
+                          'Friend';
+                        return `${name} (${currency}${p.amount.toLocaleString('en-IN')})`;
+                      })
+                      .join(' + ');
+
+                    return (
+                      <div key={expense.id} className="py-3 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div
+                            className="w-10 h-10 rounded-2xl flex items-center justify-center text-lg shrink-0"
+                            style={{ background: cat.bg, color: cat.tone }}
+                          >
+                            {cat.icon}
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="text-sm font-bold text-white truncate">{expense.title}</h4>
+                            <p className="text-[11px] text-slate-400 truncate">Paid by {payersStr}</p>
+                            <span className="text-[10px] text-slate-500">{expense.date}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="text-right">
+                            <p className="text-base font-black tabular-nums text-white">
+                              {currency}{expense.amount.toLocaleString('en-IN')}
+                            </p>
+                            <span className="text-[10px] text-violet-400 font-bold">
+                              {currency}
+                              {Math.round((expense.amount / expense.splitAmong.length) * 100) / 100}
+                              /head
+                            </span>
+                          </div>
+
+                          <button
+                            onClick={() => openEditExpenseModal(expense)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-white"
+                            title="Edit"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* ══════════════════════════════════════════════════════
+          ADD / EDIT EXPENSE MODAL (WITH PARTIAL PAYERS!)
+      ══════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {isExpenseModalOpen && currentTrip && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setIsExpenseModalOpen(false)}
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 15 }}
+              transition={{ type: 'spring', stiffness: 450, damping: 30 }}
+              className="relative w-full max-w-lg rounded-3xl overflow-hidden flex flex-col shadow-2xl"
+              style={{
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-soft)',
+                maxHeight: '92vh',
+              }}
+            >
+              {/* Modal Header */}
+              <div
+                className="flex items-center justify-between px-5 py-4 border-b shrink-0"
+                style={{ borderColor: 'var(--border-soft)' }}
+              >
+                <h3 className="font-black text-base text-white">
+                  {editingExpense ? 'Edit Trip Expense' : 'Add Trip Expense'}
+                </h3>
+                <button
+                  onClick={() => setIsExpenseModalOpen(false)}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Form */}
+              <form onSubmit={handleSaveExpense} className="p-5 space-y-4 overflow-y-auto flex-1">
+                {/* Title & Category */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300">Item / Expense Title</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Seafood Dinner at Beach Shack, Villa Stay, Cab"
+                    value={expTitle}
+                    onChange={(e) => setExpTitle(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl text-xs outline-none font-medium text-white"
+                    style={{
+                      background: 'var(--bg-raised)',
+                      border: '1px solid var(--border-soft)',
+                    }}
+                    required
+                  />
+                </div>
+
+                {/* Amount & Date */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-300">Total Bill Amount (₹)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="e.g. 5000"
+                      value={expAmount}
+                      onChange={(e) => setExpAmount(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl text-sm font-black outline-none text-emerald-400"
+                      style={{
+                        background: 'var(--bg-raised)',
+                        border: '1px solid var(--border-soft)',
+                      }}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-300">Date</label>
+                    <input
+                      type="date"
+                      value={expDate}
+                      onChange={(e) => setExpDate(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl text-xs outline-none font-medium text-white"
+                      style={{
+                        background: 'var(--bg-raised)',
+                        border: '1px solid var(--border-soft)',
+                      }}
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Category selector */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300">Category</label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => {
+                      const isSelected = expCategory === key;
                       return (
                         <button
                           type="button"
-                          key={c.id}
-                          onClick={() => {
-                            if (isSelected) {
-                              setSelectedContactIds(selectedContactIds.filter((id) => id !== c.id));
-                            } else {
-                              setSelectedContactIds([...selectedContactIds, c.id]);
-                            }
-                          }}
+                          key={key}
+                          onClick={() => setExpCategory(key as ExpenseCategory)}
                           className={cn(
-                            'w-full p-2 rounded-xl text-xs font-bold flex items-center justify-between transition-all',
+                            'p-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all',
                             isSelected
-                              ? 'bg-violet-600/30 text-violet-200 border border-violet-500/40'
-                              : 'bg-slate-800/40 text-slate-300 hover:bg-slate-800'
+                              ? 'bg-violet-600 text-white shadow-md'
+                              : 'bg-slate-800/60 text-slate-400 hover:text-white'
                           )}
                         >
-                          <span>{c.name}</span>
-                          {isSelected && <Check className="w-3.5 h-3.5 text-violet-400" />}
+                          <span className="text-base">{cfg.icon}</span>
+                          <span className="text-[10px] truncate max-w-full">{cfg.label.split(' ')[0]}</span>
                         </button>
                       );
                     })}
                   </div>
-                )}
-              </div>
+                </div>
 
-              {/* Add custom friend names */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-300">
-                  Or Add Other Friends (comma separated)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Aman, Priya, Rohit"
-                  value={customParticipantNames}
-                  onChange={(e) => setCustomParticipantNames(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl text-xs outline-none font-medium text-white"
+                {/* ── WHO PAID (SINGLE vs MULTIPLE/PARTIAL PAYERS) ── */}
+                <div
+                  className="p-4 rounded-2xl space-y-3"
                   style={{
-                    background: 'var(--bg-raised)',
+                    background: 'rgba(255,255,255,0.02)',
                     border: '1px solid var(--border-soft)',
                   }}
-                />
-              </div>
-
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  className="w-full py-3 rounded-2xl text-xs font-black text-white bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 shadow-xl transition-all"
                 >
-                  Create Trip 🚀
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                      <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
+                      Who Paid for This?
+                    </label>
+
+                    {/* Mode switcher */}
+                    <div
+                      className="flex p-0.5 rounded-xl text-[10px] font-bold"
+                      style={{ background: 'var(--bg-raised)' }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setPayerMode('single')}
+                        className={cn(
+                          'px-2.5 py-1 rounded-lg transition-colors',
+                          payerMode === 'single' ? 'bg-violet-600 text-white' : 'text-slate-400'
+                        )}
+                      >
+                        Single Payer
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPayerMode('multiple');
+                          if (singlePayerId && parsedTotalAmount > 0 && Object.keys(multiplePayers).length === 0) {
+                            setMultiplePayers({ [singlePayerId]: String(parsedTotalAmount) });
+                          }
+                        }}
+                        className={cn(
+                          'px-2.5 py-1 rounded-lg transition-colors',
+                          payerMode === 'multiple' ? 'bg-violet-600 text-white' : 'text-slate-400'
+                        )}
+                      >
+                        Multiple Payers ✨
+                      </button>
+                    </div>
+                  </div>
+
+                  {payerMode === 'single' ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      {currentTrip.participants.map((p) => (
+                        <button
+                          type="button"
+                          key={p.id}
+                          onClick={() => setSinglePayerId(p.id)}
+                          className={cn(
+                            'p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all text-left',
+                            singlePayerId === p.id
+                              ? 'bg-emerald-600/30 text-emerald-300 border border-emerald-500/40'
+                              : 'bg-slate-800/40 text-slate-300 border border-transparent hover:border-slate-700'
+                          )}
+                        >
+                          <span className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[10px] font-black">
+                            {p.name[0]}
+                          </span>
+                          <span className="truncate">{p.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    /* MULTIPLE / PARTIAL PAYERS LIST */
+                    <div className="space-y-2.5">
+                      <p className="text-[11px] text-slate-400">
+                        Enter what each person paid (e.g. You paid ₹2,000, Rahul paid ₹3,000):
+                      </p>
+
+                      <div className="space-y-2">
+                        {currentTrip.participants.map((p) => {
+                          const currentVal = multiplePayers[p.id] || '';
+                          return (
+                            <div
+                              key={p.id}
+                              className="p-2.5 rounded-xl flex items-center justify-between gap-3"
+                              style={{ background: 'var(--bg-raised)' }}
+                            >
+                              <span className="text-xs font-bold text-white truncate min-w-[80px]">
+                                {p.name}
+                              </span>
+
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  placeholder="0"
+                                  value={currentVal}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setMultiplePayers((prev) => ({ ...prev, [p.id]: val }));
+                                  }}
+                                  className="w-24 px-2.5 py-1 text-xs font-black text-right outline-none rounded-lg text-emerald-400"
+                                  style={{
+                                    background: 'var(--bg-surface)',
+                                    border: '1px solid var(--border-soft)',
+                                  }}
+                                />
+
+                                {payerRemainingBalance > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const assignedToOthers = Object.entries(multiplePayers)
+                                        .filter(([k]) => k !== p.id)
+                                        .reduce((acc, [, v]) => acc + (Number(v) || 0), 0);
+                                      const remainder = Math.max(0, parsedTotalAmount - assignedToOthers);
+                                      setMultiplePayers((prev) => ({
+                                        ...prev,
+                                        [p.id]: String(remainder),
+                                      }));
+                                    }}
+                                    className="text-[10px] font-bold text-violet-400 hover:text-violet-300 underline shrink-0"
+                                  >
+                                    +Fill
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Balance Status Banner */}
+                      <div
+                        className={cn(
+                          'p-2.5 rounded-xl text-xs font-bold flex items-center justify-between',
+                          isPayerBalanced
+                            ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                            : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
+                        )}
+                      >
+                        <span>
+                          {isPayerBalanced
+                            ? '✨ Perfectly balanced!'
+                            : `Remaining to allocate: ${currency}${payerRemainingBalance}`}
+                        </span>
+                        <span>
+                          {currency}{currentAssignedPayersTotal} / {currency}{parsedTotalAmount}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ── SPLIT BENEFICIARIES (EQUAL / CUSTOM) ── */}
+                <div
+                  className="p-4 rounded-2xl space-y-3"
+                  style={{
+                    background: 'rgba(255,255,255,0.02)',
+                    border: '1px solid var(--border-soft)',
+                  }}
+                >
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                      <Split className="w-3.5 h-3.5 text-violet-400" />
+                      Split Among (Beneficiaries)
+                    </label>
+
+                    <div
+                      className="flex p-0.5 rounded-xl text-[10px] font-bold"
+                      style={{ background: 'var(--bg-raised)' }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSplitMode('all');
+                          setSelectedBeneficiaries(currentTrip.participants.map((p) => p.id));
+                        }}
+                        className={cn(
+                          'px-2.5 py-1 rounded-lg transition-colors',
+                          splitMode === 'all' ? 'bg-violet-600 text-white' : 'text-slate-400'
+                        )}
+                      >
+                        All (Equal)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSplitMode('custom')}
+                        className={cn(
+                          'px-2.5 py-1 rounded-lg transition-colors',
+                          splitMode === 'custom' ? 'bg-violet-600 text-white' : 'text-slate-400'
+                        )}
+                      >
+                        Select People
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    {currentTrip.participants.map((p) => {
+                      const isChecked = selectedBeneficiaries.includes(p.id);
+                      return (
+                        <label
+                          key={p.id}
+                          className={cn(
+                            'p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-all',
+                            isChecked
+                              ? 'bg-violet-600/20 text-violet-200 border border-violet-500/30'
+                              : 'bg-slate-800/40 text-slate-500 border border-transparent'
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedBeneficiaries([...selectedBeneficiaries, p.id]);
+                              } else {
+                                if (selectedBeneficiaries.length > 1) {
+                                  setSelectedBeneficiaries(selectedBeneficiaries.filter((id) => id !== p.id));
+                                }
+                              }
+                            }}
+                            className="rounded text-violet-600 focus:ring-0"
+                          />
+                          <span className="truncate">{p.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  {/* Per-Head Calculation Preview */}
+                  {parsedTotalAmount > 0 && selectedBeneficiaries.length > 0 && (
+                    <div className="text-[11px] text-violet-300 font-semibold pt-1">
+                      💡 Per-head: {currency}
+                      {Math.round((parsedTotalAmount / selectedBeneficiaries.length) * 100) / 100} for{' '}
+                      {selectedBeneficiaries.length} friends
+                    </div>
+                  )}
+                </div>
+
+                {/* Notes */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300">Notes / Remarks (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Lobster special, 2 beers included, Innova cab"
+                    value={expNotes}
+                    onChange={(e) => setExpNotes(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl text-xs outline-none font-medium text-white"
+                    style={{
+                      background: 'var(--bg-raised)',
+                      border: '1px solid var(--border-soft)',
+                    }}
+                  />
+                </div>
+
+                {/* Submit Button */}
+                <div className="pt-2">
+                  <motion.button
+                    whileTap={{ scale: 0.96 }}
+                    type="submit"
+                    disabled={payerMode === 'multiple' && !isPayerBalanced}
+                    className={cn(
+                      'w-full py-3 rounded-2xl text-xs font-black text-white shadow-xl transition-all',
+                      payerMode === 'multiple' && !isPayerBalanced
+                        ? 'bg-slate-700 opacity-50 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500'
+                    )}
+                  >
+                    {editingExpense ? 'Save Changes' : 'Post to Trip Chat 💸'}
+                  </motion.button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ══════════════════════════════════════════════════════
+          CREATE NEW TRIP MODAL
+      ══════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {isNewTripModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setIsNewTripModalOpen(false)}
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 15 }}
+              transition={{ type: 'spring', stiffness: 450, damping: 30 }}
+              className="relative w-full max-w-md rounded-3xl overflow-hidden flex flex-col shadow-2xl"
+              style={{
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-soft)',
+                maxHeight: '90vh',
+              }}
+            >
+              <div
+                className="flex items-center justify-between px-5 py-4 border-b shrink-0"
+                style={{ borderColor: 'var(--border-soft)' }}
+              >
+                <h3 className="font-black text-base text-white">Create New Trip</h3>
+                <button
+                  onClick={() => setIsNewTripModalOpen(false)}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-            </form>
+
+              <form onSubmit={handleCreateTrip} className="p-5 space-y-4 overflow-y-auto">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300">Trip Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Manali Vacation, Goa Trip, Friday Dinner"
+                    value={newTripName}
+                    onChange={(e) => setNewTripName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl text-xs outline-none font-medium text-white"
+                    style={{
+                      background: 'var(--bg-raised)',
+                      border: '1px solid var(--border-soft)',
+                    }}
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-300">Destination</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. North Goa"
+                      value={newTripDestination}
+                      onChange={(e) => setNewTripDestination(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl text-xs outline-none font-medium text-white"
+                      style={{
+                        background: 'var(--bg-raised)',
+                        border: '1px solid var(--border-soft)',
+                      }}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-300">Start Date</label>
+                    <input
+                      type="date"
+                      value={newTripStartDate}
+                      onChange={(e) => setNewTripStartDate(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl text-xs outline-none font-medium text-white"
+                      style={{
+                        background: 'var(--bg-raised)',
+                        border: '1px solid var(--border-soft)',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Add friends from contacts */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
+                    <span>Add Friends from Contacts</span>
+                    <span className="text-[10px] text-violet-400">
+                      {selectedContactIds.length} selected
+                    </span>
+                  </label>
+
+                  {contacts.length === 0 ? (
+                    <p className="text-[11px] text-slate-500">No contacts saved yet.</p>
+                  ) : (
+                    <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                      {contacts.map((c) => {
+                        const isSelected = selectedContactIds.includes(c.id);
+                        return (
+                          <button
+                            type="button"
+                            key={c.id}
+                            onClick={() => {
+                              if (isSelected) {
+                                setSelectedContactIds(selectedContactIds.filter((id) => id !== c.id));
+                              } else {
+                                setSelectedContactIds([...selectedContactIds, c.id]);
+                              }
+                            }}
+                            className={cn(
+                              'w-full p-2 rounded-xl text-xs font-bold flex items-center justify-between transition-all',
+                              isSelected
+                                ? 'bg-violet-600/30 text-violet-200 border border-violet-500/40'
+                                : 'bg-slate-800/40 text-slate-300 hover:bg-slate-800'
+                            )}
+                          >
+                            <span>{c.name}</span>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-violet-400" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Add custom friend names */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300">
+                    Or Add Other Friends (comma separated)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Aman, Priya, Rohit"
+                    value={customParticipantNames}
+                    onChange={(e) => setCustomParticipantNames(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl text-xs outline-none font-medium text-white"
+                    style={{
+                      background: 'var(--bg-raised)',
+                      border: '1px solid var(--border-soft)',
+                    }}
+                  />
+                </div>
+
+                <div className="pt-2">
+                  <motion.button
+                    whileTap={{ scale: 0.96 }}
+                    type="submit"
+                    className="w-full py-3 rounded-2xl text-xs font-black text-white bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 shadow-xl transition-all"
+                  >
+                    Create Trip 🚀
+                  </motion.button>
+                </div>
+              </form>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
 
       {/* ══════════════════════════════════════════════════════
           SHARE MODAL (PUBLIC WEB LINK & WHATSAPP)
       ══════════════════════════════════════════════════════ */}
-      {isShareModalOpen && currentTrip && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-          <div
-            className="absolute inset-0"
-            style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
-            onClick={() => setIsShareModalOpen(false)}
-          />
+      <AnimatePresence>
+        {isShareModalOpen && currentTrip && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setIsShareModalOpen(false)}
+            />
 
-          <div
-            className="relative w-full max-w-md rounded-3xl overflow-hidden flex flex-col shadow-2xl p-5 space-y-4 animate-in zoom-in-95 duration-200"
-            style={{
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-soft)',
-            }}
-          >
-            <div className="flex items-center justify-between">
-              <h3 className="font-black text-base text-white">Share Trip Expenses</h3>
-              <button
-                onClick={() => setIsShareModalOpen(false)}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-400">
-              Anyone with this link can view the complete transparent expense breakdown, chat stream, and settlement plan without needing to log in.
-            </p>
-
-            {publicShareUrl && (
-              <div className="space-y-2">
-                <div
-                  className="p-3 rounded-2xl flex items-center justify-between gap-2"
-                  style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 15 }}
+              transition={{ type: 'spring', stiffness: 450, damping: 30 }}
+              className="relative w-full max-w-md rounded-3xl overflow-hidden flex flex-col shadow-2xl p-5 space-y-4"
+              style={{
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-soft)',
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="font-black text-base text-white">Share Trip Expenses</h3>
+                <button
+                  onClick={() => setIsShareModalOpen(false)}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-white"
                 >
-                  <span className="text-xs text-slate-300 truncate font-mono">
-                    {publicShareUrl}
-                  </span>
-                  <button
-                    onClick={async () => {
-                      await navigator.clipboard.writeText(publicShareUrl);
-                      setCopiedShareLink(true);
-                      setTimeout(() => setCopiedShareLink(false), 2000);
-                    }}
-                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-violet-600 text-white shrink-0 hover:bg-violet-500"
-                  >
-                    {copiedShareLink ? 'Copied!' : 'Copy Link'}
-                  </button>
-                </div>
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-            )}
 
-            <div className="pt-2 flex flex-col gap-2">
-              <button
-                onClick={handleShareToWhatsApp}
-                className="w-full py-2.5 rounded-xl text-xs font-extrabold text-white flex items-center justify-center gap-2"
-                style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
-              >
-                <Share2 className="w-4 h-4" />
-                Share Formatted WhatsApp Chat
-              </button>
-            </div>
+              <p className="text-xs text-slate-400">
+                Anyone with this link can view the complete transparent expense breakdown, chat stream, and settlement plan without needing to log in.
+              </p>
+
+              {publicShareUrl && (
+                <div className="space-y-2">
+                  <div
+                    className="p-3 rounded-2xl flex items-center justify-between gap-2"
+                    style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}
+                  >
+                    <span className="text-xs text-slate-300 truncate font-mono">
+                      {publicShareUrl}
+                    </span>
+                    <motion.button
+                      whileTap={{ scale: 0.92 }}
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(publicShareUrl);
+                        setCopiedShareLink(true);
+                        setTimeout(() => setCopiedShareLink(false), 2000);
+                      }}
+                      className="px-3 py-1.5 rounded-xl text-xs font-bold bg-violet-600 text-white shrink-0 hover:bg-violet-500"
+                    >
+                      {copiedShareLink ? 'Copied!' : 'Copy Link'}
+                    </motion.button>
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-2 flex flex-col gap-2">
+                <motion.button
+                  whileTap={{ scale: 0.96 }}
+                  onClick={handleShareToWhatsApp}
+                  className="w-full py-2.5 rounded-xl text-xs font-extrabold text-white flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
+                  style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
+                >
+                  <Share2 className="w-4 h-4" />
+                  Share Formatted WhatsApp Chat
+                </motion.button>
+              </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   );
 }
