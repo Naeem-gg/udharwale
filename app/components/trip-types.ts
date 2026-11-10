@@ -41,7 +41,8 @@ export interface TripExpense {
   createdAt: string;
 }
 
-export interface SettlementDebt {
+export interface TripSettlement {
+  id: string;
   fromId: string;
   fromName: string;
   toId: string;
@@ -49,14 +50,26 @@ export interface SettlementDebt {
   amount: number;
   fromContactId?: string;
   toContactId?: string;
-  settled?: boolean;
+  isSettled: boolean;
+  settledAt?: string;
+  settledBy?: string;
+  paymentMethod?: string;
+  note?: string;
 }
+
+// Backwards-compatible alias
+export type SettlementDebt = TripSettlement;
 
 export interface ParticipantSummary {
   participant: TripParticipant;
   totalPaid: number;
   totalShare: number;
   netBalance: number; // totalPaid - totalShare (> 0: gets back, < 0: owes)
+  settledDebt: number; // Debt already acknowledged and paid
+  pendingDebt: number; // Debt still pending to be paid
+  settledCredit: number; // Credit already acknowledged and collected
+  pendingCredit: number; // Credit still waiting to be collected
+  isFullySettled: boolean;
 }
 
 export interface TripSummary {
@@ -64,7 +77,14 @@ export interface TripSummary {
   perHeadAverage: number;
   categoryTotals: Record<ExpenseCategory, number>;
   participantSummaries: ParticipantSummary[];
-  settlements: SettlementDebt[];
+  settlements: TripSettlement[];
+  totalDebtAmount: number;
+  totalSettledAmount: number;
+  totalPendingAmount: number;
+  settlementProgressPct: number;
+  pendingSettlementsCount: number;
+  settledSettlementsCount: number;
+  allSettled: boolean;
 }
 
 export interface Trip {
@@ -77,6 +97,7 @@ export interface Trip {
   currency: string;
   participants: TripParticipant[];
   expenses: TripExpense[];
+  settlements?: TripSettlement[];
   shareToken?: string;
   status: 'active' | 'settled' | 'archived';
   createdAt: string;
@@ -98,7 +119,7 @@ export const CATEGORY_CONFIG: Record<
 
 /**
  * Calculate full summary for a trip including per-head calculations,
- * individual totals, and simplified minimal debt settlement.
+ * individual totals, greedy minimal debt settlement, and acknowledged/pending resolution states.
  */
 export function calculateTripSummary(trip: Trip): TripSummary {
   const totalSpend = Math.round(
@@ -125,64 +146,50 @@ export function calculateTripSummary(trip: Trip): TripSummary {
     categoryTotals[cat] = (categoryTotals[cat] || 0) + (Number(expense.amount) || 0);
   });
 
-  // Calculate each participant's out-of-pocket paid and total consumption share
-  const participantSummaries: ParticipantSummary[] = trip.participants.map((p) => {
+  // Calculate raw balances for minimal debt calculation
+  const debtors: { id: string; name: string; contactId?: string; balance: number }[] = [];
+  const creditors: { id: string; name: string; contactId?: string; balance: number }[] = [];
+
+  const rawBalances = trip.participants.map((p) => {
     let totalPaid = 0;
     let totalShare = 0;
 
     trip.expenses.forEach((expense) => {
-      // Amount paid by this participant for this item
       const payerEntry = expense.paidBy.find((payer) => payer.participantId === p.id);
-      if (payerEntry) {
-        totalPaid += Number(payerEntry.amount) || 0;
-      }
+      if (payerEntry) totalPaid += Number(payerEntry.amount) || 0;
 
-      // Fair share of this participant for this item
       const splitEntry = expense.splitAmong.find((s) => s.participantId === p.id);
-      if (splitEntry) {
-        totalShare += Number(splitEntry.amount) || 0;
-      }
+      if (splitEntry) totalShare += Number(splitEntry.amount) || 0;
     });
 
     totalPaid = Math.round(totalPaid * 100) / 100;
     totalShare = Math.round(totalShare * 100) / 100;
     const netBalance = Math.round((totalPaid - totalShare) * 100) / 100;
 
-    return {
-      participant: p,
-      totalPaid,
-      totalShare,
-      netBalance,
-    };
-  });
-
-  // Simplified Debt Settlement (Greedy Debt Minimization)
-  const debtors: { id: string; name: string; contactId?: string; balance: number }[] = [];
-  const creditors: { id: string; name: string; contactId?: string; balance: number }[] = [];
-
-  participantSummaries.forEach((s) => {
-    if (s.netBalance < -0.01) {
+    if (netBalance < -0.01) {
       debtors.push({
-        id: s.participant.id,
-        name: s.participant.name,
-        contactId: s.participant.contactId,
-        balance: Math.abs(s.netBalance),
+        id: p.id,
+        name: p.name,
+        contactId: p.contactId,
+        balance: Math.abs(netBalance),
       });
-    } else if (s.netBalance > 0.01) {
+    } else if (netBalance > 0.01) {
       creditors.push({
-        id: s.participant.id,
-        name: s.participant.name,
-        contactId: s.participant.contactId,
-        balance: s.netBalance,
+        id: p.id,
+        name: p.name,
+        contactId: p.contactId,
+        balance: netBalance,
       });
     }
+
+    return { participant: p, totalPaid, totalShare, netBalance };
   });
 
   // Sort descending to settle largest amounts first
   debtors.sort((a, b) => b.balance - a.balance);
   creditors.sort((a, b) => b.balance - a.balance);
 
-  const settlements: SettlementDebt[] = [];
+  const rawSettlements: TripSettlement[] = [];
   let dIdx = 0;
   let cIdx = 0;
 
@@ -194,7 +201,14 @@ export function calculateTripSummary(trip: Trip): TripSummary {
     const roundedAmount = Math.round(amount * 100) / 100;
 
     if (roundedAmount > 0) {
-      settlements.push({
+      const settlementKey = `stl_${debtor.id}_${creditor.id}`;
+      // Reconcile with existing acknowledgement records in trip.settlements
+      const existing = trip.settlements?.find(
+        (s) => s.id === settlementKey || (s.fromId === debtor.id && s.toId === creditor.id)
+      );
+
+      rawSettlements.push({
+        id: existing?.id || settlementKey,
         fromId: debtor.id,
         fromName: debtor.name,
         toId: creditor.id,
@@ -202,6 +216,11 @@ export function calculateTripSummary(trip: Trip): TripSummary {
         fromContactId: debtor.contactId,
         toContactId: creditor.contactId,
         amount: roundedAmount,
+        isSettled: existing ? Boolean(existing.isSettled) : false,
+        settledAt: existing?.settledAt,
+        settledBy: existing?.settledBy,
+        paymentMethod: existing?.paymentMethod,
+        note: existing?.note,
       });
     }
 
@@ -212,12 +231,67 @@ export function calculateTripSummary(trip: Trip): TripSummary {
     if (creditor.balance <= 0.01) cIdx++;
   }
 
+  // Settlement totals
+  const totalDebtAmount = Math.round(
+    rawSettlements.reduce((sum, s) => sum + s.amount, 0) * 100
+  ) / 100;
+
+  const totalSettledAmount = Math.round(
+    rawSettlements.filter((s) => s.isSettled).reduce((sum, s) => sum + s.amount, 0) * 100
+  ) / 100;
+
+  const totalPendingAmount = Math.max(0, Math.round((totalDebtAmount - totalSettledAmount) * 100) / 100);
+
+  const settlementProgressPct = totalDebtAmount > 0
+    ? Math.min(100, Math.round((totalSettledAmount / totalDebtAmount) * 100))
+    : 100;
+
+  const settledSettlementsCount = rawSettlements.filter((s) => s.isSettled).length;
+  const pendingSettlementsCount = rawSettlements.filter((s) => !s.isSettled).length;
+  const allSettled = rawSettlements.length === 0 || pendingSettlementsCount === 0;
+
+  // Build rich participant summaries including acknowledgement metrics
+  const participantSummaries: ParticipantSummary[] = rawBalances.map((item) => {
+    const p = item.participant;
+
+    // What this person owes (fromId === p.id)
+    const myDebts = rawSettlements.filter((s) => s.fromId === p.id);
+    const settledDebt = Math.round(myDebts.filter((s) => s.isSettled).reduce((sum, s) => sum + s.amount, 0) * 100) / 100;
+    const pendingDebt = Math.round(myDebts.filter((s) => !s.isSettled).reduce((sum, s) => sum + s.amount, 0) * 100) / 100;
+
+    // What this person is owed (toId === p.id)
+    const myCredits = rawSettlements.filter((s) => s.toId === p.id);
+    const settledCredit = Math.round(myCredits.filter((s) => s.isSettled).reduce((sum, s) => sum + s.amount, 0) * 100) / 100;
+    const pendingCredit = Math.round(myCredits.filter((s) => !s.isSettled).reduce((sum, s) => sum + s.amount, 0) * 100) / 100;
+
+    const isFullySettled = (myDebts.length === 0 || pendingDebt <= 0.01) && (myCredits.length === 0 || pendingCredit <= 0.01);
+
+    return {
+      participant: p,
+      totalPaid: item.totalPaid,
+      totalShare: item.totalShare,
+      netBalance: item.netBalance,
+      settledDebt,
+      pendingDebt,
+      settledCredit,
+      pendingCredit,
+      isFullySettled,
+    };
+  });
+
   return {
     totalSpend,
     perHeadAverage,
     categoryTotals,
     participantSummaries,
-    settlements,
+    settlements: rawSettlements,
+    totalDebtAmount,
+    totalSettledAmount,
+    totalPendingAmount,
+    settlementProgressPct,
+    pendingSettlementsCount,
+    settledSettlementsCount,
+    allSettled,
   };
 }
 
@@ -228,26 +302,52 @@ export function formatWhatsAppSummary(trip: Trip, userName?: string): string {
   const summary = calculateTripSummary(trip);
   const currency = trip.currency || '₹';
 
-  let text = `✈️ *${trip.name.toUpperCase()}* — Expense Breakdown\n`;
+  let text = `✈️ *${trip.name.toUpperCase()}* — Expense & Settlement Status\n`;
   if (trip.destination) text += `📍 Destination: ${trip.destination}\n`;
   text += `👥 Members: ${trip.participants.map((p) => p.name).join(', ')}\n`;
   text += `━━━━━━━━━━━━━━━━━━━━━\n`;
-  text += `💰 *Total Trip Spend:* ${currency}${summary.totalSpend.toLocaleString('en-IN')}\n`;
-  text += `👤 *Average Per Head:* ${currency}${summary.perHeadAverage.toLocaleString('en-IN')}\n\n`;
+  text += `💰 *Total Spend:* ${currency}${summary.totalSpend.toLocaleString('en-IN')}\n`;
+  text += `👤 *Average Per Head:* ${currency}${summary.perHeadAverage.toLocaleString('en-IN')}\n`;
+  text += `📈 *Settlement Progress:* ${summary.settlementProgressPct}% Cleared (${currency}${summary.totalSettledAmount.toLocaleString('en-IN')} paid · ${currency}${summary.totalPendingAmount.toLocaleString('en-IN')} pending)\n\n`;
 
-  text += `📊 *Who Paid What (Out of Pocket):*\n`;
+  text += `📊 *Participant Standings:*\n`;
   summary.participantSummaries.forEach((s) => {
-    const badge = s.netBalance > 0 ? `(+${currency}${s.netBalance.toLocaleString('en-IN')})` : s.netBalance < 0 ? `(-${currency}${Math.abs(s.netBalance).toLocaleString('en-IN')})` : '(Settled)';
-    text += `• *${s.participant.name}*: Paid ${currency}${s.totalPaid.toLocaleString('en-IN')} | Share ${currency}${s.totalShare.toLocaleString('en-IN')} ${badge}\n`;
+    let statusText = '';
+    if (s.netBalance < -0.01) {
+      statusText = s.pendingDebt > 0
+        ? `⚠️ Needs to pay: ${currency}${s.pendingDebt.toLocaleString('en-IN')}`
+        : `✅ Fully settled (${currency}${s.settledDebt.toLocaleString('en-IN')} paid)`;
+    } else if (s.netBalance > 0.01) {
+      statusText = s.pendingCredit > 0
+        ? `⏳ Waiting for: ${currency}${s.pendingCredit.toLocaleString('en-IN')}`
+        : `✅ Fully received (${currency}${s.settledCredit.toLocaleString('en-IN')})`;
+    } else {
+      statusText = `✨ Even`;
+    }
+    text += `• *${s.participant.name}*: Paid ${currency}${s.totalPaid.toLocaleString('en-IN')} | Share ${currency}${s.totalShare.toLocaleString('en-IN')} [${statusText}]\n`;
   });
 
-  text += `\n⚖️ *Final Settlement (Who Pays Whom):*\n`;
+  text += `\n⚖️ *Settlement Transfers:*\n`;
   if (summary.settlements.length === 0) {
-    text += `✨ Everyone is all settled up! No pending payments.\n`;
+    text += `✨ Everyone is all settled up! Zero pending debts.\n`;
   } else {
-    summary.settlements.forEach((st) => {
-      text += `👉 *${st.fromName}* owes *${st.toName}*: ${currency}${st.amount.toLocaleString('en-IN')}\n`;
-    });
+    const pendingList = summary.settlements.filter((st) => !st.isSettled);
+    const settledList = summary.settlements.filter((st) => st.isSettled);
+
+    if (pendingList.length > 0) {
+      text += `*🔴 Pending (${pendingList.length}):*\n`;
+      pendingList.forEach((st) => {
+        text += `👉 *${st.fromName}* owes *${st.toName}*: ${currency}${st.amount.toLocaleString('en-IN')} (Pending ⏳)\n`;
+      });
+    }
+
+    if (settledList.length > 0) {
+      text += `\n*🟢 Paid & Acknowledged (${settledList.length}):*\n`;
+      settledList.forEach((st) => {
+        const methodStr = st.paymentMethod ? ` via ${st.paymentMethod}` : '';
+        text += `✅ *${st.fromName}* paid *${st.toName}*: ${currency}${st.amount.toLocaleString('en-IN')}${methodStr}\n`;
+      });
+    }
   }
 
   text += `\n🧾 *All Expenses (${trip.expenses.length} items):*\n`;
@@ -375,6 +475,23 @@ export function getDemoTrip(currentUserName = 'You', contacts: Contact[] = []): 
     },
   ];
 
+  // Pre-seed an acknowledged settlement for the demo so user immediately sees both Paid and Remaining!
+  const demoSettlements: TripSettlement[] = [
+    {
+      id: 'stl_p_priya_p_you',
+      fromId: 'p_priya',
+      fromName: friend3,
+      toId: 'p_you',
+      toName: currentUserName || 'You',
+      amount: 5850,
+      isSettled: true,
+      settledAt: new Date(Date.now() - 3600000 * 4).toISOString(),
+      settledBy: friend3,
+      paymentMethod: 'UPI (GPay)',
+      note: 'Transferred full villa & food share',
+    },
+  ];
+
   return {
     id: 'trip_demo_goa',
     name: 'Goa Getaway 🏖️',
@@ -384,9 +501,9 @@ export function getDemoTrip(currentUserName = 'You', contacts: Contact[] = []): 
     currency: '₹',
     participants,
     expenses,
+    settlements: demoSettlements,
     shareToken: 'demo_goa_share_' + Math.random().toString(36).substring(2, 9),
     status: 'active',
     createdAt: new Date().toISOString(),
   };
 }
-

@@ -48,6 +48,25 @@ const TripParticipantSchema = new Schema(
   { _id: false }
 );
 
+const TripSettlementSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    fromId: { type: String, required: true },
+    fromName: { type: String, required: true },
+    toId: { type: String, required: true },
+    toName: { type: String, required: true },
+    amount: { type: Number, required: true },
+    fromContactId: { type: String, required: false },
+    toContactId: { type: String, required: false },
+    isSettled: { type: Boolean, default: false },
+    settledAt: { type: String, required: false },
+    settledBy: { type: String, required: false },
+    paymentMethod: { type: String, required: false },
+    note: { type: String, required: false },
+  },
+  { _id: false }
+);
+
 const TripSchema = new Schema(
   {
     id: { type: String, required: true, unique: true },
@@ -60,6 +79,7 @@ const TripSchema = new Schema(
     currency: { type: String, default: '₹' },
     participants: { type: [TripParticipantSchema], required: true },
     expenses: { type: [TripExpenseSchema], default: [] },
+    settlements: { type: [TripSettlementSchema], default: [] },
     shareToken: { type: String, required: false, unique: true, sparse: true },
     status: {
       type: String,
@@ -86,6 +106,7 @@ export interface ITripDoc extends Document {
   currency: string;
   participants: any[];
   expenses: any[];
+  settlements?: any[];
   shareToken?: string;
   status: string;
   createdAt: string;

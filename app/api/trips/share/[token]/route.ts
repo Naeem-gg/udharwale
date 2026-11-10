@@ -34,6 +34,7 @@ export async function GET(
       currency: trip.currency || '₹',
       participants: trip.participants || [],
       expenses: trip.expenses || [],
+      settlements: trip.settlements || [],
       ownerName: owner?.name || 'Someone',
       status: trip.status || 'active',
       createdAt: trip.createdAt,

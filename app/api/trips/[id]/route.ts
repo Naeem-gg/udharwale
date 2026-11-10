@@ -33,6 +33,7 @@ export async function GET(
       currency: trip.currency,
       participants: trip.participants,
       expenses: trip.expenses,
+      settlements: trip.settlements || [],
       shareToken: trip.shareToken,
       status: trip.status,
       createdAt: trip.createdAt,
@@ -71,6 +72,7 @@ export async function PUT(
     if (body.currency !== undefined) trip.currency = body.currency;
     if (body.participants !== undefined) trip.participants = body.participants;
     if (body.expenses !== undefined) trip.expenses = body.expenses;
+    if (body.settlements !== undefined) trip.settlements = body.settlements;
     if (body.status !== undefined) trip.status = body.status;
 
     await trip.save();
@@ -85,6 +87,7 @@ export async function PUT(
       currency: trip.currency,
       participants: trip.participants,
       expenses: trip.expenses,
+      settlements: trip.settlements || [],
       shareToken: trip.shareToken,
       status: trip.status,
       updatedAt: trip.updatedAt,

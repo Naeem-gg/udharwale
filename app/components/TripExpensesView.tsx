@@ -28,12 +28,18 @@ import {
   FolderPlus,
   Zap,
   MapPin,
+  CheckCircle2,
+  Clock,
+  RotateCcw,
+  Send,
+  ShieldCheck,
 } from 'lucide-react';
 import { Contact } from './types';
 import {
   Trip,
   TripExpense,
   TripParticipant,
+  TripSettlement,
   ExpenseCategory,
   ExpensePayer,
   ExpenseSplit,
@@ -107,12 +113,18 @@ export default function TripExpensesView({
   const [activeTab, setActiveTab] = useState<'chat' | 'settlement' | 'expenses'>('chat');
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [settlementFilter, setSettlementFilter] = useState<'all' | 'pending' | 'settled'>('all');
   const [syncStatus, setSyncStatus] = useState<'synced' | 'saving' | 'local'>('synced');
 
   // Modals
   const [isNewTripModalOpen, setIsNewTripModalOpen] = useState(false);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isAcknowledgeModalOpen, setIsAcknowledgeModalOpen] = useState(false);
+  const [acknowledgingSettlement, setAcknowledgingSettlement] = useState<TripSettlement | null>(null);
+  const [ackPaymentMethod, setAckPaymentMethod] = useState<'UPI' | 'Cash' | 'Bank Transfer' | 'Other'>('UPI');
+  const [ackNote, setAckNote] = useState('');
+
   const [editingExpense, setEditingExpense] = useState<TripExpense | null>(null);
   const [expandedExpenseId, setExpandedExpenseId] = useState<string | null>(null);
   const [publicShareUrl, setPublicShareUrl] = useState<string | null>(null);
@@ -298,7 +310,6 @@ export default function TripExpensesView({
       return;
     }
 
-    // Build paidBy array
     let paidBy: ExpensePayer[] = [];
     if (payerMode === 'single') {
       if (!singlePayerId) {
@@ -316,7 +327,6 @@ export default function TripExpensesView({
         .map(([id, val]) => ({ participantId: id, amount: Number(val) }));
     }
 
-    // Build splitAmong array
     const targetBeneficiaryIds =
       splitMode === 'all'
         ? currentTrip.participants.map((p) => p.id)
@@ -377,6 +387,99 @@ export default function TripExpensesView({
     showToast('Expense removed', 'info');
   };
 
+  // ── SETTLEMENT ACKNOWLEDGEMENT / RESOLUTION HANDLERS ──
+  const openAcknowledgeModal = (st: TripSettlement) => {
+    setAcknowledgingSettlement(st);
+    setAckPaymentMethod((st.paymentMethod as any) || 'UPI');
+    setAckNote(st.note || '');
+    setIsAcknowledgeModalOpen(true);
+  };
+
+  const handleConfirmAcknowledge = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentTrip || !acknowledgingSettlement) return;
+
+    const existingSettlements = currentTrip.settlements ? [...currentTrip.settlements] : [];
+    const index = existingSettlements.findIndex((s) => s.id === acknowledgingSettlement.id);
+
+    const record: TripSettlement = {
+      ...acknowledgingSettlement,
+      isSettled: true,
+      settledAt: new Date().toISOString(),
+      settledBy: userName || 'You',
+      paymentMethod: ackPaymentMethod,
+      note: ackNote.trim(),
+    };
+
+    if (index >= 0) {
+      existingSettlements[index] = record;
+    } else {
+      existingSettlements.push(record);
+    }
+
+    const updatedTrip: Trip = {
+      ...currentTrip,
+      settlements: existingSettlements,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const newTrips = trips.map((t) => (t.id === updatedTrip.id ? updatedTrip : t));
+    await saveTripsState(newTrips);
+    setIsAcknowledgeModalOpen(false);
+    setAcknowledgingSettlement(null);
+    showToast(`Payment of ₹${record.amount.toLocaleString('en-IN')} marked as Settled & Acknowledged! ✅`, 'success');
+  };
+
+  const handleReopenSettlement = async (st: TripSettlement) => {
+    if (!currentTrip) return;
+    const existingSettlements = currentTrip.settlements ? [...currentTrip.settlements] : [];
+    const index = existingSettlements.findIndex((s) => s.id === st.id);
+
+    if (index >= 0) {
+      existingSettlements[index] = {
+        ...existingSettlements[index],
+        isSettled: false,
+        settledAt: undefined,
+        settledBy: undefined,
+      };
+    } else {
+      existingSettlements.push({
+        ...st,
+        isSettled: false,
+      });
+    }
+
+    const updatedTrip: Trip = {
+      ...currentTrip,
+      settlements: existingSettlements,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const newTrips = trips.map((t) => (t.id === updatedTrip.id ? updatedTrip : t));
+    await saveTripsState(newTrips);
+    showToast(`Settlement marked back to Pending ⏳`, 'info');
+  };
+
+  // Direct WhatsApp Reminder for a specific pending settlement
+  const handleSendSettlementReminder = async (st: TripSettlement) => {
+    if (!currentTrip) return;
+    const text = `Hey ${st.fromName}! 👋 Friendly reminder regarding our *${currentTrip.name}* trip expenses:\n\nPending settlement amount: *₹${st.amount.toLocaleString('en-IN')}* payable to *${st.toName}*.\n\nPlease clear it when free! Check full breakdown here: ${publicShareUrl || window.location.href}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `Reminder: ${currentTrip.name} Settlement`,
+          text,
+        });
+      } else {
+        await navigator.clipboard.writeText(text);
+        showToast(`Copied payment reminder message for ${st.fromName}! 📋`, 'success');
+      }
+    } catch {
+      await navigator.clipboard.writeText(text);
+      showToast(`Copied payment reminder message for ${st.fromName}! 📋`, 'success');
+    }
+  };
+
   // Create New Trip
   const handleCreateTrip = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -394,7 +497,6 @@ export default function TripExpensesView({
       },
     ];
 
-    // Add selected contacts
     selectedContactIds.forEach((cId) => {
       const contact = contacts.find((c) => c.id === cId);
       if (contact && !participants.some((p) => p.name.toLowerCase() === contact.name.toLowerCase())) {
@@ -408,7 +510,6 @@ export default function TripExpensesView({
       }
     });
 
-    // Add custom participant names
     if (customParticipantNames.trim()) {
       const names = customParticipantNames
         .split(',')
@@ -433,6 +534,7 @@ export default function TripExpensesView({
       currency: '₹',
       participants,
       expenses: [],
+      settlements: [],
       status: 'active',
       createdAt: new Date().toISOString(),
     };
@@ -463,7 +565,7 @@ export default function TripExpensesView({
     const updated = [demo, ...trips.filter((t) => t.id !== demo.id)];
     await saveTripsState(updated);
     setSelectedTripId(demo.id);
-    showToast('Loaded sample Goa Trip with partial bill splits! 🏖️', 'success');
+    showToast('Loaded sample Goa Trip with acknowledgement tracking! 🏖️', 'success');
   };
 
   // Generate / Open Public Share Link
@@ -515,13 +617,7 @@ export default function TripExpensesView({
   };
 
   // Record settlement to Udharwale contact ledger
-  const handleRecordSettlement = async (settlement: {
-    fromName: string;
-    toName: string;
-    amount: number;
-    fromContactId?: string;
-    toContactId?: string;
-  }) => {
+  const handleRecordSettlement = async (settlement: TripSettlement) => {
     if (!currentTrip) return;
     const isFromMe = settlement.fromName.toLowerCase().includes('you') || settlement.fromName === userName;
     const isToMe = settlement.toName.toLowerCase().includes('you') || settlement.toName === userName;
@@ -569,6 +665,18 @@ export default function TripExpensesView({
       return matchesSearch && matchesCategory;
     });
   }, [currentTrip, searchQuery, categoryFilter]);
+
+  // Filtered settlements in Settlement Tab
+  const filteredSettlements = useMemo(() => {
+    if (!tripSummary) return [];
+    if (settlementFilter === 'pending') {
+      return tripSummary.settlements.filter((s) => !s.isSettled);
+    }
+    if (settlementFilter === 'settled') {
+      return tripSummary.settlements.filter((s) => s.isSettled);
+    }
+    return tripSummary.settlements;
+  }, [tripSummary, settlementFilter]);
 
   const currency = currentTrip?.currency || '₹';
 
@@ -777,7 +885,10 @@ export default function TripExpensesView({
         >
           {[
             { id: 'chat', label: '💬 Chat Stream' },
-            { id: 'settlement', label: '⚖️ Who Owes Whom' },
+            {
+              id: 'settlement',
+              label: `⚖️ Who Owes Whom ${tripSummary && tripSummary.pendingSettlementsCount > 0 ? `(${tripSummary.pendingSettlementsCount} pending)` : ''}`,
+            },
             { id: 'expenses', label: '🧾 All Expenses' },
           ].map((tab) => {
             const isActive = activeTab === tab.id;
@@ -808,7 +919,7 @@ export default function TripExpensesView({
       {/* ── TAB CONTENT SCROLL AREA ── */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         <AnimatePresence mode="wait">
-          {/* VIEW 1: CHAT FEED VIEW (Rich interactive chat bubbles like WhatsApp) */}
+          {/* VIEW 1: CHAT FEED VIEW */}
           {activeTab === 'chat' && (
             <motion.div
               key="chat"
@@ -818,7 +929,6 @@ export default function TripExpensesView({
               transition={{ duration: 0.25 }}
               className="space-y-3 max-w-3xl mx-auto"
             >
-              {/* System welcome event */}
               <div className="flex justify-center my-2">
                 <span
                   className="px-3 py-1 rounded-full text-[11px] font-semibold flex items-center gap-1.5"
@@ -876,7 +986,6 @@ export default function TripExpensesView({
                         border: '1px solid var(--border-soft)',
                       }}
                     >
-                      {/* Header: Category Badge, Date, Amount */}
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-2">
                           <span
@@ -901,7 +1010,6 @@ export default function TripExpensesView({
                         </div>
                       </div>
 
-                      {/* Title and Remark */}
                       <div>
                         <h3 className="text-base sm:text-lg font-extrabold text-white">
                           {expense.title}
@@ -913,7 +1021,7 @@ export default function TripExpensesView({
                         )}
                       </div>
 
-                      {/* Who Paid Section — HIGHLIGHTING PARTIAL PAYERS! */}
+                      {/* Who Paid Section */}
                       <div
                         className="p-3 rounded-2xl flex flex-col gap-2"
                         style={{
@@ -1001,7 +1109,6 @@ export default function TripExpensesView({
                         </div>
                       </div>
 
-                      {/* Detailed Math Breakdown Dropdown */}
                       <AnimatePresence>
                         {isExpanded && (
                           <motion.div
@@ -1053,7 +1160,7 @@ export default function TripExpensesView({
             </motion.div>
           )}
 
-          {/* VIEW 2: SETTLEMENT & WHO OWES WHOM */}
+          {/* VIEW 2: SETTLEMENT, ACKNOWLEDGEMENT & WHO OWES WHOM */}
           {activeTab === 'settlement' && tripSummary && (
             <motion.div
               key="settlement"
@@ -1063,101 +1170,288 @@ export default function TripExpensesView({
               transition={{ duration: 0.25 }}
               className="space-y-5 max-w-3xl mx-auto"
             >
-              {/* Minimal Debt Settlements */}
+              {/* ── RESOLUTION & PROGRESS HERO BANNER ── */}
               <div
-                className="rounded-3xl p-5 space-y-4"
-                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+                className="rounded-3xl p-5 space-y-4 relative overflow-hidden"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(16,185,129,0.1), rgba(124,58,237,0.08))',
+                  border: '1px solid rgba(16,185,129,0.25)',
+                }}
               >
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-lg font-black text-white flex items-center gap-2">
-                      <span>⚖️ Optimal Settlements</span>
+                    <span className="text-[10px] uppercase font-extrabold tracking-wider text-emerald-400 block">
+                      Settlement Resolution Progress
+                    </span>
+                    <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2 mt-0.5">
+                      <span>{tripSummary.settlementProgressPct}% Resolved</span>
+                      {tripSummary.allSettled && (
+                        <span className="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-bold border border-emerald-500/30">
+                          100% Cleared 🎉
+                        </span>
+                      )}
                     </h2>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      Minimal transaction path to square off all trip balances completely.
+                      {tripSummary.settledSettlementsCount} of {tripSummary.settlements.length} transfers cleared · Minimum-debt algorithm
                     </p>
                   </div>
 
                   <motion.button
                     whileTap={{ scale: 0.94 }}
                     onClick={handleShareToWhatsApp}
-                    className="px-3 py-1.5 rounded-xl text-xs font-bold text-violet-300 bg-violet-600/20 hover:bg-violet-600/30 transition-colors inline-flex items-center gap-1.5"
+                    className="px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 transition-colors inline-flex items-center gap-1.5 shadow-md shadow-emerald-600/30 shrink-0 self-start sm:self-auto"
                   >
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Copy Plan</span>
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Share Status on WhatsApp</span>
                   </motion.button>
                 </div>
 
-                {tripSummary.settlements.length === 0 ? (
-                  <motion.div
-                    initial={{ scale: 0.95, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    className="p-6 rounded-2xl bg-emerald-500/10 text-center space-y-1 border border-emerald-500/20"
+                {/* Progress bar */}
+                <div className="space-y-1.5">
+                  <div className="h-2.5 rounded-full bg-slate-800/90 overflow-hidden relative">
+                    <motion.div
+                      className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${tripSummary.settlementProgressPct}%` }}
+                      transition={{ duration: 0.9, ease: 'easeOut' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Stat pills: Settled vs Pending */}
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div
+                    className="p-3 rounded-2xl border"
+                    style={{ background: 'rgba(16,185,129,0.08)', borderColor: 'rgba(16,185,129,0.2)' }}
                   >
-                    <p className="text-base font-extrabold text-emerald-400">
-                      🎉 Group is 100% Settled Up!
+                    <span className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-wider block">
+                      ✅ Paid & Acknowledged
+                    </span>
+                    <div className="text-lg font-black text-white tabular-nums mt-0.5">
+                      {currency}{tripSummary.totalSettledAmount.toLocaleString('en-IN')}
+                    </div>
+                    <span className="text-[10px] text-slate-400">
+                      {tripSummary.settledSettlementsCount} transfer{tripSummary.settledSettlementsCount !== 1 ? 's' : ''} completed
+                    </span>
+                  </div>
+
+                  <div
+                    className="p-3 rounded-2xl border"
+                    style={{ background: 'rgba(244,63,94,0.08)', borderColor: 'rgba(244,63,94,0.2)' }}
+                  >
+                    <span className="text-[10px] font-extrabold text-rose-400 uppercase tracking-wider block">
+                      ⏳ Pending Resolution
+                    </span>
+                    <div className="text-lg font-black text-white tabular-nums mt-0.5">
+                      {currency}{tripSummary.totalPendingAmount.toLocaleString('en-IN')}
+                    </div>
+                    <span className="text-[10px] text-slate-400">
+                      {tripSummary.pendingSettlementsCount} transfer{tripSummary.pendingSettlementsCount !== 1 ? 's' : ''} remaining
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── SETTLEMENT TRANSFERS LIST WITH FILTERS & ACKNOWLEDGEMENT ── */}
+              <div
+                className="rounded-3xl p-5 space-y-4"
+                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-black text-white flex items-center gap-2">
+                      <span>⚖️ Who Pays Whom</span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Acknowledge transfers as they are paid via UPI, Cash, or Ledger
                     </p>
-                    <p className="text-xs text-emerald-300/80">
-                      No debts remaining. Everyone has paid their exact consumption share.
+                  </div>
+
+                  {/* Filter chips */}
+                  <div
+                    className="flex p-0.5 rounded-xl text-xs font-bold"
+                    style={{ background: 'var(--bg-raised)' }}
+                  >
+                    <button
+                      onClick={() => setSettlementFilter('all')}
+                      className={cn(
+                        'px-2.5 py-1 rounded-lg transition-colors',
+                        settlementFilter === 'all' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'
+                      )}
+                    >
+                      All ({tripSummary.settlements.length})
+                    </button>
+                    <button
+                      onClick={() => setSettlementFilter('pending')}
+                      className={cn(
+                        'px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1',
+                        settlementFilter === 'pending' ? 'bg-rose-600 text-white' : 'text-slate-400 hover:text-white'
+                      )}
+                    >
+                      <Clock className="w-3 h-3" />
+                      <span>Pending ({tripSummary.pendingSettlementsCount})</span>
+                    </button>
+                    <button
+                      onClick={() => setSettlementFilter('settled')}
+                      className={cn(
+                        'px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1',
+                        settlementFilter === 'settled' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
+                      )}
+                    >
+                      <CheckCircle2 className="w-3 h-3" />
+                      <span>Settled ({tripSummary.settledSettlementsCount})</span>
+                    </button>
+                  </div>
+                </div>
+
+                {filteredSettlements.length === 0 ? (
+                  <div className="p-8 rounded-2xl bg-slate-800/40 text-center space-y-2">
+                    <p className="text-sm font-extrabold text-slate-300">
+                      {settlementFilter === 'pending'
+                        ? '🎉 Awesome! No pending settlements.'
+                        : settlementFilter === 'settled'
+                        ? 'No acknowledged settlements yet.'
+                        : 'No settlements required.'}
                     </p>
-                  </motion.div>
+                    <p className="text-xs text-slate-500">
+                      {settlementFilter === 'pending'
+                        ? 'Everyone has paid their dues or all balances are even.'
+                        : 'Mark payments as settled when friends pay you or each other.'}
+                    </p>
+                  </div>
                 ) : (
                   <div className="space-y-3">
-                    {tripSummary.settlements.map((st, i) => (
-                      <motion.div
-                        key={i}
-                        initial={{ opacity: 0, x: -16 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: i * 0.05 }}
-                        className="p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
-                        style={{
-                          background: 'rgba(255,255,255,0.03)',
-                          border: '1px solid var(--border-soft)',
-                        }}
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className={cn(
-                            'w-9 h-9 rounded-xl bg-gradient-to-tr flex items-center justify-center font-black text-xs text-white shrink-0',
-                            avatarGradient(st.fromName)
-                          )}>
-                            {st.fromName[0]}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-bold text-slate-200">
-                              <span className="text-rose-400 font-extrabold">{st.fromName}</span>
-                              <span className="text-slate-500 mx-1.5 font-normal">owes</span>
-                              <span className="text-emerald-400 font-extrabold">{st.toName}</span>
-                            </p>
-                            <span className="text-[11px] text-slate-500">
-                              Direct settlement transfer
-                            </span>
-                          </div>
-                        </div>
+                    {filteredSettlements.map((st, i) => {
+                      const isSettled = st.isSettled;
 
-                        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-                          <div className="text-lg font-black tabular-nums text-white">
-                            {currency}{st.amount.toLocaleString('en-IN')}
-                          </div>
-
-                          {onRecordToLedger && (
-                            <motion.button
-                              whileTap={{ scale: 0.94 }}
-                              onClick={() => handleRecordSettlement(st)}
-                              className="px-3 py-1.5 rounded-xl text-xs font-bold text-violet-200 bg-violet-600 hover:bg-violet-500 transition-colors inline-flex items-center gap-1 shadow-md"
-                              title="Record in Udharwale contact ledger"
-                            >
-                              <TrendingUp className="w-3.5 h-3.5" />
-                              <span>Record in Ledger</span>
-                            </motion.button>
+                      return (
+                        <motion.div
+                          key={st.id || i}
+                          initial={{ opacity: 0, x: -16 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.05 }}
+                          className={cn(
+                            'p-4 rounded-2xl flex flex-col gap-3 transition-all',
+                            isSettled
+                              ? 'border border-emerald-500/30 bg-emerald-500/5'
+                              : 'border border-rose-500/20 bg-rose-500/5 hover:border-violet-500/40'
                           )}
-                        </div>
-                      </motion.div>
-                    ))}
+                        >
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                            {/* Debtor to Creditor info */}
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={cn(
+                                'w-10 h-10 rounded-xl bg-gradient-to-tr flex items-center justify-center font-black text-xs text-white shrink-0',
+                                avatarGradient(st.fromName)
+                              )}>
+                                {st.fromName[0]}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-sm font-bold text-white flex items-center gap-2 flex-wrap">
+                                  <span className="text-rose-400 font-extrabold">{st.fromName}</span>
+                                  <span className="text-slate-500 font-normal">owes</span>
+                                  <span className="text-emerald-400 font-extrabold">{st.toName}</span>
+
+                                  {isSettled ? (
+                                    <span className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                      Paid & Settled
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] font-extrabold text-amber-300 uppercase tracking-wider bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 flex items-center gap-1">
+                                      <Clock className="w-3 h-3 text-amber-400" />
+                                      Pending
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                                  {isSettled ? (
+                                    <span>
+                                      Confirmed {st.settledAt ? `on ${new Date(st.settledAt).toLocaleDateString('en-IN')}` : ''}
+                                      {st.paymentMethod ? ` via ${st.paymentMethod}` : ''}
+                                      {st.note ? ` • "${st.note}"` : ''}
+                                    </span>
+                                  ) : (
+                                    <span>Direct settlement transfer to square off trip balance</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Amount */}
+                            <div className="text-right shrink-0 self-end sm:self-auto">
+                              <div className={cn(
+                                'text-xl font-black tabular-nums',
+                                isSettled ? 'text-emerald-400 line-through opacity-80' : 'text-white'
+                              )}>
+                                {currency}{st.amount.toLocaleString('en-IN')}
+                              </div>
+                              <span className="text-[10px] text-slate-500 block">
+                                {isSettled ? 'Settled ✅' : 'Due payment'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Action Toolbar */}
+                          <div className="pt-2 border-t border-white/5 flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              {/* Acknowledge / Toggle button */}
+                              {isSettled ? (
+                                <motion.button
+                                  whileTap={{ scale: 0.94 }}
+                                  onClick={() => handleReopenSettlement(st)}
+                                  className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 transition-colors inline-flex items-center gap-1.5 border border-slate-700"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" />
+                                  <span>Revert to Pending</span>
+                                </motion.button>
+                              ) : (
+                                <motion.button
+                                  whileTap={{ scale: 0.94 }}
+                                  onClick={() => openAcknowledgeModal(st)}
+                                  className="px-3.5 py-1.5 rounded-xl text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-500 transition-all inline-flex items-center gap-1.5 shadow-md shadow-emerald-600/30"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>Acknowledge / Mark Paid</span>
+                                </motion.button>
+                              )}
+
+                              {/* WhatsApp Reminder for this specific pending debt */}
+                              {!isSettled && (
+                                <motion.button
+                                  whileTap={{ scale: 0.94 }}
+                                  onClick={() => handleSendSettlementReminder(st)}
+                                  className="px-3 py-1.5 rounded-xl text-xs font-bold text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors inline-flex items-center gap-1.5 border border-emerald-500/30"
+                                  title="Send payment reminder to this friend on WhatsApp"
+                                >
+                                  <Send className="w-3.5 h-3.5" />
+                                  <span>Remind</span>
+                                </motion.button>
+                              )}
+                            </div>
+
+                            {/* Record in Udharwale Ledger */}
+                            {onRecordToLedger && (
+                              <motion.button
+                                whileTap={{ scale: 0.94 }}
+                                onClick={() => handleRecordSettlement(st)}
+                                className="px-3 py-1.5 rounded-xl text-xs font-bold text-violet-200 bg-violet-600/30 hover:bg-violet-600/50 transition-colors inline-flex items-center gap-1 border border-violet-500/30 ml-auto"
+                                title="Record in Udharwale contact ledger"
+                              >
+                                <TrendingUp className="w-3.5 h-3.5" />
+                                <span>Record in Ledger</span>
+                              </motion.button>
+                            )}
+                          </div>
+                        </motion.div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
-              {/* Individual Participant Balance Sheet */}
+              {/* ── PARTICIPANT CONTRIBUTION & RESOLUTION MATRIX ── */}
               <div
                 className="rounded-3xl p-5 space-y-4"
                 style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
@@ -1165,10 +1459,10 @@ export default function TripExpensesView({
                 <div>
                   <h3 className="text-base font-black text-white flex items-center gap-2">
                     <Users className="w-4 h-4 text-violet-400" />
-                    Participant Balance Matrix
+                    Who Paid & Who is Remaining
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Compare how much each friend paid out of pocket versus their actual consumption share.
+                    Clear visibility into each participant's out-of-pocket spend, share, and remaining dues
                   </p>
                 </div>
 
@@ -1185,60 +1479,90 @@ export default function TripExpensesView({
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: i * 0.06 }}
-                        className="p-4 rounded-2xl space-y-2.5"
+                        className="p-4 rounded-2xl space-y-3"
                         style={{
-                          background: isOwed
-                            ? 'rgba(16,185,129,0.06)'
+                          background: s.isFullySettled
+                            ? 'rgba(16,185,129,0.04)'
                             : owes
-                            ? 'rgba(244,63,94,0.06)'
+                            ? 'rgba(244,63,94,0.05)'
                             : 'rgba(255,255,255,0.02)',
                           border: `1px solid ${
-                            isOwed
-                              ? 'rgba(16,185,129,0.2)'
+                            s.isFullySettled
+                              ? 'rgba(16,185,129,0.25)'
                               : owes
-                              ? 'rgba(244,63,94,0.2)'
+                              ? 'rgba(244,63,94,0.25)'
                               : 'var(--border-soft)'
                           }`,
                         }}
                       >
-                        <div className="flex items-center justify-between gap-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                           <div className="flex items-center gap-3 min-w-0">
                             <div className={cn(
-                              'w-9 h-9 rounded-xl bg-gradient-to-tr flex items-center justify-center font-black text-xs text-white shrink-0',
+                              'w-10 h-10 rounded-xl bg-gradient-to-tr flex items-center justify-center font-black text-xs text-white shrink-0',
                               avatarGradient(s.participant.name)
                             )}>
                               {s.participant.name[0]}
                             </div>
                             <div className="min-w-0">
-                              <p className="text-sm font-bold text-white truncate">
-                                {s.participant.name}{' '}
+                              <p className="text-sm font-bold text-white truncate flex items-center gap-2">
+                                <span>{s.participant.name}</span>
                                 {s.participant.isCurrentUser && (
                                   <span className="text-[10px] text-violet-400 font-extrabold">(You)</span>
                                 )}
                               </p>
-                              <p className="text-[11px] text-slate-400">
+                              <p className="text-[11px] text-slate-400 mt-0.5">
                                 Paid {currency}{s.totalPaid.toLocaleString('en-IN')} · Consumed{' '}
                                 {currency}{s.totalShare.toLocaleString('en-IN')}
                               </p>
                             </div>
                           </div>
 
-                          <div className="text-right shrink-0">
-                            <p
-                              className={cn(
-                                'text-base font-black tabular-nums flex items-center justify-end gap-1',
-                                isOwed ? 'text-emerald-400' : owes ? 'text-rose-400' : 'text-slate-400'
-                              )}
-                            >
-                              {isOwed ? <TrendingUp className="w-3.5 h-3.5" /> : owes ? <TrendingDown className="w-3.5 h-3.5" /> : null}
-                              {isOwed ? '+' : ''}{currency}{s.netBalance.toLocaleString('en-IN')}
-                            </p>
-                            <span className={cn(
-                              'text-[9px] uppercase font-extrabold tracking-wider',
-                              isOwed ? 'text-emerald-400' : owes ? 'text-rose-400' : 'text-slate-500'
-                            )}>
-                              {isOwed ? 'Gets Back' : owes ? 'Needs to Pay' : 'Settled'}
-                            </span>
+                          {/* Remaining / Settled Status Badge */}
+                          <div className="text-left sm:text-right shrink-0">
+                            {owes ? (
+                              s.pendingDebt > 0 ? (
+                                <div>
+                                  <span className="text-[10px] font-extrabold text-rose-400 uppercase tracking-wider bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/30 inline-flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-rose-400" />
+                                    {currency}{s.pendingDebt.toLocaleString('en-IN')} Pending to Pay
+                                  </span>
+                                  {s.settledDebt > 0 && (
+                                    <p className="text-[10px] text-emerald-400 mt-0.5 font-semibold">
+                                      ({currency}{s.settledDebt.toLocaleString('en-IN')} already cleared)
+                                    </p>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30 inline-flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                  All Dues Paid ({currency}{s.settledDebt.toLocaleString('en-IN')})
+                                </span>
+                              )
+                            ) : isOwed ? (
+                              s.pendingCredit > 0 ? (
+                                <div>
+                                  <span className="text-[10px] font-extrabold text-violet-300 uppercase tracking-wider bg-violet-500/10 px-2 py-0.5 rounded-full border border-violet-500/30 inline-flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-violet-400" />
+                                    {currency}{s.pendingCredit.toLocaleString('en-IN')} Due to Receive
+                                  </span>
+                                  {s.settledCredit > 0 && (
+                                    <p className="text-[10px] text-emerald-400 mt-0.5 font-semibold">
+                                      ({currency}{s.settledCredit.toLocaleString('en-IN')} collected)
+                                    </p>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30 inline-flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                  All Received ({currency}{s.settledCredit.toLocaleString('en-IN')})
+                                </span>
+                              )
+                            ) : (
+                              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider bg-slate-800 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                                <Sparkles className="w-3 h-3 text-emerald-400" />
+                                Even · Settled
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -1315,7 +1639,6 @@ export default function TripExpensesView({
               transition={{ duration: 0.25 }}
               className="space-y-4 max-w-3xl mx-auto"
             >
-              {/* Filter chips & Search input */}
               <div className="space-y-3">
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -1333,7 +1656,6 @@ export default function TripExpensesView({
                   />
                 </div>
 
-                {/* Category filter pills */}
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
                   <button
                     onClick={() => setCategoryFilter('all')}
@@ -1364,7 +1686,6 @@ export default function TripExpensesView({
                 </div>
               </div>
 
-              {/* List */}
               <div
                 className="rounded-3xl p-5 divide-y divide-slate-800"
                 style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
@@ -1432,6 +1753,131 @@ export default function TripExpensesView({
       </div>
 
       {/* ══════════════════════════════════════════════════════
+          ACKNOWLEDGE SETTLEMENT PAYMENT MODAL
+      ══════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {isAcknowledgeModalOpen && acknowledgingSettlement && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setIsAcknowledgeModalOpen(false)}
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 15 }}
+              transition={{ type: 'spring', stiffness: 450, damping: 30 }}
+              className="relative w-full max-w-md rounded-3xl overflow-hidden flex flex-col shadow-2xl"
+              style={{
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-soft)',
+              }}
+            >
+              <div
+                className="flex items-center justify-between px-5 py-4 border-b shrink-0"
+                style={{ borderColor: 'var(--border-soft)' }}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-base text-white">Acknowledge Payment</h3>
+                    <p className="text-[11px] text-slate-400">Confirm payment has been settled</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsAcknowledgeModalOpen(false)}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleConfirmAcknowledge} className="p-5 space-y-4">
+                {/* Transfer Details Card */}
+                <div
+                  className="p-4 rounded-2xl space-y-1.5 border"
+                  style={{ background: 'rgba(16,185,129,0.06)', borderColor: 'rgba(16,185,129,0.2)' }}
+                >
+                  <span className="text-[10px] font-extrabold uppercase text-emerald-400 tracking-wider">
+                    Settlement Transfer
+                  </span>
+                  <div className="text-sm font-bold text-white flex items-center justify-between">
+                    <span>
+                      <strong className="text-rose-400">{acknowledgingSettlement.fromName}</strong> paid to{' '}
+                      <strong className="text-emerald-400">{acknowledgingSettlement.toName}</strong>
+                    </span>
+                    <span className="text-xl font-black text-white tabular-nums">
+                      {currency}{acknowledgingSettlement.amount.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Payment Method Selector */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300">Payment Mode</label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {[
+                      { id: 'UPI', label: 'UPI / GPay' },
+                      { id: 'Cash', label: 'Cash' },
+                      { id: 'Bank Transfer', label: 'Bank' },
+                      { id: 'Other', label: 'Other' },
+                    ].map((m) => (
+                      <button
+                        type="button"
+                        key={m.id}
+                        onClick={() => setAckPaymentMethod(m.id as any)}
+                        className={cn(
+                          'py-2 px-1 rounded-xl text-xs font-extrabold transition-all text-center',
+                          ackPaymentMethod === m.id
+                            ? 'bg-emerald-600 text-white shadow-md'
+                            : 'bg-slate-800/60 text-slate-400 hover:text-white'
+                        )}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Notes / Reference */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300">Note / Reference (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Paid via Google Pay, Txn #49102"
+                    value={ackNote}
+                    onChange={(e) => setAckNote(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl text-xs outline-none font-medium text-white"
+                    style={{
+                      background: 'var(--bg-raised)',
+                      border: '1px solid var(--border-soft)',
+                    }}
+                  />
+                </div>
+
+                <div className="pt-2">
+                  <motion.button
+                    whileTap={{ scale: 0.96 }}
+                    type="submit"
+                    className="w-full py-3 rounded-2xl text-xs font-black text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-xl shadow-emerald-600/25 transition-all flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Confirm & Mark as Settled</span>
+                  </motion.button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ══════════════════════════════════════════════════════
           ADD / EDIT EXPENSE MODAL (WITH PARTIAL PAYERS!)
       ══════════════════════════════════════════════════════ */}
       <AnimatePresence>
@@ -1457,7 +1903,6 @@ export default function TripExpensesView({
                 maxHeight: '92vh',
               }}
             >
-              {/* Modal Header */}
               <div
                 className="flex items-center justify-between px-5 py-4 border-b shrink-0"
                 style={{ borderColor: 'var(--border-soft)' }}
@@ -1473,9 +1918,7 @@ export default function TripExpensesView({
                 </button>
               </div>
 
-              {/* Modal Form */}
               <form onSubmit={handleSaveExpense} className="p-5 space-y-4 overflow-y-auto flex-1">
-                {/* Title & Category */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-300">Item / Expense Title</label>
                   <input
@@ -1492,7 +1935,6 @@ export default function TripExpensesView({
                   />
                 </div>
 
-                {/* Amount & Date */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-slate-300">Total Bill Amount (₹)</label>
@@ -1527,7 +1969,6 @@ export default function TripExpensesView({
                   </div>
                 </div>
 
-                {/* Category selector */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-300">Category</label>
                   <div className="grid grid-cols-4 gap-2">
@@ -1553,7 +1994,7 @@ export default function TripExpensesView({
                   </div>
                 </div>
 
-                {/* ── WHO PAID (SINGLE vs MULTIPLE/PARTIAL PAYERS) ── */}
+                {/* Who Paid Mode */}
                 <div
                   className="p-4 rounded-2xl space-y-3"
                   style={{
@@ -1567,7 +2008,6 @@ export default function TripExpensesView({
                       Who Paid for This?
                     </label>
 
-                    {/* Mode switcher */}
                     <div
                       className="flex p-0.5 rounded-xl text-[10px] font-bold"
                       style={{ background: 'var(--bg-raised)' }}
@@ -1622,7 +2062,6 @@ export default function TripExpensesView({
                       ))}
                     </div>
                   ) : (
-                    /* MULTIPLE / PARTIAL PAYERS LIST */
                     <div className="space-y-2.5">
                       <p className="text-[11px] text-slate-400">
                         Enter what each person paid (e.g. You paid ₹2,000, Rahul paid ₹3,000):
@@ -1682,7 +2121,6 @@ export default function TripExpensesView({
                         })}
                       </div>
 
-                      {/* Balance Status Banner */}
                       <div
                         className={cn(
                           'p-2.5 rounded-xl text-xs font-bold flex items-center justify-between',
@@ -1704,7 +2142,7 @@ export default function TripExpensesView({
                   )}
                 </div>
 
-                {/* ── SPLIT BENEFICIARIES (EQUAL / CUSTOM) ── */}
+                {/* Split Beneficiaries */}
                 <div
                   className="p-4 rounded-2xl space-y-3"
                   style={{
@@ -1781,7 +2219,6 @@ export default function TripExpensesView({
                     })}
                   </div>
 
-                  {/* Per-Head Calculation Preview */}
                   {parsedTotalAmount > 0 && selectedBeneficiaries.length > 0 && (
                     <div className="text-[11px] text-violet-300 font-semibold pt-1">
                       💡 Per-head: {currency}
@@ -1791,7 +2228,6 @@ export default function TripExpensesView({
                   )}
                 </div>
 
-                {/* Notes */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-300">Notes / Remarks (Optional)</label>
                   <input
@@ -1807,7 +2243,6 @@ export default function TripExpensesView({
                   />
                 </div>
 
-                {/* Submit Button */}
                 <div className="pt-2">
                   <motion.button
                     whileTap={{ scale: 0.96 }}
@@ -1916,7 +2351,6 @@ export default function TripExpensesView({
                   </div>
                 </div>
 
-                {/* Add friends from contacts */}
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
                     <span>Add Friends from Contacts</span>
@@ -1958,7 +2392,6 @@ export default function TripExpensesView({
                   )}
                 </div>
 
-                {/* Add custom friend names */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-300">
                     Or Add Other Friends (comma separated)

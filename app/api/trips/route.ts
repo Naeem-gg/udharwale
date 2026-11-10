@@ -25,6 +25,7 @@ export async function GET() {
       currency: t.currency || '₹',
       participants: t.participants || [],
       expenses: t.expenses || [],
+      settlements: t.settlements || [],
       shareToken: t.shareToken || undefined,
       status: t.status || 'active',
       createdAt: t.createdAt,
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest) {
       currency = '₹',
       participants = [],
       expenses = [],
+      settlements = [],
       status = 'active',
     } = body;
 
@@ -82,6 +84,7 @@ export async function POST(req: NextRequest) {
       currency,
       participants,
       expenses,
+      settlements,
       status,
     });
 
