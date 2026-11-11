@@ -41,16 +41,29 @@ export interface TripExpense {
   createdAt: string;
 }
 
+export interface SettlementPaymentRecord {
+  id: string;
+  amount: number;
+  paidAt: string;
+  paidBy?: string;
+  paymentMethod?: string;
+  note?: string;
+}
+
 export interface TripSettlement {
   id: string;
   fromId: string;
   fromName: string;
   toId: string;
   toName: string;
-  amount: number;
+  amount: number; // Total calculated debt amount
   fromContactId?: string;
   toContactId?: string;
-  isSettled: boolean;
+  paidAmount: number; // Amount paid so far (can be partial e.g. ₹800 of ₹1000)
+  remainingAmount: number; // Amount still pending (e.g. ₹200 of ₹1000)
+  isSettled: boolean; // true if remainingAmount <= 0.01
+  isPartial: boolean; // true if paidAmount > 0 && remainingAmount > 0.01
+  payments?: SettlementPaymentRecord[]; // History of payments
   settledAt?: string;
   settledBy?: string;
   paymentMethod?: string;
@@ -65,7 +78,7 @@ export interface ParticipantSummary {
   totalPaid: number;
   totalShare: number;
   netBalance: number; // totalPaid - totalShare (> 0: gets back, < 0: owes)
-  settledDebt: number; // Debt already acknowledged and paid
+  settledDebt: number; // Debt already acknowledged and paid (including partials)
   pendingDebt: number; // Debt still pending to be paid
   settledCredit: number; // Credit already acknowledged and collected
   pendingCredit: number; // Credit still waiting to be collected
@@ -74,7 +87,13 @@ export interface ParticipantSummary {
 
 export interface TripSummary {
   totalSpend: number;
+  /** Equal split of total (totalSpend / people). Misleading when some items are personal — use each person's totalShare. */
   perHeadAverage: number;
+  /** Lowest / highest personal share after real splits (parcels, subset splits, etc.). */
+  minShare: number;
+  maxShare: number;
+  /** True when personal shares differ by more than 1 paisa. */
+  hasUnevenShares: boolean;
   categoryTotals: Record<ExpenseCategory, number>;
   participantSummaries: ParticipantSummary[];
   settlements: TripSettlement[];
@@ -83,6 +102,7 @@ export interface TripSummary {
   totalPendingAmount: number;
   settlementProgressPct: number;
   pendingSettlementsCount: number;
+  partialSettlementsCount: number;
   settledSettlementsCount: number;
   allSettled: boolean;
 }
@@ -119,7 +139,7 @@ export const CATEGORY_CONFIG: Record<
 
 /**
  * Calculate full summary for a trip including per-head calculations,
- * individual totals, greedy minimal debt settlement, and acknowledged/pending resolution states.
+ * individual totals, greedy minimal debt settlement, and partial/full acknowledgement states.
  */
 export function calculateTripSummary(trip: Trip): TripSummary {
   const totalSpend = Math.round(
@@ -207,6 +227,19 @@ export function calculateTripSummary(trip: Trip): TripSummary {
         (s) => s.id === settlementKey || (s.fromId === debtor.id && s.toId === creditor.id)
       );
 
+      let paidAmount = 0;
+      if (existing) {
+        if (typeof existing.paidAmount === 'number') {
+          paidAmount = Math.min(roundedAmount, Math.max(0, existing.paidAmount));
+        } else if (existing.isSettled) {
+          paidAmount = roundedAmount;
+        }
+      }
+
+      const remainingAmount = Math.max(0, Math.round((roundedAmount - paidAmount) * 100) / 100);
+      const isSettled = remainingAmount <= 0.01;
+      const isPartial = paidAmount > 0 && remainingAmount > 0.01;
+
       rawSettlements.push({
         id: existing?.id || settlementKey,
         fromId: debtor.id,
@@ -216,7 +249,11 @@ export function calculateTripSummary(trip: Trip): TripSummary {
         fromContactId: debtor.contactId,
         toContactId: creditor.contactId,
         amount: roundedAmount,
-        isSettled: existing ? Boolean(existing.isSettled) : false,
+        paidAmount,
+        remainingAmount,
+        isSettled,
+        isPartial,
+        payments: existing?.payments || [],
         settledAt: existing?.settledAt,
         settledBy: existing?.settledBy,
         paymentMethod: existing?.paymentMethod,
@@ -231,13 +268,13 @@ export function calculateTripSummary(trip: Trip): TripSummary {
     if (creditor.balance <= 0.01) cIdx++;
   }
 
-  // Settlement totals
+  // Settlement totals (accurately accounting for partial payments!)
   const totalDebtAmount = Math.round(
     rawSettlements.reduce((sum, s) => sum + s.amount, 0) * 100
   ) / 100;
 
   const totalSettledAmount = Math.round(
-    rawSettlements.filter((s) => s.isSettled).reduce((sum, s) => sum + s.amount, 0) * 100
+    rawSettlements.reduce((sum, s) => sum + (s.paidAmount || 0), 0) * 100
   ) / 100;
 
   const totalPendingAmount = Math.max(0, Math.round((totalDebtAmount - totalSettledAmount) * 100) / 100);
@@ -247,22 +284,23 @@ export function calculateTripSummary(trip: Trip): TripSummary {
     : 100;
 
   const settledSettlementsCount = rawSettlements.filter((s) => s.isSettled).length;
+  const partialSettlementsCount = rawSettlements.filter((s) => s.isPartial).length;
   const pendingSettlementsCount = rawSettlements.filter((s) => !s.isSettled).length;
   const allSettled = rawSettlements.length === 0 || pendingSettlementsCount === 0;
 
-  // Build rich participant summaries including acknowledgement metrics
+  // Build rich participant summaries including partial/full metrics
   const participantSummaries: ParticipantSummary[] = rawBalances.map((item) => {
     const p = item.participant;
 
     // What this person owes (fromId === p.id)
     const myDebts = rawSettlements.filter((s) => s.fromId === p.id);
-    const settledDebt = Math.round(myDebts.filter((s) => s.isSettled).reduce((sum, s) => sum + s.amount, 0) * 100) / 100;
-    const pendingDebt = Math.round(myDebts.filter((s) => !s.isSettled).reduce((sum, s) => sum + s.amount, 0) * 100) / 100;
+    const settledDebt = Math.round(myDebts.reduce((sum, s) => sum + (s.paidAmount || 0), 0) * 100) / 100;
+    const pendingDebt = Math.round(myDebts.reduce((sum, s) => sum + (s.remainingAmount || 0), 0) * 100) / 100;
 
     // What this person is owed (toId === p.id)
     const myCredits = rawSettlements.filter((s) => s.toId === p.id);
-    const settledCredit = Math.round(myCredits.filter((s) => s.isSettled).reduce((sum, s) => sum + s.amount, 0) * 100) / 100;
-    const pendingCredit = Math.round(myCredits.filter((s) => !s.isSettled).reduce((sum, s) => sum + s.amount, 0) * 100) / 100;
+    const settledCredit = Math.round(myCredits.reduce((sum, s) => sum + (s.paidAmount || 0), 0) * 100) / 100;
+    const pendingCredit = Math.round(myCredits.reduce((sum, s) => sum + (s.remainingAmount || 0), 0) * 100) / 100;
 
     const isFullySettled = (myDebts.length === 0 || pendingDebt <= 0.01) && (myCredits.length === 0 || pendingCredit <= 0.01);
 
@@ -279,9 +317,17 @@ export function calculateTripSummary(trip: Trip): TripSummary {
     };
   });
 
+  const shares = participantSummaries.map((s) => s.totalShare);
+  const minShare = shares.length ? Math.min(...shares) : 0;
+  const maxShare = shares.length ? Math.max(...shares) : 0;
+  const hasUnevenShares = Math.round((maxShare - minShare) * 100) / 100 > 0.01;
+
   return {
     totalSpend,
     perHeadAverage,
+    minShare,
+    maxShare,
+    hasUnevenShares,
     categoryTotals,
     participantSummaries,
     settlements: rawSettlements,
@@ -290,6 +336,7 @@ export function calculateTripSummary(trip: Trip): TripSummary {
     totalPendingAmount,
     settlementProgressPct,
     pendingSettlementsCount,
+    partialSettlementsCount,
     settledSettlementsCount,
     allSettled,
   };
@@ -307,24 +354,45 @@ export function formatWhatsAppSummary(trip: Trip, userName?: string): string {
   text += `👥 Members: ${trip.participants.map((p) => p.name).join(', ')}\n`;
   text += `━━━━━━━━━━━━━━━━━━━━━\n`;
   text += `💰 *Total Spend:* ${currency}${summary.totalSpend.toLocaleString('en-IN')}\n`;
-  text += `👤 *Average Per Head:* ${currency}${summary.perHeadAverage.toLocaleString('en-IN')}\n`;
-  text += `📈 *Settlement Progress:* ${summary.settlementProgressPct}% Cleared (${currency}${summary.totalSettledAmount.toLocaleString('en-IN')} paid · ${currency}${summary.totalPendingAmount.toLocaleString('en-IN')} pending)\n\n`;
+  if (summary.hasUnevenShares) {
+    text += `👤 *Personal shares vary:* ${currency}${summary.minShare.toLocaleString('en-IN')} – ${currency}${summary.maxShare.toLocaleString('en-IN')}\n`;
+    text += `   (Equal split would be ${currency}${summary.perHeadAverage.toLocaleString('en-IN')}/head — personal items change this)\n`;
+  } else {
+    text += `👤 *Per Head:* ${currency}${summary.perHeadAverage.toLocaleString('en-IN')}\n`;
+  }
+  text += `📈 *Settlement Progress:* ${summary.settlementProgressPct}% Resolved (${currency}${summary.totalSettledAmount.toLocaleString('en-IN')} paid · ${currency}${summary.totalPendingAmount.toLocaleString('en-IN')} remaining)\n\n`;
 
-  text += `📊 *Participant Standings:*\n`;
+  text += `📊 *Each Person's Share:*\n`;
   summary.participantSummaries.forEach((s) => {
+    const vsEqual = Math.round((s.totalShare - summary.perHeadAverage) * 100) / 100;
+    const vsEqualText =
+      summary.hasUnevenShares && Math.abs(vsEqual) > 0.01
+        ? vsEqual > 0
+          ? ` · +${currency}${vsEqual.toLocaleString('en-IN')} vs equal`
+          : ` · −${currency}${Math.abs(vsEqual).toLocaleString('en-IN')} vs equal`
+        : '';
+
     let statusText = '';
     if (s.netBalance < -0.01) {
-      statusText = s.pendingDebt > 0
-        ? `⚠️ Needs to pay: ${currency}${s.pendingDebt.toLocaleString('en-IN')}`
-        : `✅ Fully settled (${currency}${s.settledDebt.toLocaleString('en-IN')} paid)`;
+      if (s.pendingDebt <= 0.01) {
+        statusText = `✅ Fully settled (${currency}${s.settledDebt.toLocaleString('en-IN')} paid)`;
+      } else if (s.settledDebt > 0) {
+        statusText = `⚡ Partial: ${currency}${s.settledDebt.toLocaleString('en-IN')} paid, ${currency}${s.pendingDebt.toLocaleString('en-IN')} remaining`;
+      } else {
+        statusText = `⏳ Needs to pay: ${currency}${s.pendingDebt.toLocaleString('en-IN')}`;
+      }
     } else if (s.netBalance > 0.01) {
-      statusText = s.pendingCredit > 0
-        ? `⏳ Waiting for: ${currency}${s.pendingCredit.toLocaleString('en-IN')}`
-        : `✅ Fully received (${currency}${s.settledCredit.toLocaleString('en-IN')})`;
+      if (s.pendingCredit <= 0.01) {
+        statusText = `✅ Fully received (${currency}${s.settledCredit.toLocaleString('en-IN')})`;
+      } else if (s.settledCredit > 0) {
+        statusText = `⚡ Partial: ${currency}${s.settledCredit.toLocaleString('en-IN')} received, ${currency}${s.pendingCredit.toLocaleString('en-IN')} pending`;
+      } else {
+        statusText = `⏳ Waiting for: ${currency}${s.pendingCredit.toLocaleString('en-IN')}`;
+      }
     } else {
       statusText = `✨ Even`;
     }
-    text += `• *${s.participant.name}*: Paid ${currency}${s.totalPaid.toLocaleString('en-IN')} | Share ${currency}${s.totalShare.toLocaleString('en-IN')} [${statusText}]\n`;
+    text += `• *${s.participant.name}*: share ${currency}${s.totalShare.toLocaleString('en-IN')}${vsEqualText} · paid ${currency}${s.totalPaid.toLocaleString('en-IN')} [${statusText}]\n`;
   });
 
   text += `\n⚖️ *Settlement Transfers:*\n`;
@@ -335,14 +403,18 @@ export function formatWhatsAppSummary(trip: Trip, userName?: string): string {
     const settledList = summary.settlements.filter((st) => st.isSettled);
 
     if (pendingList.length > 0) {
-      text += `*🔴 Pending (${pendingList.length}):*\n`;
+      text += `*🔴 Pending / Partial Transfers (${pendingList.length}):*\n`;
       pendingList.forEach((st) => {
-        text += `👉 *${st.fromName}* owes *${st.toName}*: ${currency}${st.amount.toLocaleString('en-IN')} (Pending ⏳)\n`;
+        if (st.isPartial) {
+          text += `👉 *${st.fromName}* owes *${st.toName}*: ${currency}${st.amount.toLocaleString('en-IN')} (⚡ ${currency}${st.paidAmount.toLocaleString('en-IN')} paid, *${currency}${st.remainingAmount.toLocaleString('en-IN')} remaining*)\n`;
+        } else {
+          text += `👉 *${st.fromName}* owes *${st.toName}*: ${currency}${st.amount.toLocaleString('en-IN')} (⏳ Pending)\n`;
+        }
       });
     }
 
     if (settledList.length > 0) {
-      text += `\n*🟢 Paid & Acknowledged (${settledList.length}):*\n`;
+      text += `\n*🟢 Fully Settled Transfers (${settledList.length}):*\n`;
       settledList.forEach((st) => {
         const methodStr = st.paymentMethod ? ` via ${st.paymentMethod}` : '';
         text += `✅ *${st.fromName}* paid *${st.toName}*: ${currency}${st.amount.toLocaleString('en-IN')}${methodStr}\n`;
@@ -359,11 +431,23 @@ export function formatWhatsAppSummary(trip: Trip, userName?: string): string {
       })
       .join(' + ');
 
-    const perHeadForItem = item.splitAmong.length > 0 ? Math.round((item.amount / item.splitAmong.length) * 100) / 100 : item.amount;
+    const splitNames = item.splitAmong
+      .map((s) => trip.participants.find((pt) => pt.id === s.participantId)?.name || 'Someone')
+      .join(', ');
+    const perHeadForItem =
+      item.splitAmong.length > 0
+        ? Math.round((item.amount / item.splitAmong.length) * 100) / 100
+        : item.amount;
+    const splitLine =
+      item.splitAmong.length <= 1
+        ? `   👤 Personal — only ${splitNames || 'one person'}\n`
+        : item.splitAmong.length < trip.participants.length
+          ? `   👥 Split ${item.splitAmong.length}/${trip.participants.length}: ${currency}${perHeadForItem.toLocaleString('en-IN')} each (${splitNames})\n`
+          : `   👥 ${currency}${perHeadForItem.toLocaleString('en-IN')}/head · everyone\n`;
 
     text += `${i + 1}. *${item.title}*: ${currency}${item.amount.toLocaleString('en-IN')}\n`;
     text += `   💳 Paid by: ${payerNames}\n`;
-    text += `   👥 ${currency}${perHeadForItem.toLocaleString('en-IN')}/head for ${item.splitAmong.length} friends\n`;
+    text += splitLine;
   });
 
   text += `\n✨ *Calculated transparently with Udharwale*`;
@@ -434,13 +518,12 @@ export function getDemoTrip(currentUserName = 'You', contacts: Contact[] = []): 
       category: 'food',
       amount: 5000,
       date: dateStr,
-      // PARTIAL PAYMENT SHOWCASE: User paid 2000, Rahul paid 3000!
       paidBy: [
         { participantId: 'p_you', amount: 2000 },
         { participantId: 'p_rahul', amount: 3000 },
       ],
       splitType: 'equal',
-      splitAmong: equalSplit4(5000), // 1250 each
+      splitAmong: equalSplit4(5000),
       notes: 'Split bill at checkout: You paid 2000 cash, Rahul card 3000',
       createdAt: new Date(Date.now() - 3600000 * 12).toISOString(),
     },
@@ -452,7 +535,7 @@ export function getDemoTrip(currentUserName = 'You', contacts: Contact[] = []): 
       date: dateStr,
       paidBy: [{ participantId: 'p_rahul', amount: 2400 }],
       splitType: 'equal',
-      splitAmong: equalSplit4(2400), // 600 each
+      splitAmong: equalSplit4(2400),
       notes: 'Innova ride from Dabolim to Anjuna',
       createdAt: new Date(Date.now() - 3600000 * 8).toISOString(),
     },
@@ -464,7 +547,6 @@ export function getDemoTrip(currentUserName = 'You', contacts: Contact[] = []): 
       date: dateStr,
       paidBy: [{ participantId: 'p_aman', amount: 4500 }],
       splitType: 'custom',
-      // Priya skipped water sports: split among You, Rahul, Aman (1500 each)
       splitAmong: [
         { participantId: 'p_you', amount: 1500 },
         { participantId: 'p_rahul', amount: 1500 },
@@ -475,7 +557,7 @@ export function getDemoTrip(currentUserName = 'You', contacts: Contact[] = []): 
     },
   ];
 
-  // Pre-seed an acknowledged settlement for the demo so user immediately sees both Paid and Remaining!
+  // Pre-seed an acknowledged settlement AND a partial settlement for the demo!
   const demoSettlements: TripSettlement[] = [
     {
       id: 'stl_p_priya_p_you',
@@ -484,7 +566,20 @@ export function getDemoTrip(currentUserName = 'You', contacts: Contact[] = []): 
       toId: 'p_you',
       toName: currentUserName || 'You',
       amount: 5850,
+      paidAmount: 5850,
+      remainingAmount: 0,
       isSettled: true,
+      isPartial: false,
+      payments: [
+        {
+          id: 'pay_1',
+          amount: 5850,
+          paidAt: new Date(Date.now() - 3600000 * 4).toISOString(),
+          paidBy: friend3,
+          paymentMethod: 'UPI (GPay)',
+          note: 'Full settlement',
+        },
+      ],
       settledAt: new Date(Date.now() - 3600000 * 4).toISOString(),
       settledBy: friend3,
       paymentMethod: 'UPI (GPay)',
