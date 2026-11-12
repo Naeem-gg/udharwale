@@ -49,6 +49,7 @@ export function snapshotTx(tx: ITransactionSub | Record<string, unknown>) {
     remark: t.remark,
     date: t.date,
     mode: t.mode,
+    category: t.category || 'other',
     createdAt: t.createdAt,
     deletedAt: t.deletedAt ?? null,
   };
@@ -105,6 +106,7 @@ export function serializeTx(tx: any, role: LedgerRole, includeDeleted = false) {
     date: tx.date,
     createdAt: tx.createdAt,
     mode: tx.mode,
+    category: tx.category || 'other',
     updatedAt: tx.updatedAt,
     deletedAt: tx.deletedAt ?? null,
     createdByUserId: tx.createdByUserId?.toString?.() || tx.createdByUserId,

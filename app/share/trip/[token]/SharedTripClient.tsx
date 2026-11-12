@@ -60,6 +60,8 @@ export default function SharedTripClient({ token }: { token: string }) {
   const [ackMethod, setAckMethod] = useState<'UPI' | 'Cash' | 'Bank' | 'Other'>('UPI');
   const [ackNote, setAckNote] = useState('');
   const [ackPayerName, setAckPayerName] = useState('');
+  const [ackSettleMode, setAckSettleMode] = useState<'full' | 'partial'>('full');
+  const [ackAmount, setAckAmount] = useState('');
   const [isSubmittingAck, setIsSubmittingAck] = useState(false);
 
   /* Fetch ─────────────────────────────────────────── */
@@ -121,17 +123,70 @@ export default function SharedTripClient({ token }: { token: string }) {
   };
 
   // ── ACKNOWLEDGE SETTLEMENT FROM SHARED VIEW ────────
-  const openAcknowledgeModal = (st: TripSettlement) => {
+  const openAcknowledgeModal = (st: TripSettlement, mode: 'full' | 'partial' = 'full') => {
+    const remaining =
+      st.remainingAmount > 0.01 ? st.remainingAmount : Math.max(0, st.amount - (st.paidAmount || 0));
     setAcknowledgingSettlement(st);
     setAckPayerName(st.fromName);
     setAckMethod('UPI');
     setAckNote('');
+    setAckSettleMode(mode);
+    setAckAmount(mode === 'full' ? remaining.toString() : '');
     setIsAckModalOpen(true);
+  };
+
+  const applyLocalSettlement = (st: TripSettlement, paymentAmt: number) => {
+    if (!trip) return;
+    const previousPaid = st.paidAmount || 0;
+    const newPaid = Math.min(st.amount, Math.round((previousPaid + paymentAmt) * 100) / 100);
+    const newRemaining = Math.max(0, Math.round((st.amount - newPaid) * 100) / 100);
+    const fullySettled = newRemaining <= 0.01;
+    const nowIso = new Date().toISOString();
+    const existing = trip.settlements ? [...trip.settlements] : [];
+    const idx = existing.findIndex((s) => s.id === st.id);
+    const record: TripSettlement = {
+      ...st,
+      paidAmount: fullySettled ? st.amount : newPaid,
+      remainingAmount: fullySettled ? 0 : newRemaining,
+      isSettled: fullySettled,
+      isPartial: !fullySettled && newPaid > 0.01,
+      payments: [
+        ...(st.payments || []),
+        {
+          id: `pay_${Date.now()}`,
+          amount: paymentAmt,
+          paidAt: nowIso,
+          paidBy: ackPayerName || st.fromName,
+          paymentMethod: ackMethod,
+          note: ackNote.trim(),
+        },
+      ],
+      settledAt: nowIso,
+      settledBy: ackPayerName || st.fromName,
+      paymentMethod: ackMethod,
+      note: ackNote.trim(),
+    };
+    if (idx >= 0) existing[idx] = record;
+    else existing.push(record);
+    setTrip({ ...trip, settlements: existing });
   };
 
   const handleConfirmAck = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!trip || !acknowledgingSettlement) return;
+
+    const previousPaid = acknowledgingSettlement.paidAmount || 0;
+    const remaining = Math.max(
+      0,
+      Math.round((acknowledgingSettlement.amount - previousPaid) * 100) / 100
+    );
+    const parsed = parseFloat(ackAmount);
+    const paymentAmt =
+      ackSettleMode === 'full'
+        ? remaining
+        : Math.min(remaining, Math.max(0, Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : 0));
+
+    if (paymentAmt <= 0.009) return;
 
     setIsSubmittingAck(true);
     try {
@@ -145,7 +200,7 @@ export default function SharedTripClient({ token }: { token: string }) {
           toId: acknowledgingSettlement.toId,
           toName: acknowledgingSettlement.toName,
           amount: acknowledgingSettlement.amount,
-          isSettled: true,
+          paymentAmount: paymentAmt,
           settledBy: ackPayerName || acknowledgingSettlement.fromName,
           paymentMethod: ackMethod,
           note: ackNote.trim(),
@@ -159,36 +214,10 @@ export default function SharedTripClient({ token }: { token: string }) {
           settlements: body.settlements,
         });
       } else {
-        // Optimistic fallback
-        const existing = trip.settlements ? [...trip.settlements] : [];
-        const idx = existing.findIndex((s) => s.id === acknowledgingSettlement.id);
-        const record = {
-          ...acknowledgingSettlement,
-          isSettled: true,
-          settledAt: new Date().toISOString(),
-          settledBy: ackPayerName || acknowledgingSettlement.fromName,
-          paymentMethod: ackMethod,
-          note: ackNote.trim(),
-        };
-        if (idx >= 0) existing[idx] = record;
-        else existing.push(record);
-        setTrip({ ...trip, settlements: existing });
+        applyLocalSettlement(acknowledgingSettlement, paymentAmt);
       }
     } catch {
-      // Optimistic fallback
-      const existing = trip.settlements ? [...trip.settlements] : [];
-      const idx = existing.findIndex((s) => s.id === acknowledgingSettlement.id);
-      const record = {
-        ...acknowledgingSettlement,
-        isSettled: true,
-        settledAt: new Date().toISOString(),
-        settledBy: ackPayerName || acknowledgingSettlement.fromName,
-        paymentMethod: ackMethod,
-        note: ackNote.trim(),
-      };
-      if (idx >= 0) existing[idx] = record;
-      else existing.push(record);
-      setTrip({ ...trip, settlements: existing });
+      applyLocalSettlement(acknowledgingSettlement, paymentAmt);
     } finally {
       setIsSubmittingAck(false);
       setIsAckModalOpen(false);
@@ -204,6 +233,8 @@ export default function SharedTripClient({ token }: { token: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           settlementId: st.id,
+          amount: st.amount,
+          reopen: true,
           isSettled: false,
         }),
       });
@@ -213,13 +244,31 @@ export default function SharedTripClient({ token }: { token: string }) {
       } else {
         const existing = trip.settlements ? [...trip.settlements] : [];
         const idx = existing.findIndex((s) => s.id === st.id);
-        if (idx >= 0) existing[idx] = { ...existing[idx], isSettled: false };
+        if (idx >= 0) {
+          existing[idx] = {
+            ...existing[idx],
+            paidAmount: 0,
+            remainingAmount: st.amount,
+            isSettled: false,
+            isPartial: false,
+            payments: [],
+          };
+        }
         setTrip({ ...trip, settlements: existing });
       }
     } catch {
       const existing = trip.settlements ? [...trip.settlements] : [];
       const idx = existing.findIndex((s) => s.id === st.id);
-      if (idx >= 0) existing[idx] = { ...existing[idx], isSettled: false };
+      if (idx >= 0) {
+        existing[idx] = {
+          ...existing[idx],
+          paidAmount: 0,
+          remainingAmount: st.amount,
+          isSettled: false,
+          isPartial: false,
+          payments: [],
+        };
+      }
       setTrip({ ...trip, settlements: existing });
     }
   };
@@ -520,6 +569,11 @@ export default function SharedTripClient({ token }: { token: string }) {
                   <div className="space-y-3">
                     {filteredSettlements.map((st, i) => {
                       const isSettled = st.isSettled;
+                      const isPartial = st.isPartial || ((st.paidAmount || 0) > 0.01 && !isSettled);
+                      const remaining =
+                        st.remainingAmount > 0.01
+                          ? st.remainingAmount
+                          : Math.max(0, st.amount - (st.paidAmount || 0));
 
                       return (
                         <motion.div
@@ -531,7 +585,9 @@ export default function SharedTripClient({ token }: { token: string }) {
                             'p-4 rounded-2xl flex flex-col gap-3 transition-all',
                             isSettled
                               ? 'border border-emerald-500/30 bg-emerald-500/5'
-                              : 'border border-rose-500/20 bg-rose-500/5 hover:border-violet-500/40'
+                              : isPartial
+                                ? 'border border-amber-500/30 bg-amber-500/5'
+                                : 'border border-rose-500/20 bg-rose-500/5 hover:border-violet-500/40'
                           )}
                         >
                           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -555,6 +611,11 @@ export default function SharedTripClient({ token }: { token: string }) {
                                       <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                                       Paid & Settled
                                     </span>
+                                  ) : isPartial ? (
+                                    <span className="text-[10px] font-extrabold text-amber-300 uppercase tracking-wider bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 flex items-center gap-1">
+                                      <Clock className="w-3 h-3 text-amber-400" />
+                                      Partial
+                                    </span>
                                   ) : (
                                     <span className="text-[10px] font-extrabold text-amber-300 uppercase tracking-wider bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 flex items-center gap-1">
                                       <Clock className="w-3 h-3 text-amber-400" />
@@ -570,6 +631,11 @@ export default function SharedTripClient({ token }: { token: string }) {
                                       {st.paymentMethod ? ` via ${st.paymentMethod}` : ''}
                                       {st.note ? ` • "${st.note}"` : ''}
                                     </span>
+                                  ) : isPartial ? (
+                                    <span>
+                                      {currency}{(st.paidAmount || 0).toLocaleString('en-IN')} paid ·{' '}
+                                      {currency}{remaining.toLocaleString('en-IN')} remaining
+                                    </span>
                                   ) : (
                                     <span>Direct settlement transfer to square off trip balance</span>
                                   )}
@@ -584,10 +650,14 @@ export default function SharedTripClient({ token }: { token: string }) {
                                   isSettled ? 'text-emerald-400 line-through opacity-80' : 'text-white'
                                 )}
                               >
-                                {currency}{st.amount.toLocaleString('en-IN')}
+                                {currency}{(isSettled ? st.amount : remaining).toLocaleString('en-IN')}
                               </div>
                               <span className="text-[10px] text-slate-500 block">
-                                {isSettled ? 'Settled ✅' : 'Due payment'}
+                                {isSettled
+                                  ? 'Settled ✅'
+                                  : isPartial
+                                    ? `of ${currency}${st.amount.toLocaleString('en-IN')}`
+                                    : 'Due payment'}
                               </span>
                             </div>
                           </div>
@@ -604,14 +674,23 @@ export default function SharedTripClient({ token }: { token: string }) {
                                 <span>Reopen</span>
                               </motion.button>
                             ) : (
-                              <motion.button
-                                whileTap={{ scale: 0.94 }}
-                                onClick={() => openAcknowledgeModal(st)}
-                                className="px-3.5 py-1.5 rounded-xl text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-500 transition-all inline-flex items-center gap-1.5 shadow-md shadow-emerald-600/30"
-                              >
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>I Have Paid / Mark Settled</span>
-                              </motion.button>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <motion.button
+                                  whileTap={{ scale: 0.94 }}
+                                  onClick={() => openAcknowledgeModal(st, 'full')}
+                                  className="px-3.5 py-1.5 rounded-xl text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-500 transition-all inline-flex items-center gap-1.5 shadow-md shadow-emerald-600/30"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>{isPartial ? 'Pay Remaining' : 'Mark Fully Settled'}</span>
+                                </motion.button>
+                                <motion.button
+                                  whileTap={{ scale: 0.94 }}
+                                  onClick={() => openAcknowledgeModal(st, 'partial')}
+                                  className="px-3 py-1.5 rounded-xl text-xs font-bold text-amber-200 bg-amber-500/15 hover:bg-amber-500/25 transition-colors border border-amber-500/25"
+                                >
+                                  Partial
+                                </motion.button>
+                              </div>
                             )}
 
                             <span className="text-[11px] text-slate-500 italic">
@@ -938,15 +1017,28 @@ export default function SharedTripClient({ token }: { token: string }) {
               <form onSubmit={handleConfirmAck} className="p-5 space-y-4">
                 <div className="p-4 rounded-2xl space-y-1.5 border" style={{ background: 'rgba(16,185,129,0.06)', borderColor: 'rgba(16,185,129,0.2)' }}>
                   <span className="text-[10px] font-extrabold uppercase text-emerald-400 tracking-wider">Settlement Due</span>
-                  <div className="text-sm font-bold text-white flex items-center justify-between">
+                  <div className="text-sm font-bold text-white flex items-center justify-between gap-2">
                     <span>
                       <strong className="text-rose-400">{acknowledgingSettlement.fromName}</strong> owes{' '}
                       <strong className="text-emerald-400">{acknowledgingSettlement.toName}</strong>
                     </span>
-                    <span className="text-xl font-black text-white tabular-nums">
+                    <span className="text-xl font-black text-white tabular-nums shrink-0">
                       {currency}{acknowledgingSettlement.amount.toLocaleString('en-IN')}
                     </span>
                   </div>
+                  {(acknowledgingSettlement.paidAmount || 0) > 0.01 && (
+                    <p className="text-[11px] text-amber-300 font-semibold pt-1">
+                      Already paid {currency}{(acknowledgingSettlement.paidAmount || 0).toLocaleString('en-IN')} ·{' '}
+                      {currency}
+                      {Math.max(
+                        0,
+                        acknowledgingSettlement.remainingAmount > 0
+                          ? acknowledgingSettlement.remainingAmount
+                          : acknowledgingSettlement.amount - (acknowledgingSettlement.paidAmount || 0)
+                      ).toLocaleString('en-IN')}{' '}
+                      left
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
@@ -959,6 +1051,65 @@ export default function SharedTripClient({ token }: { token: string }) {
                     style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}
                     required
                   />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300">Settlement type</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      { id: 'full' as const, label: 'Pay remaining' },
+                      { id: 'partial' as const, label: 'Partial' },
+                    ]).map((m) => (
+                      <button
+                        type="button"
+                        key={m.id}
+                        onClick={() => {
+                          setAckSettleMode(m.id);
+                          const rem =
+                            acknowledgingSettlement.remainingAmount > 0.01
+                              ? acknowledgingSettlement.remainingAmount
+                              : Math.max(
+                                  0,
+                                  acknowledgingSettlement.amount - (acknowledgingSettlement.paidAmount || 0)
+                                );
+                          setAckAmount(m.id === 'full' ? rem.toString() : '');
+                        }}
+                        className={cn(
+                          'py-2 px-1 rounded-xl text-xs font-extrabold transition-all text-center',
+                          ackSettleMode === m.id
+                            ? 'bg-emerald-600 text-white shadow-md'
+                            : 'bg-slate-800/60 text-slate-400 hover:text-white'
+                        )}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-300">
+                    {ackSettleMode === 'full' ? 'Amount (remaining)' : 'Amount paying now'}
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">
+                      {currency}
+                    </span>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      required
+                      value={ackAmount}
+                      onChange={(e) => {
+                        setAckAmount(e.target.value);
+                        setAckSettleMode('partial');
+                      }}
+                      className="w-full pl-8 pr-3.5 py-2.5 rounded-xl text-xs outline-none font-bold text-white tabular-nums"
+                      style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}
+                      placeholder="0"
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-1.5">
@@ -1005,7 +1156,13 @@ export default function SharedTripClient({ token }: { token: string }) {
                     className="w-full py-3 rounded-2xl text-xs font-black text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-xl shadow-emerald-600/25 transition-all flex items-center justify-center gap-2"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>{isSubmittingAck ? 'Acknowledging…' : 'Confirm & Acknowledge Payment'}</span>
+                    <span>
+                      {isSubmittingAck
+                        ? 'Acknowledging…'
+                        : ackSettleMode === 'partial'
+                          ? 'Record Partial Payment'
+                          : 'Confirm & Acknowledge Payment'}
+                    </span>
                   </motion.button>
                 </div>
               </form>

@@ -25,7 +25,7 @@ export async function POST(
     const { id } = await params;
     const body = await req.json();
 
-    const { amount, type, remark, date, mode, id: txId, createdAt } = body;
+    const { amount, type, remark, date, mode, category, id: txId, createdAt } = body;
 
     if (!amount || !type || !remark || !date || !mode || !txId) {
       return NextResponse.json(
@@ -33,6 +33,9 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    const allowedCategories = ['food', 'travel', 'rent', 'business', 'personal', 'other'];
+    const safeCategory = allowedCategories.includes(category) ? category : 'other';
 
     const access = await findAccessibleContact(id, userId);
     if (!access) {
@@ -51,6 +54,7 @@ export async function POST(
       date,
       createdAt: typeof createdAt === 'string' && createdAt ? createdAt : now,
       mode,
+      category: safeCategory,
       createdByUserId: userId,
       updatedByUserId: userId,
       updatedAt: now,

@@ -2,7 +2,15 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { signOut } from 'next-auth/react';
-import { Contact, Transaction, ModeType, ActiveTab } from './types';
+import {
+  Contact,
+  Transaction,
+  ModeType,
+  ActiveTab,
+  LedgerCategory,
+  LEDGER_CATEGORIES,
+  LEDGER_CATEGORY_CONFIG,
+} from './types';
 import UpcomingFeatures from './UpcomingFeatures';
 import TripExpensesView from './TripExpensesView';
 import { Badge } from '@/components/ui/badge';
@@ -82,6 +90,7 @@ export default function Dashboard() {
   const [txType, setTxType] = useState<'gave' | 'got'>('gave');
   const [txRemark, setTxRemark] = useState('');
   const [txMode, setTxMode] = useState<ModeType>(getStoredDefaultTxMode);
+  const [txCategory, setTxCategory] = useState<LedgerCategory>('other');
   const [txDate, setTxDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   // --- Add Contact Form State ---
@@ -474,21 +483,33 @@ export default function Dashboard() {
     });
   }, [selectedContactId, filteredTransactions.length, ledgerSearchQuery]);
 
-  // --- Mode-wise Transaction Distribution top-level hook ---
+  // --- Mode + ledger category distribution for Overview ---
   const categoryDistribution = useMemo(() => {
     const distribution: Record<ModeType, number> = {
-      'Cash': 0, 'Online Transfer': 0
+      Cash: 0,
+      'Online Transfer': 0,
+    };
+    const ledgerCategories: Record<LedgerCategory, number> = {
+      food: 0,
+      travel: 0,
+      rent: 0,
+      business: 0,
+      personal: 0,
+      other: 0,
     };
     let grandTotal = 0;
 
-    contacts.forEach(c => {
-      c.transactions.forEach(t => {
-        distribution[t.mode] += t.amount;
+    contacts.forEach((c) => {
+      c.transactions.forEach((t) => {
+        const mode = t.mode === 'Online Transfer' ? 'Online Transfer' : 'Cash';
+        distribution[mode] += t.amount;
+        const cat = (t.category && LEDGER_CATEGORIES.includes(t.category) ? t.category : 'other') as LedgerCategory;
+        ledgerCategories[cat] += t.amount;
         grandTotal += t.amount;
       });
     });
 
-    return { distribution, grandTotal };
+    return { distribution, ledgerCategories, grandTotal };
   }, [contacts]);
 
   // --- Handlers: Add/Edit Friend ---
@@ -696,6 +717,7 @@ export default function Dashboard() {
     setTxAmount('');
     setTxRemark('');
     setTxMode(defaultTxMode);
+    setTxCategory('other');
     setTxDate(new Date().toISOString().split('T')[0]);
     setEditingTransaction(null);
     setIsAddTransactionOpen(true);
@@ -707,6 +729,9 @@ export default function Dashboard() {
     setTxType(tx.type);
     setTxRemark(tx.remark);
     setTxMode(tx.mode);
+    setTxCategory(
+      tx.category && LEDGER_CATEGORIES.includes(tx.category) ? tx.category : 'other'
+    );
     setTxDate(tx.date);
     setIsAddTransactionOpen(true);
   };
@@ -731,6 +756,7 @@ export default function Dashboard() {
             type: txType,
             remark: txDesc,
             mode: txMode,
+            category: txCategory,
             date: txDate,
           }),
         });
@@ -768,6 +794,7 @@ export default function Dashboard() {
             type: txType,
             remark: txDesc,
             mode: txMode,
+            category: txCategory,
             date: txDate,
           }),
         });
@@ -847,6 +874,7 @@ export default function Dashboard() {
           type,
           remark,
           mode: defaultTxMode || 'Online Transfer',
+          category: 'travel',
           date: today,
         }),
       });
@@ -868,6 +896,7 @@ export default function Dashboard() {
           type,
           remark,
           mode: defaultTxMode || 'Online Transfer',
+          category: 'travel',
           date: today,
           createdAt: new Date().toISOString(),
         };
@@ -887,6 +916,7 @@ export default function Dashboard() {
         type,
         remark,
         mode: defaultTxMode || 'Online Transfer',
+        category: 'travel',
         date: today,
         createdAt: new Date().toISOString(),
       };
@@ -950,6 +980,7 @@ export default function Dashboard() {
     setTxType(settleType);
     setTxRemark(mode === 'full' ? '🤝 Full Settlement' : '🤝 Partial Settlement');
     setTxMode('Cash');
+    setTxCategory('personal');
     setTxDate(new Date().toISOString().split('T')[0]);
     setEditingTransaction(null);
     setIsAddTransactionOpen(true);
@@ -1262,7 +1293,7 @@ export default function Dashboard() {
 
     const escapeCsv = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
     const rows = [
-      ['Contact', 'Phone', 'Email', 'Transaction Date', 'Logged At', 'Type', 'Mode', 'Remark', 'Amount'],
+      ['Contact', 'Phone', 'Email', 'Transaction Date', 'Logged At', 'Type', 'Mode', 'Category', 'Remark', 'Amount'],
       ...contacts.flatMap((contact) =>
         contact.transactions.length > 0
           ? contact.transactions.map((transaction) => [
@@ -1273,10 +1304,15 @@ export default function Dashboard() {
             transaction.createdAt || '',
             transaction.type === 'gave' ? 'You gave' : 'You got',
             transaction.mode,
+            LEDGER_CATEGORY_CONFIG[
+              transaction.category && LEDGER_CATEGORIES.includes(transaction.category)
+                ? transaction.category
+                : 'other'
+            ].label,
             transaction.remark,
             transaction.amount,
           ])
-          : [[contact.name, contact.phone, contact.email || '', '', '', '', '', 'No transactions yet', '']]
+          : [[contact.name, contact.phone, contact.email || '', '', '', '', '', '', 'No transactions yet', '']]
       ),
     ];
 
@@ -1316,6 +1352,12 @@ export default function Dashboard() {
         loggedAt: formatLoggedAt(transaction.createdAt) || '—',
         type: transaction.type === 'gave' ? 'You gave' : 'You got',
         mode: transaction.mode,
+        category:
+          LEDGER_CATEGORY_CONFIG[
+            transaction.category && LEDGER_CATEGORIES.includes(transaction.category)
+              ? transaction.category
+              : 'other'
+          ].label,
         remark: transaction.remark,
         amount: transaction.amount,
       }))
@@ -1367,11 +1409,11 @@ export default function Dashboard() {
           </div>
           <table>
             <thead>
-              <tr><th>Transaction Date</th><th>Logged At</th><th>Contact</th><th>Type</th><th>Mode</th><th>Remark</th><th class="amount">Amount</th></tr>
+              <tr><th>Transaction Date</th><th>Logged At</th><th>Contact</th><th>Type</th><th>Mode</th><th>Category</th><th>Remark</th><th class="amount">Amount</th></tr>
             </thead>
             <tbody>
               ${rows.length === 0
-        ? '<tr><td colspan="7">No transactions yet.</td></tr>'
+        ? '<tr><td colspan="8">No transactions yet.</td></tr>'
         : rows.map((row) => `
                   <tr>
                     <td>${escapeHtml(row.date)}</td>
@@ -1379,6 +1421,7 @@ export default function Dashboard() {
                     <td>${escapeHtml(row.contact)}<div class="muted">${escapeHtml(row.phone)}</div></td>
                     <td>${escapeHtml(row.type)}</td>
                     <td>${escapeHtml(row.mode)}</td>
+                    <td>${escapeHtml(row.category)}</td>
                     <td>${escapeHtml(row.remark)}</td>
                     <td class="amount">₹${row.amount.toLocaleString('en-IN')}</td>
                   </tr>
@@ -2316,6 +2359,8 @@ export default function Dashboard() {
                                       {formatEventDate(tx.date)}
                                       {' · '}
                                       {tx.mode === 'Online Transfer' ? 'Online' : 'Cash'}
+                                      {' · '}
+                                      {LEDGER_CATEGORY_CONFIG[tx.category && LEDGER_CATEGORIES.includes(tx.category) ? tx.category : 'other'].label}
                                     </p>
                                     <div className="mt-2.5 flex items-center gap-3">
                                       <button
@@ -2493,6 +2538,107 @@ export default function Dashboard() {
                   </div>
                   <span className="text-xs font-bold text-violet-400 shrink-0">Open →</span>
                 </div>
+
+                {/* Cash vs Online + category insights */}
+                {categoryDistribution.grandTotal > 0 && (
+                  <div className="space-y-3">
+                    <div
+                      className="rounded-3xl p-4 space-y-3"
+                      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+                    >
+                      <div>
+                        <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                          Cash vs Online
+                        </h3>
+                        <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                          How money moved across your ledgers
+                        </p>
+                      </div>
+                      {([
+                        { key: 'Cash' as const, label: 'Cash', icon: '💵', color: '#f59e0b' },
+                        { key: 'Online Transfer' as const, label: 'Online', icon: '🏦', color: '#38bdf8' },
+                      ]).map(({ key, label, icon, color }) => {
+                        const value = categoryDistribution.distribution[key];
+                        const pct =
+                          categoryDistribution.grandTotal > 0
+                            ? Math.round((value / categoryDistribution.grandTotal) * 100)
+                            : 0;
+                        return (
+                          <div key={key} className="space-y-1.5">
+                            <div className="flex items-center justify-between gap-2 text-xs">
+                              <span className="font-bold" style={{ color: 'var(--text-secondary)' }}>
+                                {icon} {label}
+                              </span>
+                              <span className="font-black tabular-nums" style={{ color: 'var(--text-primary)' }}>
+                                {showBalances ? `₹${value.toLocaleString('en-IN')}` : '****'}
+                                <span className="text-[10px] font-bold ml-1.5" style={{ color: 'var(--text-muted)' }}>
+                                  {pct}%
+                                </span>
+                              </span>
+                            </div>
+                            <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--bg-raised)' }}>
+                              <div
+                                className="h-full rounded-full transition-all"
+                                style={{ width: `${pct}%`, background: color }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div
+                      className="rounded-3xl p-4 space-y-3"
+                      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+                    >
+                      <div>
+                        <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                          By category
+                        </h3>
+                        <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                          Food, travel, rent, and more
+                        </p>
+                      </div>
+                      <div className="space-y-2.5">
+                        {LEDGER_CATEGORIES
+                          .map((cat) => ({
+                            cat,
+                            value: categoryDistribution.ledgerCategories[cat],
+                            cfg: LEDGER_CATEGORY_CONFIG[cat],
+                          }))
+                          .filter(({ value }) => value > 0)
+                          .sort((a, b) => b.value - a.value)
+                          .map(({ cat, value, cfg }) => {
+                            const pct =
+                              categoryDistribution.grandTotal > 0
+                                ? Math.round((value / categoryDistribution.grandTotal) * 100)
+                                : 0;
+                            return (
+                              <div key={cat} className="space-y-1.5">
+                                <div className="flex items-center justify-between gap-2 text-xs">
+                                  <span className="font-bold" style={{ color: 'var(--text-secondary)' }}>
+                                    {cfg.icon} {cfg.label}
+                                  </span>
+                                  <span className="font-black tabular-nums" style={{ color: 'var(--text-primary)' }}>
+                                    {showBalances ? `₹${value.toLocaleString('en-IN')}` : '****'}
+                                    <span className="text-[10px] font-bold ml-1.5" style={{ color: 'var(--text-muted)' }}>
+                                      {pct}%
+                                    </span>
+                                  </span>
+                                </div>
+                                <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--bg-raised)' }}>
+                                  <div
+                                    className="h-full rounded-full transition-all"
+                                    style={{ width: `${pct}%`, background: cfg.tone }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Contact breakdown */}
                 {contacts.length > 0 && (
@@ -3139,6 +3285,33 @@ export default function Dashboard() {
                   <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>For what?</label>
                   <input type="text" required value={txRemark} onChange={e => setTxRemark(e.target.value)}
                     className="input-field rounded-2xl" placeholder="e.g. Dinner, cab share, rent…" />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Category</label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {LEDGER_CATEGORIES.map((cat) => {
+                      const cfg = LEDGER_CATEGORY_CONFIG[cat];
+                      const selected = txCategory === cat;
+                      return (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => setTxCategory(cat)}
+                          className="rounded-xl px-2 py-2 text-[11px] font-bold transition-all"
+                          style={{
+                            background: selected
+                              ? `color-mix(in srgb, ${cfg.tone} 18%, var(--bg-raised))`
+                              : 'var(--bg-raised)',
+                            color: selected ? cfg.tone : 'var(--text-muted)',
+                            border: `1px solid ${selected ? `${cfg.tone}55` : 'var(--border-soft)'}`,
+                          }}
+                        >
+                          {cfg.icon} {cfg.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

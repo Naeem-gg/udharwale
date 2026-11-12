@@ -25,7 +25,7 @@ export async function PUT(
     await connectToDatabase();
     const { id, txId } = await params;
     const body = await req.json();
-    const { amount, mode, remark, date, type } = body;
+    const { amount, mode, remark, date, type, category } = body;
 
     const access = await findAccessibleContact(id, userId);
     if (!access) {
@@ -40,12 +40,16 @@ export async function PUT(
     }
 
     const before = snapshotTx(tx);
+    const allowedCategories = ['food', 'travel', 'rent', 'business', 'personal', 'other'];
 
     if (amount !== undefined) tx.amount = Number(amount);
     if (mode !== undefined) tx.mode = mode;
     if (remark !== undefined) tx.remark = remark;
     if (date !== undefined) tx.date = date;
     if (type !== undefined) tx.type = toOwnerType(type, role);
+    if (category !== undefined) {
+      (tx as any).category = allowedCategories.includes(category) ? category : 'other';
+    }
 
     (tx as any).updatedByUserId = userId;
     (tx as any).updatedAt = new Date().toISOString();

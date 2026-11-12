@@ -25,6 +25,11 @@ const TransactionSchema = new Schema({
     enum: ['Cash', 'Online Transfer'],
     required: true
   },
+  category: {
+    type: String,
+    enum: ['food', 'travel', 'rent', 'business', 'personal', 'other'],
+    default: 'other',
+  },
   createdByUserId: { type: Schema.Types.ObjectId, ref: 'User', required: false },
   updatedByUserId: { type: Schema.Types.ObjectId, ref: 'User', required: false },
   updatedAt: { type: String, required: false },
@@ -70,6 +75,7 @@ export interface ITransactionSub extends Document {
   date: string;
   createdAt?: string;
   mode: string;
+  category?: string;
   createdByUserId?: mongoose.Types.ObjectId;
   updatedByUserId?: mongoose.Types.ObjectId;
   updatedAt?: string;

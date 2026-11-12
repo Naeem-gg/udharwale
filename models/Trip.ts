@@ -48,6 +48,18 @@ const TripParticipantSchema = new Schema(
   { _id: false }
 );
 
+const SettlementPaymentSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    amount: { type: Number, required: true },
+    paidAt: { type: String, required: true },
+    paidBy: { type: String, required: false },
+    paymentMethod: { type: String, required: false },
+    note: { type: String, required: false },
+  },
+  { _id: false }
+);
+
 const TripSettlementSchema = new Schema(
   {
     id: { type: String, required: true },
@@ -58,7 +70,11 @@ const TripSettlementSchema = new Schema(
     amount: { type: Number, required: true },
     fromContactId: { type: String, required: false },
     toContactId: { type: String, required: false },
+    paidAmount: { type: Number, default: 0 },
+    remainingAmount: { type: Number, required: false },
     isSettled: { type: Boolean, default: false },
+    isPartial: { type: Boolean, default: false },
+    payments: { type: [SettlementPaymentSchema], default: [] },
     settledAt: { type: String, required: false },
     settledBy: { type: String, required: false },
     paymentMethod: { type: String, required: false },

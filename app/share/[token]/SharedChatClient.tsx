@@ -16,6 +16,7 @@ type SharedTx = {
   date: string;
   createdAt?: string;
   mode: string;
+  category?: string;
 };
 
 type ViewerState = {
@@ -567,6 +568,9 @@ export default function SharedChatClient({ token }: { token: string }) {
                             {formatEventDate(tx.date)}
                             {' · '}
                             {tx.mode === 'Online Transfer' ? 'Online' : 'Cash'}
+                            {tx.category
+                              ? ` · ${tx.category.charAt(0).toUpperCase()}${tx.category.slice(1)}`
+                              : ''}
                           </p>
                         </motion.article>
                       );

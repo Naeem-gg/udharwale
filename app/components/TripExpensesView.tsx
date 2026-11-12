@@ -90,6 +90,8 @@ export default function TripExpensesView({
   const [acknowledgingSettlement, setAcknowledgingSettlement] = useState<TripSettlement | null>(null);
   const [ackPaymentMethod, setAckPaymentMethod] = useState<'UPI' | 'Cash' | 'Bank Transfer' | 'Other'>('UPI');
   const [ackNote, setAckNote] = useState('');
+  const [ackSettleMode, setAckSettleMode] = useState<'full' | 'partial'>('full');
+  const [ackAmount, setAckAmount] = useState('');
 
   const [editingExpense, setEditingExpense] = useState<TripExpense | null>(null);
   const [publicShareUrl, setPublicShareUrl] = useState<string | null>(null);
@@ -342,10 +344,13 @@ export default function TripExpensesView({
   };
 
   // Settlement Acknowledgement Handlers
-  const openAcknowledgeModal = (st: TripSettlement) => {
+  const openAcknowledgeModal = (st: TripSettlement, mode: 'full' | 'partial' = 'full') => {
+    const remaining = st.remainingAmount > 0.01 ? st.remainingAmount : Math.max(0, st.amount - (st.paidAmount || 0));
     setAcknowledgingSettlement(st);
     setAckPaymentMethod((st.paymentMethod as any) || 'UPI');
     setAckNote(st.note || '');
+    setAckSettleMode(mode);
+    setAckAmount(mode === 'full' ? remaining.toString() : '');
     setIsAcknowledgeModalOpen(true);
   };
 
@@ -353,13 +358,44 @@ export default function TripExpensesView({
     e.preventDefault();
     if (!currentTrip || !acknowledgingSettlement) return;
 
+    const total = acknowledgingSettlement.amount;
+    const previousPaid = acknowledgingSettlement.paidAmount || 0;
+    const remaining = Math.max(0, Math.round((total - previousPaid) * 100) / 100);
+    const parsed = parseFloat(ackAmount);
+    const paymentAmt =
+      ackSettleMode === 'full'
+        ? remaining
+        : Math.min(remaining, Math.max(0, Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : 0));
+
+    if (paymentAmt <= 0.009) {
+      showToast('Enter a valid payment amount.', 'error');
+      return;
+    }
+
+    const newPaid = Math.min(total, Math.round((previousPaid + paymentAmt) * 100) / 100);
+    const newRemaining = Math.max(0, Math.round((total - newPaid) * 100) / 100);
+    const fullySettled = newRemaining <= 0.01;
+    const nowIso = new Date().toISOString();
+    const paymentRecord = {
+      id: `pay_${Date.now()}`,
+      amount: paymentAmt,
+      paidAt: nowIso,
+      paidBy: userName || 'You',
+      paymentMethod: ackPaymentMethod,
+      note: ackNote.trim(),
+    };
+
     const existingSettlements = currentTrip.settlements ? [...currentTrip.settlements] : [];
     const index = existingSettlements.findIndex((s) => s.id === acknowledgingSettlement.id);
 
     const record: TripSettlement = {
       ...acknowledgingSettlement,
-      isSettled: true,
-      settledAt: new Date().toISOString(),
+      paidAmount: fullySettled ? total : newPaid,
+      remainingAmount: fullySettled ? 0 : newRemaining,
+      isSettled: fullySettled,
+      isPartial: !fullySettled && newPaid > 0.01,
+      payments: [...(acknowledgingSettlement.payments || []), paymentRecord],
+      settledAt: nowIso,
       settledBy: userName || 'You',
       paymentMethod: ackPaymentMethod,
       note: ackNote.trim(),
@@ -381,7 +417,12 @@ export default function TripExpensesView({
     await saveTripsState(newTrips);
     setIsAcknowledgeModalOpen(false);
     setAcknowledgingSettlement(null);
-    showToast(`Payment of ₹${record.amount.toLocaleString('en-IN')} marked as Settled & Acknowledged! ✅`, 'success');
+    showToast(
+      fullySettled
+        ? `Payment of ₹${paymentAmt.toLocaleString('en-IN')} marked fully settled! ✅`
+        : `Partial payment of ₹${paymentAmt.toLocaleString('en-IN')} recorded · ₹${newRemaining.toLocaleString('en-IN')} remaining`,
+      'success'
+    );
   };
 
   const handleReopenSettlement = async (st: TripSettlement) => {
@@ -389,18 +430,23 @@ export default function TripExpensesView({
     const existingSettlements = currentTrip.settlements ? [...currentTrip.settlements] : [];
     const index = existingSettlements.findIndex((s) => s.id === st.id);
 
+    const reset: TripSettlement = {
+      ...st,
+      paidAmount: 0,
+      remainingAmount: st.amount,
+      isSettled: false,
+      isPartial: false,
+      payments: [],
+      settledAt: undefined,
+      settledBy: undefined,
+      paymentMethod: undefined,
+      note: undefined,
+    };
+
     if (index >= 0) {
-      existingSettlements[index] = {
-        ...existingSettlements[index],
-        isSettled: false,
-        settledAt: undefined,
-        settledBy: undefined,
-      };
+      existingSettlements[index] = reset;
     } else {
-      existingSettlements.push({
-        ...st,
-        isSettled: false,
-      });
+      existingSettlements.push(reset);
     }
 
     const updatedTrip: Trip = {
@@ -416,7 +462,12 @@ export default function TripExpensesView({
 
   const handleSendSettlementReminder = async (st: TripSettlement) => {
     if (!currentTrip) return;
-    const text = `Hey ${st.fromName}! 👋 Friendly reminder regarding our *${currentTrip.name}* trip expenses:\n\nPending settlement amount: *₹${st.amount.toLocaleString('en-IN')}* payable to *${st.toName}*.\n\nPlease clear it when free! Check full breakdown here: ${publicShareUrl || window.location.href}`;
+    const due = st.remainingAmount > 0.01 ? st.remainingAmount : st.amount;
+    const partialNote =
+      st.isPartial || (st.paidAmount || 0) > 0.01
+        ? ` (₹${(st.paidAmount || 0).toLocaleString('en-IN')} already paid)`
+        : '';
+    const text = `Hey ${st.fromName}! 👋 Friendly reminder regarding our *${currentTrip.name}* trip expenses:\n\nPending settlement amount: *₹${due.toLocaleString('en-IN')}*${partialNote} payable to *${st.toName}*.\n\nPlease clear it when free! Check full breakdown here: ${publicShareUrl || window.location.href}`;
     try {
       if (navigator.share) {
         await navigator.share({
@@ -592,11 +643,13 @@ export default function TripExpensesView({
 
     const type = isToMe ? 'gave' : 'got';
     const remark = `Trip: ${currentTrip.name} settlement`;
+    const ledgerAmount =
+      settlement.remainingAmount > 0.01 ? settlement.remainingAmount : settlement.amount;
 
     try {
-      await onRecordToLedger(targetContactId, settlement.amount, type, remark);
+      await onRecordToLedger(targetContactId, ledgerAmount, type, remark);
       showToast(
-        `Recorded ₹${settlement.amount} settlement in ${otherPersonName}'s ledger! ✨`,
+        `Recorded ₹${ledgerAmount.toLocaleString('en-IN')} settlement in ${otherPersonName}'s ledger! ✨`,
         'success'
       );
     } catch {
@@ -843,6 +896,11 @@ export default function TripExpensesView({
                   <div className="space-y-2.5">
                     {filteredSettlements.map((st, i) => {
                       const isSettled = st.isSettled;
+                      const isPartial = st.isPartial || ((st.paidAmount || 0) > 0.01 && !isSettled);
+                      const remaining =
+                        st.remainingAmount > 0.01
+                          ? st.remainingAmount
+                          : Math.max(0, st.amount - (st.paidAmount || 0));
 
                       return (
                         <div
@@ -851,7 +909,9 @@ export default function TripExpensesView({
                             'p-3 rounded-xl flex flex-col gap-2.5 transition-all',
                             isSettled
                               ? 'border border-emerald-500/25 bg-emerald-500/5'
-                              : 'border border-rose-500/20 bg-rose-500/5'
+                              : isPartial
+                                ? 'border border-amber-500/30 bg-amber-500/5'
+                                : 'border border-rose-500/20 bg-rose-500/5'
                           )}
                         >
                           <div className="flex items-center justify-between gap-3">
@@ -873,6 +933,10 @@ export default function TripExpensesView({
                                     <span className="text-[9px] font-extrabold text-emerald-300 bg-emerald-500/20 px-1.5 py-0.2 rounded flex items-center gap-0.5">
                                       <CheckCircle2 className="w-2.5 h-2.5" /> Settled
                                     </span>
+                                  ) : isPartial ? (
+                                    <span className="text-[9px] font-extrabold text-amber-300 bg-amber-500/20 px-1.5 py-0.2 rounded flex items-center gap-0.5">
+                                      <Clock className="w-2.5 h-2.5" /> Partial
+                                    </span>
                                   ) : (
                                     <span className="text-[9px] font-extrabold text-amber-300 bg-amber-500/20 px-1.5 py-0.2 rounded flex items-center gap-0.5">
                                       <Clock className="w-2.5 h-2.5" /> Due
@@ -882,7 +946,9 @@ export default function TripExpensesView({
                                 <span className="text-[10px] text-slate-400 truncate block mt-0.5">
                                   {isSettled
                                     ? `Paid ${st.paymentMethod ? `via ${st.paymentMethod}` : ''} ${st.note ? `• "${st.note}"` : ''}`
-                                    : 'Settlement debt transfer'}
+                                    : isPartial
+                                      ? `${currency}${(st.paidAmount || 0).toLocaleString('en-IN')} paid · ${currency}${remaining.toLocaleString('en-IN')} left`
+                                      : 'Settlement debt transfer'}
                                 </span>
                               </div>
                             </div>
@@ -894,14 +960,19 @@ export default function TripExpensesView({
                                   isSettled ? 'text-emerald-400 line-through opacity-75' : 'text-white'
                                 )}
                               >
-                                {currency}{st.amount.toLocaleString('en-IN')}
+                                {currency}{(isSettled ? st.amount : remaining).toLocaleString('en-IN')}
                               </div>
+                              {isPartial && (
+                                <span className="text-[9px] text-slate-500 block">
+                                  of {currency}{st.amount.toLocaleString('en-IN')}
+                                </span>
+                              )}
                             </div>
                           </div>
 
                           {/* Quick Actions */}
                           <div className="pt-1.5 border-t border-white/5 flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               {isSettled ? (
                                 <motion.button
                                   whileTap={{ scale: 0.94 }}
@@ -912,14 +983,23 @@ export default function TripExpensesView({
                                   <span>Revert</span>
                                 </motion.button>
                               ) : (
-                                <motion.button
-                                  whileTap={{ scale: 0.94 }}
-                                  onClick={() => openAcknowledgeModal(st)}
-                                  className="px-2.5 py-1 rounded-lg text-[11px] font-extrabold text-white bg-emerald-600 hover:bg-emerald-500 transition-all inline-flex items-center gap-1 shadow-sm"
-                                >
-                                  <CheckCircle2 className="w-3 h-3" />
-                                  <span>Mark Paid</span>
-                                </motion.button>
+                                <>
+                                  <motion.button
+                                    whileTap={{ scale: 0.94 }}
+                                    onClick={() => openAcknowledgeModal(st, 'full')}
+                                    className="px-2.5 py-1 rounded-lg text-[11px] font-extrabold text-white bg-emerald-600 hover:bg-emerald-500 transition-all inline-flex items-center gap-1 shadow-sm"
+                                  >
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    <span>{isPartial ? 'Pay Rest' : 'Mark Paid'}</span>
+                                  </motion.button>
+                                  <motion.button
+                                    whileTap={{ scale: 0.94 }}
+                                    onClick={() => openAcknowledgeModal(st, 'partial')}
+                                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-amber-200 bg-amber-500/15 hover:bg-amber-500/25 transition-colors inline-flex items-center gap-1"
+                                  >
+                                    <span>Partial</span>
+                                  </motion.button>
+                                </>
                               )}
 
                               {!isSettled && (
@@ -1259,14 +1339,89 @@ export default function TripExpensesView({
                   <span className="text-[9px] font-extrabold uppercase text-emerald-400 tracking-wider">
                     Settlement Transfer
                   </span>
-                  <div className="text-xs font-bold text-white flex items-center justify-between">
+                  <div className="text-xs font-bold text-white flex items-center justify-between gap-2">
                     <span>
-                      <strong className="text-rose-400">{acknowledgingSettlement.fromName}</strong> paid to{' '}
+                      <strong className="text-rose-400">{acknowledgingSettlement.fromName}</strong> →{' '}
                       <strong className="text-emerald-400">{acknowledgingSettlement.toName}</strong>
                     </span>
-                    <span className="text-base font-black text-white tabular-nums">
+                    <span className="text-base font-black text-white tabular-nums shrink-0">
                       {currency}{acknowledgingSettlement.amount.toLocaleString('en-IN')}
                     </span>
+                  </div>
+                  {(acknowledgingSettlement.paidAmount || 0) > 0.01 && (
+                    <p className="text-[10px] text-amber-300 font-semibold pt-1">
+                      Already paid {currency}{(acknowledgingSettlement.paidAmount || 0).toLocaleString('en-IN')} ·{' '}
+                      {currency}
+                      {Math.max(
+                        0,
+                        acknowledgingSettlement.remainingAmount > 0
+                          ? acknowledgingSettlement.remainingAmount
+                          : acknowledgingSettlement.amount - (acknowledgingSettlement.paidAmount || 0)
+                      ).toLocaleString('en-IN')}{' '}
+                      remaining
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-300">Settlement type</label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {([
+                      { id: 'full' as const, label: 'Pay remaining' },
+                      { id: 'partial' as const, label: 'Partial payment' },
+                    ]).map((m) => (
+                      <button
+                        type="button"
+                        key={m.id}
+                        onClick={() => {
+                          setAckSettleMode(m.id);
+                          const rem =
+                            acknowledgingSettlement.remainingAmount > 0.01
+                              ? acknowledgingSettlement.remainingAmount
+                              : Math.max(
+                                  0,
+                                  acknowledgingSettlement.amount - (acknowledgingSettlement.paidAmount || 0)
+                                );
+                          setAckAmount(m.id === 'full' ? rem.toString() : '');
+                        }}
+                        className={cn(
+                          'py-1.5 px-1 rounded-lg text-xs font-extrabold transition-all text-center',
+                          ackSettleMode === m.id
+                            ? 'bg-emerald-600 text-white shadow-md'
+                            : 'bg-slate-800/60 text-slate-400 hover:text-white'
+                        )}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-300">
+                    {ackSettleMode === 'full' ? 'Amount (remaining)' : 'Amount paying now'}
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">
+                      {currency}
+                    </span>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      required
+                      value={ackAmount}
+                      onChange={(e) => {
+                        setAckAmount(e.target.value);
+                        setAckSettleMode('partial');
+                      }}
+                      className="w-full pl-7 pr-3 py-2 rounded-xl text-xs outline-none font-bold text-white tabular-nums"
+                      style={{
+                        background: 'var(--bg-raised)',
+                        border: '1px solid var(--border-soft)',
+                      }}
+                      placeholder="0"
+                    />
                   </div>
                 </div>
 
@@ -1318,7 +1473,9 @@ export default function TripExpensesView({
                     className="w-full py-2.5 rounded-xl text-xs font-black text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-md shadow-emerald-600/25 transition-all flex items-center justify-center gap-1.5"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Confirm & Mark Settled</span>
+                    <span>
+                      {ackSettleMode === 'partial' ? 'Record Partial Payment' : 'Confirm & Mark Settled'}
+                    </span>
                   </motion.button>
                 </div>
               </form>

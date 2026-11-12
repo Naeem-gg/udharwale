@@ -21,7 +21,8 @@ export const INITIAL_CONTACTS: Contact[] = [
         remark: 'Dinner at Punjabi Rasoi',
         date: '2026-08-10',
         createdAt: '2026-08-10T20:15:00.000Z',
-        mode: 'Cash'
+        mode: 'Cash',
+        category: 'food'
       },
       {
         id: 't2',
@@ -30,7 +31,8 @@ export const INITIAL_CONTACTS: Contact[] = [
         remark: 'Cab fare share',
         date: '2026-08-12',
         createdAt: '2026-08-13T09:40:00.000Z',
-        mode: 'Online Transfer'
+        mode: 'Online Transfer',
+        category: 'travel'
       },
       {
         id: 't3',
@@ -39,7 +41,8 @@ export const INITIAL_CONTACTS: Contact[] = [
         remark: 'Movie tickets',
         date: '2026-09-05',
         createdAt: '2026-09-05T22:05:00.000Z',
-        mode: 'Online Transfer'
+        mode: 'Online Transfer',
+        category: 'personal'
       }
     ]
   },

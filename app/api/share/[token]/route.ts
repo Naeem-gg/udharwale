@@ -88,6 +88,7 @@ export async function GET(
         date: tx.date,
         createdAt: tx.createdAt,
         mode: tx.mode,
+        category: tx.category || 'other',
       })),
     });
   } catch (error) {
