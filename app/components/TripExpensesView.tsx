@@ -3,19 +3,17 @@
 import { cn } from '@/lib/utils';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
+  ArrowLeft,
   Check,
   CheckCircle2,
-  Clock,
   CreditCard,
   FolderPlus,
   RotateCcw,
   Search,
   Send,
   Share2,
-  ShieldCheck,
   Split,
-  TrendingUp,
-  X
+  X,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -66,10 +64,11 @@ export default function TripExpensesView({
   // Trips State
   const [trips, setTrips] = useState<Trip[]>([]);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'expenses' | 'settlement'>('expenses');
+  const [showDetail, setShowDetail] = useState(false);
+  const [activeTab, setActiveTab] = useState<'expenses' | 'settlement'>('settlement');
+  const [tabReady, setTabReady] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [settlementFilter, setSettlementFilter] = useState<'all' | 'pending' | 'settled'>('all');
 
   // Modals
   const [isNewTripModalOpen, setIsNewTripModalOpen] = useState(false);
@@ -128,9 +127,6 @@ export default function TripExpensesView({
     }
 
     setTrips(loadedTrips);
-    if (!selectedTripId && loadedTrips.length > 0) {
-      setSelectedTripId(loadedTrips[0].id);
-    }
 
     // Try fetching from server
     fetch('/api/trips')
@@ -141,7 +137,6 @@ export default function TripExpensesView({
       .then((remoteTrips: Trip[]) => {
         if (Array.isArray(remoteTrips) && remoteTrips.length > 0) {
           setTrips(remoteTrips);
-          if (!selectedTripId) setSelectedTripId(remoteTrips[0].id);
           try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteTrips));
           } catch {}
@@ -150,10 +145,21 @@ export default function TripExpensesView({
       .catch(() => {});
   }, [userName, contacts]);
 
-  // Selected Trip
+  // Selected Trip — null on list view
   const currentTrip = useMemo(() => {
-    return trips.find((t) => t.id === selectedTripId) || trips[0] || null;
+    if (!selectedTripId) return null;
+    return trips.find((t) => t.id === selectedTripId) || null;
   }, [trips, selectedTripId]);
+
+  const openTrip = (id: string) => {
+    setSelectedTripId(id);
+    setShowDetail(true);
+    setTabReady(false);
+  };
+
+  const backToList = () => {
+    setShowDetail(false);
+  };
 
   // Current Trip Calculations
   const tripSummary = useMemo(() => {
@@ -535,6 +541,8 @@ export default function TripExpensesView({
     const updated = [newTrip, ...trips];
     setTrips(updated);
     setSelectedTripId(newTrip.id);
+    setShowDetail(true);
+    setTabReady(false);
     setIsNewTripModalOpen(false);
 
     try {
@@ -555,7 +563,9 @@ export default function TripExpensesView({
     const updated = [demo, ...trips.filter((t) => t.id !== demo.id)];
     await saveTripsState(updated);
     setSelectedTripId(demo.id);
-    showToast('Loaded sample Goa Trip! 🏖️', 'success');
+    setShowDetail(true);
+    setTabReady(false);
+    showToast('Loaded sample Goa Trip', 'success');
   };
 
   // Generate / Open Public Share Link
@@ -658,740 +668,718 @@ export default function TripExpensesView({
     });
   }, [currentTrip, searchQuery, categoryFilter]);
 
-  // Filtered settlements in Settlement Tab
-  const filteredSettlements = useMemo(() => {
-    if (!tripSummary) return [];
-    if (settlementFilter === 'pending') {
-      return tripSummary.settlements.filter((s) => !s.isSettled);
-    }
-    if (settlementFilter === 'settled') {
-      return tripSummary.settlements.filter((s) => s.isSettled);
-    }
-    return tripSummary.settlements;
-  }, [tripSummary, settlementFilter]);
+  const pendingSettlements = useMemo(
+    () => (tripSummary ? tripSummary.settlements.filter((s) => !s.isSettled) : []),
+    [tripSummary]
+  );
+  const settledSettlements = useMemo(
+    () => (tripSummary ? tripSummary.settlements.filter((s) => s.isSettled) : []),
+    [tripSummary]
+  );
+
+  useEffect(() => {
+    if (!tripSummary || tabReady || !showDetail) return;
+    setActiveTab(tripSummary.pendingSettlementsCount > 0 ? 'settlement' : 'expenses');
+    setTabReady(true);
+  }, [tripSummary, tabReady, showDetail]);
+
+  const tripListRows = useMemo(() => {
+    return trips.map((trip) => {
+      const summary = calculateTripSummary(trip);
+      return {
+        trip,
+        pending: summary.totalPendingAmount,
+        pendingCount: summary.pendingSettlementsCount,
+        totalSpend: summary.totalSpend,
+      };
+    });
+  }, [trips]);
 
   const currency = currentTrip?.currency || '₹';
 
+  const formatWhen = (iso?: string) => {
+    if (!iso) return '';
+    try {
+      return new Date(iso).toLocaleString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return iso;
+    }
+  };
+
+  const remainingForAck = acknowledgingSettlement
+    ? acknowledgingSettlement.remainingAmount > 0.01
+      ? acknowledgingSettlement.remainingAmount
+      : Math.max(0, acknowledgingSettlement.amount - (acknowledgingSettlement.paidAmount || 0))
+    : 0;
+
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden relative" style={{ background: 'var(--bg-base)' }}>
-      {/* App bar */}
-      <div
-        className="px-4 pt-3 pb-2 shrink-0 border-b"
-        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-soft)' }}
-      >
-        <div className="flex items-center justify-between gap-3 mb-2">
-          <div className="min-w-0">
-            <h1 className="text-xl font-bold leading-none" style={{ color: 'var(--text-primary)' }}>Trips</h1>
-            <p className="text-[11px] mt-1 truncate" style={{ color: 'var(--text-muted)' }}>
-              {currentTrip?.destination || 'Group expenses'} · {currentTrip?.participants.length || 0} people
-            </p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
+    <div className="flex-1 flex flex-col h-full overflow-hidden relative" style={{ background: 'var(--bg-base)', color: 'var(--text-primary)' }}>
+      {!showDetail || !currentTrip ? (
+        <>
+          <div
+            className="px-4 pt-3 pb-3 shrink-0 flex items-center justify-between gap-3"
+            style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-soft)' }}
+          >
+            <div>
+              <h1 className="text-xl font-bold leading-none">Trips</h1>
+              <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>
+                {trips.length} trip{trips.length === 1 ? '' : 's'}
+              </p>
+            </div>
             <button
               type="button"
               onClick={() => setIsNewTripModalOpen(true)}
-              className="w-9 h-9 rounded-full flex items-center justify-center"
-              style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-muted)' }}
-              aria-label="New trip"
+              className="h-9 px-3.5 rounded-xl text-xs font-semibold text-white inline-flex items-center gap-1.5"
+              style={{ background: 'var(--primary)' }}
             >
-              <FolderPlus className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={openAddExpenseModal}
-              className="h-9 px-3.5 rounded-full text-xs font-bold text-white"
-              style={{ background: 'linear-gradient(135deg,var(--primary),var(--primary))' }}
-            >
-              + Expense
+              <FolderPlus className="w-3.5 h-3.5" />
+              New trip
             </button>
           </div>
-        </div>
 
-        <select
-          value={selectedTripId || ''}
-          onChange={(e) => setSelectedTripId(e.target.value)}
-          className="w-full px-3 py-2.5 text-sm font-bold rounded-2xl outline-none"
-          style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }}
-        >
-          {trips.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
-
-        {tripSummary && (
-          <div className="mt-2.5 grid grid-cols-3 gap-2">
-            <div className="rounded-2xl px-2.5 py-2 text-center" style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>
-              <p className="text-sm font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>
-                {currency}{tripSummary.totalSpend.toLocaleString('en-IN')}
-              </p>
-              <p className="text-[10px] font-bold mt-0.5" style={{ color: 'var(--text-muted)' }}>Spent</p>
-            </div>
-            <div className="rounded-2xl px-2.5 py-2 text-center" style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>
-              <p className="text-sm font-bold tabular-nums leading-tight" style={{ color: '#34d399' }}>
-                {tripSummary.hasUnevenShares
-                  ? `${currency}${tripSummary.minShare.toLocaleString('en-IN')}–${tripSummary.maxShare.toLocaleString('en-IN')}`
-                  : `${currency}${tripSummary.perHeadAverage.toLocaleString('en-IN')}`}
-              </p>
-              <p className="text-[10px] font-bold mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                {tripSummary.hasUnevenShares ? 'Share range' : 'Per head'}
-              </p>
-            </div>
-            <div className="rounded-2xl px-2.5 py-2 text-center" style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>
-              <p className="text-sm font-bold tabular-nums" style={{ color: tripSummary.totalPendingAmount > 0 ? '#fb7185' : '#34d399' }}>
-                {currency}{tripSummary.totalPendingAmount.toLocaleString('en-IN')}
-              </p>
-              <p className="text-[10px] font-bold mt-0.5" style={{ color: 'var(--text-muted)' }}>Pending</p>
-            </div>
-          </div>
-        )}
-
-        <div className="mt-2.5 flex gap-2">
-          <button
-            type="button"
-            onClick={handleShareToWhatsApp}
-            className="flex-1 py-2 rounded-xl text-xs font-bold"
-            style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)', color: '#34d399' }}
-          >
-            {copiedWhatsApp ? 'Copied' : 'Share summary'}
-          </button>
-          <button
-            type="button"
-            onClick={handleGenerateShareLink}
-            className="flex-1 py-2 rounded-xl text-xs font-bold"
-            style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-secondary)' }}
-          >
-            Copy link
-          </button>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="px-4 py-2 shrink-0" style={{ background: 'var(--bg-base)' }}>
-        <div
-          className="flex p-1 rounded-2xl gap-1"
-          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
-        >
-          {([
-            { id: 'expenses' as const, label: 'Expenses' },
-            {
-              id: 'settlement' as const,
-              label: tripSummary?.pendingSettlementsCount
-                ? `Settle (${tripSummary.pendingSettlementsCount})`
-                : 'Settle',
-            },
-          ]).map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className="flex-1 py-2 rounded-xl text-xs font-bold transition-colors"
-              style={{
-                background: activeTab === tab.id ? 'rgba(15,118,110,0.2)' : 'transparent',
-                color: activeTab === tab.id ? 'var(--primary)' : 'var(--text-muted)',
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 pb-8">
-        <AnimatePresence mode="wait">
-          {activeTab === 'settlement' && tripSummary && (
-            <motion.div
-              key="settlement"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.18 }}
-              className="space-y-3"
-            >
+          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 pb-8">
+            {tripListRows.length === 0 ? (
               <div
-                className="rounded-2xl p-3.5"
+                className="rounded-2xl p-8 text-center space-y-3"
                 style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
               >
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <div>
-                    <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                      {tripSummary.settlementProgressPct}% settled
-                    </p>
-                    <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                      {tripSummary.settledSettlementsCount}/{tripSummary.settlements.length} transfers
-                    </p>
-                  </div>
-                  <p className="text-sm font-bold tabular-nums" style={{ color: tripSummary.totalPendingAmount > 0 ? '#fb7185' : '#34d399' }}>
-                    {currency}{tripSummary.totalPendingAmount.toLocaleString('en-IN')} due
-                  </p>
-                </div>
-                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-raised)' }}>
-                  <div
-                    className="h-full rounded-full"
-                    style={{ width: `${tripSummary.settlementProgressPct}%`, background: '#34d399' }}
-                  />
+                <p className="text-sm font-semibold">No trips yet</p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  Split bills with friends, then settle who pays whom.
+                </p>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsNewTripModalOpen(true)}
+                    className="h-11 rounded-xl text-sm font-semibold text-white"
+                    style={{ background: 'var(--primary)' }}
+                  >
+                    Create trip
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLoadDemoTrip}
+                    className="h-11 rounded-xl text-sm font-semibold"
+                    style={{ background: 'var(--bg-raised)', color: 'var(--text-secondary)', border: '1px solid var(--border-soft)' }}
+                  >
+                    Load sample trip
+                  </button>
                 </div>
               </div>
-
-              <div
-                className="rounded-2xl p-3.5 space-y-3"
-                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                    Who pays whom
-                  </h3>
-                  <div className="flex p-0.5 rounded-lg text-[11px] font-bold" style={{ background: 'var(--bg-raised)' }}>
-                    <button
-                      onClick={() => setSettlementFilter('all')}
-                      className={cn(
-                        'px-2 py-0.5 rounded-md transition-colors',
-                        settlementFilter === 'all' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
-                      )}
-                    >
-                      All ({tripSummary.settlements.length})
-                    </button>
-                    <button
-                      onClick={() => setSettlementFilter('pending')}
-                      className={cn(
-                        'px-2 py-0.5 rounded-md transition-colors flex items-center gap-1',
-                        settlementFilter === 'pending' ? 'bg-rose-600 text-white' : 'text-slate-400 hover:text-white'
-                      )}
-                    >
-                      <Clock className="w-2.5 h-2.5" />
-                      <span>{tripSummary.pendingSettlementsCount}</span>
-                    </button>
-                    <button
-                      onClick={() => setSettlementFilter('settled')}
-                      className={cn(
-                        'px-2 py-0.5 rounded-md transition-colors flex items-center gap-1',
-                        settlementFilter === 'settled' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
-                      )}
-                    >
-                      <CheckCircle2 className="w-2.5 h-2.5" />
-                      <span>{tripSummary.settledSettlementsCount}</span>
-                    </button>
+            ) : (
+              tripListRows.map(({ trip, pending, pendingCount, totalSpend }) => (
+                <button
+                  key={trip.id}
+                  type="button"
+                  onClick={() => openTrip(trip.id)}
+                  className="w-full text-left rounded-2xl px-3.5 py-3.5 flex items-center gap-3 active:opacity-80"
+                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+                >
+                  <div
+                    className={cn(
+                      'w-11 h-11 rounded-full flex items-center justify-center text-sm font-semibold text-white shrink-0',
+                      avatarGradient(trip.name)
+                    )}
+                  >
+                    {trip.name.trim()[0]?.toUpperCase() || 'T'}
                   </div>
-                </div>
-
-                {filteredSettlements.length === 0 ? (
-                  <div className="p-6 rounded-xl bg-slate-800/40 text-center space-y-1">
-                    <p className="text-xs font-bold text-slate-300">
-                      {settlementFilter === 'pending' ? 'No pending transfers' : 'No transfers match this filter.'}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold truncate">{trip.name}</p>
+                    <p className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
+                      {[trip.destination || null, `${trip.participants.length} people`, `spent ${trip.currency || '₹'}${totalSpend.toLocaleString('en-IN')}`]
+                        .filter(Boolean)
+                        .join(' · ')}
                     </p>
                   </div>
-                ) : (
-                  <div className="space-y-2.5">
-                    {filteredSettlements.map((st, i) => {
-                      const isSettled = st.isSettled;
-                      const isPartial = st.isPartial || ((st.paidAmount || 0) > 0.01 && !isSettled);
-                      const remaining =
-                        st.remainingAmount > 0.01
-                          ? st.remainingAmount
-                          : Math.max(0, st.amount - (st.paidAmount || 0));
+                  <div className="text-right shrink-0">
+                    {pending > 0.01 ? (
+                      <>
+                        <p className="text-sm font-bold tabular-nums" style={{ color: 'var(--rose)' }}>
+                          {(trip.currency || '₹')}
+                          {pending.toLocaleString('en-IN')}
+                        </p>
+                        <p className="text-[10px] font-semibold" style={{ color: 'var(--text-muted)' }}>
+                          {pendingCount} due
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-xs font-semibold" style={{ color: 'var(--emerald)' }}>
+                        Settled
+                      </p>
+                    )}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          <div
+            className="px-4 pt-3 pb-3 shrink-0 space-y-3"
+            style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-soft)' }}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <button
+                  type="button"
+                  onClick={backToList}
+                  className="h-9 w-9 rounded-xl inline-flex items-center justify-center shrink-0"
+                  style={{ background: 'var(--bg-raised)', color: 'var(--text-secondary)' }}
+                  aria-label="Back to trips"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold truncate">{currentTrip.name}</p>
+                  <p className="text-[11px] truncate" style={{ color: 'var(--text-muted)' }}>
+                    {[currentTrip.destination || null, `${currentTrip.participants.length} people`].filter(Boolean).join(' · ')}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleGenerateShareLink}
+                  className="h-9 w-9 rounded-xl inline-flex items-center justify-center"
+                  style={{ background: 'var(--bg-raised)', color: 'var(--text-secondary)' }}
+                  aria-label="Share link"
+                >
+                  <Share2 className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={openAddExpenseModal}
+                  className="h-9 px-3 rounded-xl text-xs font-semibold text-white"
+                  style={{ background: 'var(--primary)' }}
+                >
+                  + Expense
+                </button>
+              </div>
+            </div>
 
-                      return (
-                        <div
-                          key={st.id || i}
-                          className={cn(
-                            'p-3 rounded-xl flex flex-col gap-2.5 transition-all',
-                            isSettled
-                              ? 'border border-emerald-500/25 bg-emerald-500/5'
-                              : isPartial
-                                ? 'border border-amber-500/30 bg-amber-500/5'
-                                : 'border border-rose-500/20 bg-rose-500/5'
-                          )}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-2.5 min-w-0">
+            {tripSummary && (
+              <div
+                className="rounded-2xl px-4 py-4 text-center"
+                style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}
+              >
+                {tripSummary.totalPendingAmount > 0.01 ? (
+                  <>
+                    <p className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                      Still to settle
+                    </p>
+                    <p className="text-3xl font-bold tabular-nums mt-1" style={{ color: 'var(--rose)' }}>
+                      {currency}
+                      {tripSummary.totalPendingAmount.toLocaleString('en-IN')}
+                    </p>
+                    <p className="text-xs mt-1.5" style={{ color: 'var(--text-secondary)' }}>
+                      {tripSummary.pendingSettlementsCount} payment
+                      {tripSummary.pendingSettlementsCount === 1 ? '' : 's'} left · total spent{' '}
+                      {currency}
+                      {tripSummary.totalSpend.toLocaleString('en-IN')}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="inline-flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--emerald)' }}>
+                      <CheckCircle2 className="w-4 h-4" />
+                      All settled
+                    </div>
+                    <p className="text-xs mt-1.5" style={{ color: 'var(--text-muted)' }}>
+                      Total spent {currency}
+                      {tripSummary.totalSpend.toLocaleString('en-IN')} · {currentTrip.participants.length} people
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+
+            <div
+              className="flex p-1 rounded-2xl gap-1"
+              style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}
+            >
+              <button
+                type="button"
+                onClick={() => setActiveTab('settlement')}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors"
+                style={{
+                  background: activeTab === 'settlement' ? 'var(--primary)' : 'transparent',
+                  color: activeTab === 'settlement' ? 'var(--primary-foreground)' : 'var(--text-muted)',
+                }}
+              >
+                Who pays
+                {tripSummary && tripSummary.pendingSettlementsCount > 0
+                  ? ` (${tripSummary.pendingSettlementsCount})`
+                  : ''}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('expenses')}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-colors"
+                style={{
+                  background: activeTab === 'expenses' ? 'var(--primary)' : 'transparent',
+                  color: activeTab === 'expenses' ? 'var(--primary-foreground)' : 'var(--text-muted)',
+                }}
+              >
+                Expenses ({currentTrip.expenses.length})
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 pb-8">
+            <AnimatePresence mode="wait">
+              {activeTab === 'settlement' && tripSummary && (
+                <motion.div
+                  key="settlement"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.18 }}
+                  className="space-y-3"
+                >
+                  {tripSummary.settlements.length === 0 ? (
+                    <div
+                      className="rounded-2xl p-8 text-center"
+                      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+                    >
+                      <p className="text-sm font-semibold">Everyone is even</p>
+                      <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                        No payments needed
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {pendingSettlements.map((st) => {
+                        const isPartial = st.isPartial || ((st.paidAmount || 0) > 0.01 && !st.isSettled);
+                        const remaining =
+                          st.remainingAmount > 0.01
+                            ? st.remainingAmount
+                            : Math.max(0, st.amount - (st.paidAmount || 0));
+                        return (
+                          <div
+                            key={st.id}
+                            className="rounded-2xl p-4 space-y-3"
+                            style={{
+                              background: 'var(--bg-surface)',
+                              border: `1px solid ${isPartial ? 'rgba(180,83,9,0.25)' : 'var(--border-soft)'}`,
+                            }}
+                          >
+                            <div className="flex items-center gap-3">
                               <div
                                 className={cn(
-                                  'w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs text-white shrink-0',
+                                  'w-10 h-10 rounded-full flex items-center justify-center font-semibold text-xs text-white shrink-0',
                                   avatarGradient(st.fromName)
                                 )}
                               >
                                 {st.fromName[0]}
                               </div>
-                              <div className="min-w-0">
-                                <div className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
-                                  <span className="text-rose-400 font-bold">{st.fromName}</span>
-                                  <span className="text-slate-500 font-normal">→</span>
-                                  <span className="text-emerald-400 font-bold">{st.toName}</span>
-                                  {isSettled ? (
-                                    <span className="text-[9px] font-bold text-emerald-300 bg-emerald-500/20 px-1.5 py-0.2 rounded flex items-center gap-0.5">
-                                      <CheckCircle2 className="w-2.5 h-2.5" /> Settled
-                                    </span>
-                                  ) : isPartial ? (
-                                    <span className="text-[9px] font-bold text-amber-300 bg-amber-500/20 px-1.5 py-0.2 rounded flex items-center gap-0.5">
-                                      <Clock className="w-2.5 h-2.5" /> Partial
-                                    </span>
-                                  ) : (
-                                    <span className="text-[9px] font-bold text-amber-300 bg-amber-500/20 px-1.5 py-0.2 rounded flex items-center gap-0.5">
-                                      <Clock className="w-2.5 h-2.5" /> Due
-                                    </span>
-                                  )}
-                                </div>
-                                <span className="text-[10px] text-slate-400 truncate block mt-0.5">
-                                  {isSettled
-                                    ? `Paid ${st.paymentMethod ? `via ${st.paymentMethod}` : ''} ${st.note ? `• "${st.note}"` : ''}`
-                                    : isPartial
-                                      ? `${currency}${(st.paidAmount || 0).toLocaleString('en-IN')} paid · ${currency}${remaining.toLocaleString('en-IN')} left`
-                                      : 'Settlement debt transfer'}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="text-right shrink-0">
-                              <div
-                                className={cn(
-                                  'text-base font-bold tabular-nums',
-                                  isSettled ? 'text-emerald-400 line-through opacity-75' : 'text-white'
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold leading-snug">
+                                  <span style={{ color: 'var(--rose)' }}>{st.fromName}</span>
+                                  <span style={{ color: 'var(--text-muted)' }}> pays </span>
+                                  <span style={{ color: 'var(--emerald)' }}>{st.toName}</span>
+                                </p>
+                                {isPartial && (
+                                  <p className="text-[11px] mt-0.5" style={{ color: '#b45309' }}>
+                                    {currency}
+                                    {(st.paidAmount || 0).toLocaleString('en-IN')} paid · {currency}
+                                    {remaining.toLocaleString('en-IN')} left
+                                  </p>
                                 )}
-                              >
-                                {currency}{(isSettled ? st.amount : remaining).toLocaleString('en-IN')}
                               </div>
-                              {isPartial && (
-                                <span className="text-[9px] text-slate-500 block">
-                                  of {currency}{st.amount.toLocaleString('en-IN')}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Quick Actions */}
-                          <div className="pt-1.5 border-t border-white/5 flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              {isSettled ? (
-                                <motion.button
-                                  whileTap={{ scale: 0.94 }}
-                                  onClick={() => handleReopenSettlement(st)}
-                                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 transition-colors inline-flex items-center gap-1"
-                                >
-                                  <RotateCcw className="w-3 h-3" />
-                                  <span>Revert</span>
-                                </motion.button>
-                              ) : (
-                                <>
-                                  <motion.button
-                                    whileTap={{ scale: 0.94 }}
-                                    onClick={() => openAcknowledgeModal(st, 'full')}
-                                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-500 transition-all inline-flex items-center gap-1 shadow-sm"
-                                  >
-                                    <CheckCircle2 className="w-3 h-3" />
-                                    <span>{isPartial ? 'Pay Rest' : 'Mark Paid'}</span>
-                                  </motion.button>
-                                  <motion.button
-                                    whileTap={{ scale: 0.94 }}
-                                    onClick={() => openAcknowledgeModal(st, 'partial')}
-                                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-amber-200 bg-amber-500/15 hover:bg-amber-500/25 transition-colors inline-flex items-center gap-1"
-                                  >
-                                    <span>Partial</span>
-                                  </motion.button>
-                                </>
-                              )}
-
-                              {!isSettled && (
-                                <motion.button
-                                  whileTap={{ scale: 0.94 }}
-                                  onClick={() => handleSendSettlementReminder(st)}
-                                  className="px-2 py-1 rounded-lg text-[11px] font-bold text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors inline-flex items-center gap-1"
-                                  title="WhatsApp reminder"
-                                >
-                                  <Send className="w-3 h-3" />
-                                  <span>Remind</span>
-                                </motion.button>
-                              )}
+                              <p className="text-xl font-bold tabular-nums shrink-0">
+                                {currency}
+                                {remaining.toLocaleString('en-IN')}
+                              </p>
                             </div>
 
-                            {onRecordToLedger && (
-                              <motion.button
-                                whileTap={{ scale: 0.94 }}
-                                onClick={() => handleRecordSettlement(st)}
-                                className="px-2 py-1 rounded-lg text-[11px] font-bold text-primary bg-violet-600/20 hover:bg-violet-600/30 transition-colors inline-flex items-center gap-1"
-                                title="Record in Udharwale ledger"
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => openAcknowledgeModal(st, 'full')}
+                                className="flex-1 min-w-[7rem] h-11 rounded-xl text-sm font-semibold text-white inline-flex items-center justify-center gap-1.5"
+                                style={{ background: 'var(--emerald)' }}
                               >
-                                <TrendingUp className="w-3 h-3" />
-                                <span>Ledger</span>
-                              </motion.button>
-                            )}
+                                <CheckCircle2 className="w-4 h-4" />
+                                {isPartial ? 'Pay rest' : 'Mark paid'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openAcknowledgeModal(st, 'partial')}
+                                className="h-11 px-3 rounded-xl text-sm font-semibold"
+                                style={{
+                                  background: 'var(--bg-raised)',
+                                  color: 'var(--text-secondary)',
+                                  border: '1px solid var(--border-soft)',
+                                }}
+                              >
+                                Partial
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSendSettlementReminder(st)}
+                                className="h-11 px-3 rounded-xl text-sm font-semibold inline-flex items-center gap-1"
+                                style={{
+                                  background: 'var(--bg-raised)',
+                                  color: 'var(--text-secondary)',
+                                  border: '1px solid var(--border-soft)',
+                                }}
+                              >
+                                <Send className="w-3.5 h-3.5" />
+                                Remind
+                              </button>
+                              {(st.fromContactId || st.toContactId || contacts.length > 0) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRecordSettlement(st)}
+                                  className="h-11 px-3 rounded-xl text-sm font-semibold"
+                                  style={{
+                                    background: 'var(--bg-raised)',
+                                    color: 'var(--text-secondary)',
+                                    border: '1px solid var(--border-soft)',
+                                  }}
+                                >
+                                  To ledger
+                                </button>
+                              )}
+                            </div>
                           </div>
+                        );
+                      })}
+
+                      {settledSettlements.length > 0 && (
+                        <div className="pt-2 space-y-2">
+                          <p
+                            className="text-[11px] font-semibold uppercase tracking-wider"
+                            style={{ color: 'var(--text-muted)' }}
+                          >
+                            Already paid
+                          </p>
+                          {settledSettlements.map((st) => (
+                            <div
+                              key={st.id}
+                              className="rounded-2xl px-3.5 py-3 flex items-center gap-3"
+                              style={{
+                                background: 'rgba(4,120,87,0.06)',
+                                border: '1px solid rgba(4,120,87,0.15)',
+                              }}
+                            >
+                              <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: 'var(--emerald)' }} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm truncate">
+                                  <span className="font-semibold">{st.fromName}</span>
+                                  <span style={{ color: 'var(--text-muted)' }}> → </span>
+                                  <span className="font-semibold">{st.toName}</span>
+                                </p>
+                                <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                                  {currency}
+                                  {st.amount.toLocaleString('en-IN')}
+                                  {st.settledBy ? ` · confirmed by ${st.settledBy}` : ''}
+                                  {st.settledAt ? ` · ${formatWhen(st.settledAt)}` : ''}
+                                  {st.paymentMethod ? ` · ${st.paymentMethod}` : ''}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleReopenSettlement(st)}
+                                className="h-8 px-2.5 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1"
+                                style={{ color: 'var(--text-muted)', background: 'var(--bg-raised)' }}
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                                Undo
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  <div className="pt-2 space-y-2">
+                    <p
+                      className="text-[11px] font-semibold uppercase tracking-wider"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      Everyone
+                    </p>
+                    {tripSummary.participantSummaries.map((s) => {
+                      const owes = s.netBalance < -0.01;
+                      const isOwed = s.netBalance > 0.01;
+                      const amount = Math.abs(s.netBalance);
+                      return (
+                        <div
+                          key={s.participant.id}
+                          className="rounded-2xl px-3.5 py-3 flex items-center gap-3"
+                          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+                        >
+                          <div
+                            className={cn(
+                              'w-8 h-8 rounded-full flex items-center justify-center font-semibold text-[10px] text-white shrink-0',
+                              avatarGradient(s.participant.name)
+                            )}
+                          >
+                            {s.participant.name[0]}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold truncate">
+                              {s.participant.name}
+                              {s.participant.isCurrentUser ? ' (You)' : ''}
+                            </p>
+                            <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                              Spent {currency}
+                              {s.totalPaid.toLocaleString('en-IN')} · share {currency}
+                              {s.totalShare.toLocaleString('en-IN')}
+                            </p>
+                          </div>
+                          {owes ? (
+                            <span className="text-xs font-semibold tabular-nums" style={{ color: 'var(--rose)' }}>
+                              owes {currency}
+                              {amount.toLocaleString('en-IN')}
+                            </span>
+                          ) : isOwed ? (
+                            <span className="text-xs font-semibold tabular-nums" style={{ color: 'var(--emerald)' }}>
+                              gets {currency}
+                              {amount.toLocaleString('en-IN')}
+                            </span>
+                          ) : (
+                            <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                              even
+                            </span>
+                          )}
                         </div>
                       );
                     })}
                   </div>
-                )}
-              </div>
-
-              <div
-                className="rounded-2xl p-3.5 space-y-3"
-                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
-              >
-                <div>
-                  <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                    Each person&apos;s share
-                  </h3>
-                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                    {tripSummary.hasUnevenShares
-                      ? `Personal / partial splits change this — equal would be ${currency}${tripSummary.perHeadAverage.toLocaleString('en-IN')}`
-                      : 'Paid vs their share and what\'s still due'}
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  {tripSummary.participantSummaries.map((s) => {
-                    const isOwed = s.netBalance > 0.01;
-                    const owes = s.netBalance < -0.01;
-                    const maxShare = Math.max(...tripSummary.participantSummaries.map((x) => x.totalShare), 1);
-                    const barPct = Math.min(100, Math.max(0, (s.totalShare / maxShare) * 100));
-                    const vsEqual = Math.round((s.totalShare - tripSummary.perHeadAverage) * 100) / 100;
-
-                    return (
-                      <div
-                        key={s.participant.id}
-                        className="p-3 rounded-xl space-y-2 border"
-                        style={{
-                          background: s.isFullySettled
-                            ? 'rgba(16,185,129,0.04)'
-                            : owes
-                            ? 'rgba(244,63,94,0.04)'
-                            : 'rgba(255,255,255,0.02)',
-                          borderColor: s.isFullySettled
-                            ? 'rgba(16,185,129,0.2)'
-                            : owes
-                            ? 'rgba(244,63,94,0.2)'
-                            : 'var(--border-soft)',
-                        }}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div
-                              className={cn(
-                                'w-7 h-7 rounded-lg flex items-center justify-center font-bold text-[10px] text-white shrink-0',
-                                avatarGradient(s.participant.name)
-                              )}
-                            >
-                              {s.participant.name[0]}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-white truncate">
-                                {s.participant.name}
-                                {s.participant.isCurrentUser && <span className="text-[9px] text-primary ml-1">(You)</span>}
-                              </p>
-                              <p className="text-[10px] text-slate-400 truncate">
-                                Share{' '}
-                                <span className="font-bold text-slate-200">
-                                  {currency}{s.totalShare.toLocaleString('en-IN')}
-                                </span>
-                                {tripSummary.hasUnevenShares && Math.abs(vsEqual) > 0.01 && (
-                                  <span style={{ color: vsEqual > 0 ? '#fb7185' : '#34d399' }}>
-                                    {' '}
-                                    ({vsEqual > 0 ? '+' : '−'}
-                                    {currency}
-                                    {Math.abs(vsEqual).toLocaleString('en-IN')})
-                                  </span>
-                                )}
-                                {' · '}paid {currency}{s.totalPaid.toLocaleString('en-IN')}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="text-right shrink-0">
-                            {owes ? (
-                              s.pendingDebt > 0 ? (
-                                <span className="text-[10px] font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20 inline-flex items-center gap-1">
-                                  <Clock className="w-2.5 h-2.5" />
-                                  {currency}{s.pendingDebt.toLocaleString('en-IN')} Due
-                                </span>
-                              ) : (
-                                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 inline-flex items-center gap-1">
-                                  <CheckCircle2 className="w-2.5 h-2.5" /> All Paid
-                                </span>
-                              )
-                            ) : isOwed ? (
-                              s.pendingCredit > 0 ? (
-                                <span className="text-[10px] font-bold text-primary bg-violet-500/10 px-2 py-0.5 rounded border border-violet-500/20 inline-flex items-center gap-1">
-                                  <Clock className="w-2.5 h-2.5" />
-                                  {currency}{s.pendingCredit.toLocaleString('en-IN')} Due
-                                </span>
-                              ) : (
-                                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 inline-flex items-center gap-1">
-                                  <CheckCircle2 className="w-2.5 h-2.5" /> Received
-                                </span>
-                              )
-                            ) : (
-                              <span className="text-[10px] font-bold text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
-                                Even
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="h-1 rounded-full bg-slate-800/80 overflow-hidden">
-                          <div
-                            className={cn('h-full rounded-full', isOwed ? 'bg-emerald-500' : owes ? 'bg-rose-500' : 'bg-slate-500')}
-                            style={{ width: `${barPct}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {activeTab === 'expenses' && (
-            <motion.div
-              key="expenses"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.18 }}
-              className="space-y-3"
-            >
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-muted)' }} />
-                <input
-                  type="text"
-                  placeholder="Search expenses…"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2.5 text-sm rounded-2xl outline-none font-medium"
-                  style={{
-                    background: 'var(--bg-surface)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--text-primary)',
-                  }}
-                />
-              </div>
-
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
-                <button
-                  type="button"
-                  onClick={() => setCategoryFilter('all')}
-                  className="px-3 py-1.5 rounded-full text-[11px] font-bold shrink-0"
-                  style={{
-                    background: categoryFilter === 'all' ? 'rgba(15,118,110,0.2)' : 'var(--bg-surface)',
-                    border: `1px solid ${categoryFilter === 'all' ? 'rgba(15,118,110,0.35)' : 'var(--border-soft)'}`,
-                    color: categoryFilter === 'all' ? 'var(--primary)' : 'var(--text-muted)',
-                  }}
-                >
-                  All
-                </button>
-                {Object.entries(CATEGORY_CONFIG).map(([catKey, config]) => (
-                  <button
-                    key={catKey}
-                    type="button"
-                    onClick={() => setCategoryFilter(catKey)}
-                    className="px-3 py-1.5 rounded-full text-[11px] font-bold shrink-0 inline-flex items-center gap-1"
-                    style={{
-                      background: categoryFilter === catKey ? 'rgba(15,118,110,0.2)' : 'var(--bg-surface)',
-                      border: `1px solid ${categoryFilter === catKey ? 'rgba(15,118,110,0.35)' : 'var(--border-soft)'}`,
-                      color: categoryFilter === catKey ? 'var(--primary)' : 'var(--text-muted)',
-                    }}
-                  >
-                    <span>{config.icon}</span>
-                    <span>{config.label.split(' ')[0]}</span>
-                  </button>
-                ))}
-              </div>
-
-              {currentTrip?.expenses.length === 0 && (
-                <div
-                  className="rounded-2xl p-5 text-center"
-                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
-                >
-                  <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>No expenses yet</p>
-                  <p className="text-xs mt-1 mb-3" style={{ color: 'var(--text-muted)' }}>
-                    Add the first bill, or load a sample trip.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleLoadDemoTrip}
-                    className="text-xs font-bold px-3 py-2 rounded-xl"
-                    style={{ background: 'rgba(15,118,110,0.15)', color: 'var(--primary)', border: '1px solid rgba(15,118,110,0.3)' }}
-                  >
-                    Load sample trip
-                  </button>
-                </div>
+                </motion.div>
               )}
 
-              <div className="space-y-2">
-                {filteredExpenses.length === 0 && (currentTrip?.expenses.length || 0) > 0 ? (
-                  <p className="text-center text-xs py-8" style={{ color: 'var(--text-muted)' }}>
-                    No matching expenses.
-                  </p>
-                ) : (
-                  filteredExpenses.map((expense) => {
-                    const cat = CATEGORY_CONFIG[expense.category] || CATEGORY_CONFIG.general;
-                    const payerNames = expense.paidBy
-                      .map((p) => currentTrip?.participants.find((pt) => pt.id === p.participantId)?.name || 'Friend')
-                      .join(', ');
-                    const splitCount = expense.splitAmong.length || 1;
-                    const totalPeople = currentTrip?.participants.length || splitCount;
-                    const splitLabel =
-                      splitCount <= 1
-                        ? 'personal'
-                        : splitCount < totalPeople
-                          ? `split ${splitCount}/${totalPeople}`
-                          : `split ${splitCount}`;
-
-                    return (
-                      <button
-                        key={expense.id}
-                        type="button"
-                        onClick={() => openEditExpenseModal(expense)}
-                        className="w-full text-left rounded-2xl p-3.5 flex items-center gap-3 transition-opacity active:opacity-80"
-                        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
-                      >
-                        <div
-                          className="w-10 h-10 rounded-2xl flex items-center justify-center text-lg shrink-0"
-                          style={{ background: cat.bg, color: cat.tone }}
-                        >
-                          {cat.icon}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-2">
-                            <h4 className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>
-                              {expense.title}
-                            </h4>
-                            <p className="text-sm font-bold tabular-nums shrink-0" style={{ color: 'var(--text-primary)' }}>
-                              {currency}{expense.amount.toLocaleString('en-IN')}
-                            </p>
-                          </div>
-                          <p className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
-                            {payerNames} · {splitLabel} · {expense.date}
-                          </p>
-                        </div>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* ══════════════════════════════════════════════════════
-          ACKNOWLEDGE SETTLEMENT PAYMENT MODAL
-      ══════════════════════════════════════════════════════ */}
-      <AnimatePresence>
-        {isAcknowledgeModalOpen && acknowledgingSettlement && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-              onClick={() => setIsAcknowledgeModalOpen(false)}
-            />
-
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.94, y: 15 }}
-              transition={{ type: 'spring', stiffness: 450, damping: 30 }}
-              className="relative w-full max-w-md rounded-2xl overflow-hidden flex flex-col shadow-2xl"
-              style={{
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--border-soft)',
-              }}
-            >
-              <div
-                className="flex items-center justify-between px-4 py-3 border-b shrink-0"
-                style={{ borderColor: 'var(--border-soft)' }}
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                    <ShieldCheck className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-sm text-white">Acknowledge Payment</h3>
-                    <p className="text-[10px] text-slate-400">Confirm settlement has been cleared</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setIsAcknowledgeModalOpen(false)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-white"
+              {activeTab === 'expenses' && (
+                <motion.div
+                  key="expenses"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.18 }}
+                  className="space-y-3"
                 >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <form onSubmit={handleConfirmAcknowledge} className="p-4 space-y-3.5">
-                <div
-                  className="p-3 rounded-xl space-y-1 border"
-                  style={{ background: 'rgba(16,185,129,0.06)', borderColor: 'rgba(16,185,129,0.2)' }}
-                >
-                  <span className="text-[9px] font-bold uppercase text-emerald-400 tracking-wider">
-                    Settlement Transfer
-                  </span>
-                  <div className="text-xs font-bold text-white flex items-center justify-between gap-2">
-                    <span>
-                      <strong className="text-rose-400">{acknowledgingSettlement.fromName}</strong> →{' '}
-                      <strong className="text-emerald-400">{acknowledgingSettlement.toName}</strong>
-                    </span>
-                    <span className="text-base font-bold text-white tabular-nums shrink-0">
-                      {currency}{acknowledgingSettlement.amount.toLocaleString('en-IN')}
-                    </span>
+                  <div className="relative">
+                    <Search
+                      className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                      style={{ color: 'var(--text-muted)' }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Search expenses…"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2.5 text-sm rounded-xl outline-none font-medium"
+                      style={{
+                        background: 'var(--bg-surface)',
+                        border: '1px solid var(--border-soft)',
+                        color: 'var(--text-primary)',
+                      }}
+                    />
                   </div>
-                  {(acknowledgingSettlement.paidAmount || 0) > 0.01 && (
-                    <p className="text-[10px] text-amber-300 font-semibold pt-1">
-                      Already paid {currency}{(acknowledgingSettlement.paidAmount || 0).toLocaleString('en-IN')} ·{' '}
-                      {currency}
-                      {Math.max(
-                        0,
-                        acknowledgingSettlement.remainingAmount > 0
-                          ? acknowledgingSettlement.remainingAmount
-                          : acknowledgingSettlement.amount - (acknowledgingSettlement.paidAmount || 0)
-                      ).toLocaleString('en-IN')}{' '}
-                      remaining
-                    </p>
-                  )}
-                </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-300">Settlement type</label>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {([
-                      { id: 'full' as const, label: 'Pay remaining' },
-                      { id: 'partial' as const, label: 'Partial payment' },
-                    ]).map((m) => (
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+                    <button
+                      type="button"
+                      onClick={() => setCategoryFilter('all')}
+                      className="px-3 py-1.5 rounded-full text-[11px] font-semibold shrink-0"
+                      style={{
+                        background: categoryFilter === 'all' ? 'var(--primary)' : 'var(--bg-surface)',
+                        color: categoryFilter === 'all' ? 'var(--primary-foreground)' : 'var(--text-muted)',
+                        border: `1px solid ${categoryFilter === 'all' ? 'var(--primary)' : 'var(--border-soft)'}`,
+                      }}
+                    >
+                      All
+                    </button>
+                    {Object.entries(CATEGORY_CONFIG).map(([catKey, config]) => (
                       <button
+                        key={catKey}
                         type="button"
-                        key={m.id}
-                        onClick={() => {
-                          setAckSettleMode(m.id);
-                          const rem =
-                            acknowledgingSettlement.remainingAmount > 0.01
-                              ? acknowledgingSettlement.remainingAmount
-                              : Math.max(
-                                  0,
-                                  acknowledgingSettlement.amount - (acknowledgingSettlement.paidAmount || 0)
-                                );
-                          setAckAmount(m.id === 'full' ? rem.toString() : '');
+                        onClick={() => setCategoryFilter(catKey)}
+                        className="px-3 py-1.5 rounded-full text-[11px] font-semibold shrink-0"
+                        style={{
+                          background: categoryFilter === catKey ? 'var(--primary)' : 'var(--bg-surface)',
+                          color: categoryFilter === catKey ? 'var(--primary-foreground)' : 'var(--text-muted)',
+                          border: `1px solid ${categoryFilter === catKey ? 'var(--primary)' : 'var(--border-soft)'}`,
                         }}
-                        className={cn(
-                          'py-1.5 px-1 rounded-lg text-xs font-bold transition-all text-center',
-                          ackSettleMode === m.id
-                            ? 'bg-emerald-600 text-white shadow-md'
-                            : 'bg-slate-800/60 text-slate-400 hover:text-white'
-                        )}
                       >
-                        {m.label}
+                        {config.label.split(' ')[0]}
                       </button>
                     ))}
                   </div>
-                </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-300">
-                    {ackSettleMode === 'full' ? 'Amount (remaining)' : 'Amount paying now'}
+                  {currentTrip.expenses.length === 0 && (
+                    <div
+                      className="rounded-2xl p-8 text-center space-y-3"
+                      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+                    >
+                      <p className="text-sm font-semibold">No expenses yet</p>
+                      <button
+                        type="button"
+                        onClick={openAddExpenseModal}
+                        className="h-10 px-4 rounded-xl text-sm font-semibold text-white"
+                        style={{ background: 'var(--primary)' }}
+                      >
+                        Add expense
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    {filteredExpenses.length === 0 && currentTrip.expenses.length > 0 ? (
+                      <p className="text-center text-xs py-8" style={{ color: 'var(--text-muted)' }}>
+                        No matching expenses
+                      </p>
+                    ) : (
+                      filteredExpenses.map((expense) => {
+                        const cat = CATEGORY_CONFIG[expense.category] || CATEGORY_CONFIG.general;
+                        const payers = expense.paidBy
+                          .map((p) => currentTrip.participants.find((pt) => pt.id === p.participantId)?.name)
+                          .filter(Boolean) as string[];
+                        const payerLabel =
+                          payers.length === 0
+                            ? 'Someone'
+                            : payers.length === 1
+                              ? payers[0]
+                              : `${payers[0]} +${payers.length - 1}`;
+                        const splitCount = expense.splitAmong.length || 1;
+                        const totalPeople = currentTrip.participants.length || splitCount;
+                        const splitLabel =
+                          splitCount >= totalPeople
+                            ? 'everyone'
+                            : splitCount === 1
+                              ? '1 person'
+                              : `${splitCount} people`;
+
+                        return (
+                          <button
+                            key={expense.id}
+                            type="button"
+                            onClick={() => openEditExpenseModal(expense)}
+                            className="w-full text-left rounded-2xl px-3.5 py-3.5 active:opacity-80"
+                            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold truncate">{expense.title}</p>
+                                <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+                                  <span className="font-semibold">{payerLabel}</span>
+                                  {' paid · split '}
+                                  {splitLabel}
+                                </p>
+                                <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                                  {[cat.label, expense.date].filter(Boolean).join(' · ')}
+                                </p>
+                              </div>
+                              <p className="text-base font-bold tabular-nums shrink-0">
+                                {currency}
+                                {expense.amount.toLocaleString('en-IN')}
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </>
+      )}
+
+      {/* Mark paid sheet */}
+      {isAcknowledgeModalOpen && acknowledgingSettlement && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div
+            className="absolute inset-0"
+            style={{ background: 'rgba(0,0,0,0.45)' }}
+            onClick={() => setIsAcknowledgeModalOpen(false)}
+          />
+          <div
+            className="relative w-full max-w-md rounded-t-[20px] sm:rounded-[20px] overflow-hidden"
+            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+          >
+            <div
+              className="flex items-center justify-between px-5 pt-4 pb-3"
+              style={{ borderBottom: '1px solid var(--border-soft)' }}
+            >
+              <div>
+                <h3 className="text-base font-bold">Mark paid</h3>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                  {acknowledgingSettlement.fromName} → {acknowledgingSettlement.toName}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAcknowledgeModalOpen(false)}
+                className="h-9 w-9 rounded-xl inline-flex items-center justify-center"
+                style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmAcknowledge} className="p-5 space-y-4">
+              <div className="text-center py-2">
+                <p className="text-3xl font-bold tabular-nums">
+                  {currency}
+                  {remainingForAck.toLocaleString('en-IN')}
+                </p>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                  due now
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAckSettleMode('full');
+                    setAckAmount(remainingForAck.toString());
+                  }}
+                  className="h-11 rounded-xl text-sm font-semibold"
+                  style={{
+                    background: ackSettleMode === 'full' ? 'var(--emerald)' : 'var(--bg-raised)',
+                    color: ackSettleMode === 'full' ? '#fff' : 'var(--text-secondary)',
+                  }}
+                >
+                  Full amount
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAckSettleMode('partial');
+                    setAckAmount('');
+                  }}
+                  className="h-11 rounded-xl text-sm font-semibold"
+                  style={{
+                    background: ackSettleMode === 'partial' ? 'var(--emerald)' : 'var(--bg-raised)',
+                    color: ackSettleMode === 'partial' ? '#fff' : 'var(--text-secondary)',
+                  }}
+                >
+                  Partial
+                </button>
+              </div>
+
+              {ackSettleMode === 'partial' && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                    Amount paying now
                   </label>
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                    <span
+                      className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
                       {currency}
                     </span>
                     <input
@@ -1400,700 +1388,590 @@ export default function TripExpensesView({
                       step="0.01"
                       required
                       value={ackAmount}
-                      onChange={(e) => {
-                        setAckAmount(e.target.value);
-                        setAckSettleMode('partial');
-                      }}
-                      className="w-full pl-7 pr-3 py-2 rounded-xl text-xs outline-none font-bold text-white tabular-nums"
+                      onChange={(e) => setAckAmount(e.target.value)}
+                      className="w-full pl-8 pr-3.5 py-3 rounded-xl text-sm font-bold tabular-nums outline-none"
                       style={{
                         background: 'var(--bg-raised)',
                         border: '1px solid var(--border-soft)',
+                        color: 'var(--text-primary)',
                       }}
                       placeholder="0"
+                      autoFocus
                     />
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-300">Payment Mode</label>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {[
-                      { id: 'UPI', label: 'UPI / GPay' },
-                      { id: 'Cash', label: 'Cash' },
-                      { id: 'Bank Transfer', label: 'Bank' },
-                      { id: 'Other', label: 'Other' },
-                    ].map((m) => (
-                      <button
-                        type="button"
-                        key={m.id}
-                        onClick={() => setAckPaymentMethod(m.id as any)}
-                        className={cn(
-                          'py-1.5 px-1 rounded-lg text-xs font-bold transition-all text-center',
-                          ackPaymentMethod === m.id
-                            ? 'bg-emerald-600 text-white shadow-md'
-                            : 'bg-slate-800/60 text-slate-400 hover:text-white'
-                        )}
-                      >
-                        {m.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-300">Note / Reference (Optional)</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Paid via Google Pay, Txn #49102"
-                    value={ackNote}
-                    onChange={(e) => setAckNote(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl text-xs outline-none font-medium text-white"
-                    style={{
-                      background: 'var(--bg-raised)',
-                      border: '1px solid var(--border-soft)',
-                    }}
-                  />
-                </div>
-
-                <div className="pt-1">
-                  <motion.button
-                    whileTap={{ scale: 0.96 }}
-                    type="submit"
-                    className="w-full py-2.5 rounded-xl text-xs font-bold text-white bg-primary hover:opacity-90  transition-all flex items-center justify-center gap-1.5"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>
-                      {ackSettleMode === 'partial' ? 'Record Partial Payment' : 'Confirm & Mark Settled'}
-                    </span>
-                  </motion.button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* ══════════════════════════════════════════════════════
-          ADD / EDIT EXPENSE MODAL
-      ══════════════════════════════════════════════════════ */}
-      <AnimatePresence>
-        {isExpenseModalOpen && currentTrip && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-              onClick={() => setIsExpenseModalOpen(false)}
-            />
-
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.94, y: 15 }}
-              transition={{ type: 'spring', stiffness: 450, damping: 30 }}
-              className="relative w-full max-w-lg rounded-2xl overflow-hidden flex flex-col shadow-2xl"
-              style={{
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--border-soft)',
-                maxHeight: '92vh',
-              }}
-            >
-              <div
-                className="flex items-center justify-between px-4 py-3 border-b shrink-0"
-                style={{ borderColor: 'var(--border-soft)' }}
-              >
-                <h3 className="font-bold text-sm text-white">
-                  {editingExpense ? 'Edit Trip Expense' : 'Add Trip Expense'}
-                </h3>
-                <button
-                  onClick={() => setIsExpenseModalOpen(false)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-white transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <form onSubmit={handleSaveExpense} className="p-4 space-y-3.5 overflow-y-auto flex-1">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-300">Item / Expense Title</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Seafood Dinner at Shack, Villa Stay, Cab"
-                    value={expTitle}
-                    onChange={(e) => setExpTitle(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl text-xs outline-none font-medium text-white"
-                    style={{
-                      background: 'var(--bg-raised)',
-                      border: '1px solid var(--border-soft)',
-                    }}
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-300">Total Amount (₹)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="e.g. 5000"
-                      value={expAmount}
-                      onChange={(e) => setExpAmount(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl text-sm font-bold outline-none text-emerald-400"
-                      style={{
-                        background: 'var(--bg-raised)',
-                        border: '1px solid var(--border-soft)',
-                      }}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-300">Date</label>
-                    <input
-                      type="date"
-                      value={expDate}
-                      onChange={(e) => setExpDate(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl text-xs outline-none font-medium text-white"
-                      style={{
-                        background: 'var(--bg-raised)',
-                        border: '1px solid var(--border-soft)',
-                      }}
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-300">Category</label>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => {
-                      const isSelected = expCategory === key;
-                      return (
-                        <button
-                          type="button"
-                          key={key}
-                          onClick={() => setExpCategory(key as ExpenseCategory)}
-                          className={cn(
-                            'p-1.5 rounded-lg text-xs font-bold flex flex-col items-center justify-center gap-0.5 transition-all',
-                            isSelected
-                              ? 'bg-violet-600 text-white shadow-sm'
-                              : 'bg-slate-800/60 text-slate-400 hover:text-white'
-                          )}
-                        >
-                          <span className="text-sm">{cfg.icon}</span>
-                          <span className="text-[10px] truncate max-w-full">{cfg.label.split(' ')[0]}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Who Paid */}
-                <div
-                  className="p-3 rounded-xl space-y-2.5"
-                  style={{
-                    background: 'rgba(255,255,255,0.02)',
-                    border: '1px solid var(--border-soft)',
-                  }}
-                >
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                      <CreditCard className="w-3 h-3 text-emerald-400" />
-                      Who Paid for This?
-                    </label>
-
-                    <div className="flex p-0.5 rounded-lg text-[10px] font-bold" style={{ background: 'var(--bg-raised)' }}>
-                      <button
-                        type="button"
-                        onClick={() => setPayerMode('single')}
-                        className={cn(
-                          'px-2 py-0.5 rounded transition-colors',
-                          payerMode === 'single' ? 'bg-violet-600 text-white' : 'text-slate-400'
-                        )}
-                      >
-                        Single
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPayerMode('multiple');
-                          if (singlePayerId && parsedTotalAmount > 0 && Object.keys(multiplePayers).length === 0) {
-                            setMultiplePayers({ [singlePayerId]: String(parsedTotalAmount) });
-                          }
-                        }}
-                        className={cn(
-                          'px-2 py-0.5 rounded transition-colors',
-                          payerMode === 'multiple' ? 'bg-violet-600 text-white' : 'text-slate-400'
-                        )}
-                      >
-                        Multiple
-                      </button>
-                    </div>
-                  </div>
-
-                  {payerMode === 'single' ? (
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {currentTrip.participants.map((p) => (
-                        <button
-                          type="button"
-                          key={p.id}
-                          onClick={() => setSinglePayerId(p.id)}
-                          className={cn(
-                            'p-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all text-left',
-                            singlePayerId === p.id
-                              ? 'bg-emerald-600/30 text-emerald-300 border border-emerald-500/40'
-                              : 'bg-slate-800/40 text-slate-300 border border-transparent'
-                          )}
-                        >
-                          <span className="w-5 h-5 rounded bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[10px] font-bold">
-                            {p.name[0]}
-                          </span>
-                          <span className="truncate">{p.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <p className="text-[10px] text-slate-400">
-                        Specify exact amount paid by each person:
-                      </p>
-
-                      <div className="space-y-1.5">
-                        {currentTrip.participants.map((p) => {
-                          const currentVal = multiplePayers[p.id] || '';
-                          return (
-                            <div
-                              key={p.id}
-                              className="p-2 rounded-lg flex items-center justify-between gap-2"
-                              style={{ background: 'var(--bg-raised)' }}
-                            >
-                              <span className="text-xs font-bold text-white truncate min-w-[70px]">
-                                {p.name}
-                              </span>
-
-                              <div className="flex items-center gap-1.5">
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  placeholder="0"
-                                  value={currentVal}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    setMultiplePayers((prev) => ({ ...prev, [p.id]: val }));
-                                  }}
-                                  className="w-20 px-2 py-1 text-xs font-bold text-right outline-none rounded text-emerald-400"
-                                  style={{
-                                    background: 'var(--bg-surface)',
-                                    border: '1px solid var(--border-soft)',
-                                  }}
-                                />
-
-                                {payerRemainingBalance > 0 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const assignedToOthers = Object.entries(multiplePayers)
-                                        .filter(([k]) => k !== p.id)
-                                        .reduce((acc, [, v]) => acc + (Number(v) || 0), 0);
-                                      const remainder = Math.max(0, parsedTotalAmount - assignedToOthers);
-                                      setMultiplePayers((prev) => ({
-                                        ...prev,
-                                        [p.id]: String(remainder),
-                                      }));
-                                    }}
-                                    className="text-[10px] font-bold text-primary hover:text-primary underline shrink-0"
-                                  >
-                                    +Fill
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <div
-                        className={cn(
-                          'p-2 rounded-lg text-[11px] font-bold flex items-center justify-between',
-                          isPayerBalanced
-                            ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-                            : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
-                        )}
-                      >
-                        <span>
-                          {isPayerBalanced
-                            ? 'Balanced'
-                            : `Remaining: ${currency}${payerRemainingBalance}`}
-                        </span>
-                        <span>
-                          {currency}{currentAssignedPayersTotal} / {currency}{parsedTotalAmount}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Split Beneficiaries */}
-                <div
-                  className="p-3 rounded-xl space-y-2"
-                  style={{
-                    background: 'rgba(255,255,255,0.02)',
-                    border: '1px solid var(--border-soft)',
-                  }}
-                >
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                      <Split className="w-3 h-3 text-primary" />
-                      Split Among
-                    </label>
-
-                    <div className="flex p-0.5 rounded-lg text-[10px] font-bold" style={{ background: 'var(--bg-raised)' }}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSplitMode('all');
-                          setSelectedBeneficiaries(currentTrip.participants.map((p) => p.id));
-                        }}
-                        className={cn(
-                          'px-2 py-0.5 rounded transition-colors',
-                          splitMode === 'all' ? 'bg-violet-600 text-white' : 'text-slate-400'
-                        )}
-                      >
-                        All
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSplitMode('custom')}
-                        className={cn(
-                          'px-2 py-0.5 rounded transition-colors',
-                          splitMode === 'custom' ? 'bg-violet-600 text-white' : 'text-slate-400'
-                        )}
-                      >
-                        Custom
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {currentTrip.participants.map((p) => {
-                      const isChecked = selectedBeneficiaries.includes(p.id);
-                      return (
-                        <label
-                          key={p.id}
-                          className={cn(
-                            'p-2 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all',
-                            isChecked
-                              ? 'bg-violet-600/20 text-violet-200 border border-violet-500/30'
-                              : 'bg-slate-800/40 text-slate-500 border border-transparent'
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedBeneficiaries([...selectedBeneficiaries, p.id]);
-                              } else {
-                                if (selectedBeneficiaries.length > 1) {
-                                  setSelectedBeneficiaries(selectedBeneficiaries.filter((id) => id !== p.id));
-                                }
-                              }
-                            }}
-                            className="rounded text-violet-600 focus:ring-0"
-                          />
-                          <span className="truncate">{p.name}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-
-                  {parsedTotalAmount > 0 && selectedBeneficiaries.length > 0 && (
-                    <div className="text-[10px] font-semibold pt-0.5" style={{ color: 'var(--primary)' }}>
-                      {selectedBeneficiaries.length === 1
-                        ? `Personal — full ${currency}${parsedTotalAmount.toLocaleString('en-IN')} counts only for them`
-                        : selectedBeneficiaries.length < (currentTrip?.participants.length || selectedBeneficiaries.length)
-                          ? `${currency}${Math.round((parsedTotalAmount / selectedBeneficiaries.length) * 100) / 100} each for ${selectedBeneficiaries.length}/${currentTrip?.participants.length} people`
-                          : `${currency}${Math.round((parsedTotalAmount / selectedBeneficiaries.length) * 100) / 100}/head for everyone`}
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-300">Notes (Optional)</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Lobster special, Innova cab"
-                    value={expNotes}
-                    onChange={(e) => setExpNotes(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl text-xs outline-none font-medium text-white"
-                    style={{
-                      background: 'var(--bg-raised)',
-                      border: '1px solid var(--border-soft)',
-                    }}
-                  />
-                </div>
-
-                <div className="pt-1">
-                  <motion.button
-                    whileTap={{ scale: 0.96 }}
-                    type="submit"
-                    disabled={payerMode === 'multiple' && !isPayerBalanced}
-                    className={cn(
-                      'w-full py-2.5 rounded-xl text-xs font-bold text-white shadow-xl transition-all',
-                      payerMode === 'multiple' && !isPayerBalanced
-                        ? 'bg-slate-700 opacity-50 cursor-not-allowed'
-                        : 'bg-[#0f766e] hover:opacity-90'
-                    )}
-                  >
-                    {editingExpense ? 'Save Changes' : 'Post to Trip Chat 💸'}
-                  </motion.button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* ══════════════════════════════════════════════════════
-          CREATE NEW TRIP MODAL
-      ══════════════════════════════════════════════════════ */}
-      <AnimatePresence>
-        {isNewTripModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-              onClick={() => setIsNewTripModalOpen(false)}
-            />
-
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.94, y: 15 }}
-              transition={{ type: 'spring', stiffness: 450, damping: 30 }}
-              className="relative w-full max-w-md rounded-2xl overflow-hidden flex flex-col shadow-2xl"
-              style={{
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--border-soft)',
-                maxHeight: '90vh',
-              }}
-            >
-              <div
-                className="flex items-center justify-between px-4 py-3 border-b shrink-0"
-                style={{ borderColor: 'var(--border-soft)' }}
-              >
-                <h3 className="font-bold text-sm text-white">Create New Trip</h3>
-                <button
-                  onClick={() => setIsNewTripModalOpen(false)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-white"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <form onSubmit={handleCreateTrip} className="p-4 space-y-3.5 overflow-y-auto">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-300">Trip Name</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Manali Vacation, Goa Trip, Friday Dinner"
-                    value={newTripName}
-                    onChange={(e) => setNewTripName(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl text-xs outline-none font-medium text-white"
-                    style={{
-                      background: 'var(--bg-raised)',
-                      border: '1px solid var(--border-soft)',
-                    }}
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-300">Destination</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. North Goa"
-                      value={newTripDestination}
-                      onChange={(e) => setNewTripDestination(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl text-xs outline-none font-medium text-white"
-                      style={{
-                        background: 'var(--bg-raised)',
-                        border: '1px solid var(--border-soft)',
-                      }}
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-300">Start Date</label>
-                    <input
-                      type="date"
-                      value={newTripStartDate}
-                      onChange={(e) => setNewTripStartDate(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl text-xs outline-none font-medium text-white"
-                      style={{
-                        background: 'var(--bg-raised)',
-                        border: '1px solid var(--border-soft)',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-                    <span>Add from Contacts</span>
-                    <span className="text-[10px] text-primary font-semibold">
-                      {selectedContactIds.length} selected
-                    </span>
-                  </label>
-
-                  {contacts.length === 0 ? (
-                    <p className="text-[11px] text-slate-500">No contacts saved yet.</p>
-                  ) : (
-                    <div className="max-h-32 overflow-y-auto space-y-1 pr-1">
-                      {contacts.map((c) => {
-                        const isSelected = selectedContactIds.includes(c.id);
-                        return (
-                          <button
-                            type="button"
-                            key={c.id}
-                            onClick={() => {
-                              if (isSelected) {
-                                setSelectedContactIds(selectedContactIds.filter((id) => id !== c.id));
-                              } else {
-                                setSelectedContactIds([...selectedContactIds, c.id]);
-                              }
-                            }}
-                            className={cn(
-                              'w-full p-2 rounded-lg text-xs font-bold flex items-center justify-between transition-all',
-                              isSelected
-                                ? 'bg-violet-600/30 text-violet-200 border border-violet-500/40'
-                                : 'bg-slate-800/40 text-slate-300 hover:bg-slate-800'
-                            )}
-                          >
-                            <span>{c.name}</span>
-                            {isSelected && <Check className="w-3.5 h-3.5 text-primary" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-300">
-                    Or Other Names (comma separated)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Aman, Priya, Rohit"
-                    value={customParticipantNames}
-                    onChange={(e) => setCustomParticipantNames(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl text-xs outline-none font-medium text-white"
-                    style={{
-                      background: 'var(--bg-raised)',
-                      border: '1px solid var(--border-soft)',
-                    }}
-                  />
-                </div>
-
-                <div className="pt-1">
-                  <motion.button
-                    whileTap={{ scale: 0.96 }}
-                    type="submit"
-                    className="w-full py-2.5 rounded-xl text-xs font-bold text-white bg-[#0f766e] hover:opacity-90 shadow-xl transition-all"
-                  >
-                    Create Trip 🚀
-                  </motion.button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* ══════════════════════════════════════════════════════
-          SHARE MODAL (PUBLIC WEB LINK & WHATSAPP)
-      ══════════════════════════════════════════════════════ */}
-      <AnimatePresence>
-        {isShareModalOpen && currentTrip && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-              onClick={() => setIsShareModalOpen(false)}
-            />
-
-            <motion.div
-              initial={{ opacity: 0, scale: 0.94, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.94, y: 15 }}
-              transition={{ type: 'spring', stiffness: 450, damping: 30 }}
-              className="relative w-full max-w-md rounded-2xl overflow-hidden flex flex-col shadow-2xl p-4 space-y-3.5"
-              style={{
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--border-soft)',
-              }}
-            >
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-sm text-white">Share Trip Expenses</h3>
-                <button
-                  onClick={() => setIsShareModalOpen(false)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-white"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <p className="text-xs text-slate-400">
-                Anyone with this link can view the complete transparent expense breakdown, chat stream, and settlement plan without needing to log in.
-              </p>
-
-              {publicShareUrl && (
-                <div className="space-y-1.5">
-                  <div
-                    className="p-2.5 rounded-xl flex items-center justify-between gap-2"
-                    style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}
-                  >
-                    <span className="text-xs text-slate-300 truncate font-mono">
-                      {publicShareUrl}
-                    </span>
-                    <motion.button
-                      whileTap={{ scale: 0.92 }}
-                      onClick={async () => {
-                        await navigator.clipboard.writeText(publicShareUrl);
-                        setCopiedShareLink(true);
-                        setTimeout(() => setCopiedShareLink(false), 2000);
-                      }}
-                      className="px-2.5 py-1 rounded-lg text-xs font-bold bg-violet-600 text-white shrink-0 hover:bg-violet-500"
-                    >
-                      {copiedShareLink ? 'Copied!' : 'Copy Link'}
-                    </motion.button>
                   </div>
                 </div>
               )}
 
-              <div className="pt-1">
-                <motion.button
-                  whileTap={{ scale: 0.96 }}
-                  onClick={handleShareToWhatsApp}
-                  className="w-full py-2.5 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20"
-                  style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
-                >
-                  <Share2 className="w-3.5 h-3.5" />
-                  <span>Share Formatted WhatsApp Chat</span>
-                </motion.button>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                  How was it paid?
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {(['UPI', 'Cash', 'Bank Transfer', 'Other'] as const).map((m) => (
+                    <button
+                      type="button"
+                      key={m}
+                      onClick={() => setAckPaymentMethod(m)}
+                      className="h-10 rounded-xl text-xs font-semibold"
+                      style={{
+                        background: ackPaymentMethod === m ? 'var(--primary)' : 'var(--bg-raised)',
+                        color: ackPaymentMethod === m ? 'var(--primary-foreground)' : 'var(--text-secondary)',
+                      }}
+                    >
+                      {m === 'Bank Transfer' ? 'Bank' : m}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </motion.div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                  Note (optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. GPay"
+                  value={ackNote}
+                  onChange={(e) => setAckNote(e.target.value)}
+                  className="w-full px-3.5 py-3 rounded-xl text-sm outline-none"
+                  style={{
+                    background: 'var(--bg-raised)',
+                    border: '1px solid var(--border-soft)',
+                    color: 'var(--text-primary)',
+                  }}
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full h-12 rounded-xl text-sm font-semibold text-white inline-flex items-center justify-center gap-2"
+                style={{ background: 'var(--emerald)' }}
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Confirm paid
+              </button>
+            </form>
           </div>
-        )}
-      </AnimatePresence>
+        </div>
+      )}
+
+      {/* Add / edit expense sheet */}
+      {isExpenseModalOpen && currentTrip && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div
+            className="absolute inset-0"
+            style={{ background: 'rgba(0,0,0,0.45)' }}
+            onClick={() => setIsExpenseModalOpen(false)}
+          />
+          <div
+            className="relative w-full max-w-lg rounded-t-[20px] sm:rounded-[20px] overflow-hidden flex flex-col"
+            style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-soft)',
+              maxHeight: '92vh',
+            }}
+          >
+            <div
+              className="flex items-center justify-between px-5 pt-4 pb-3 shrink-0"
+              style={{ borderBottom: '1px solid var(--border-soft)' }}
+            >
+              <h3 className="text-base font-bold">{editingExpense ? 'Edit expense' : 'Add expense'}</h3>
+              <button
+                type="button"
+                onClick={() => setIsExpenseModalOpen(false)}
+                className="h-9 w-9 rounded-xl inline-flex items-center justify-center"
+                style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveExpense} className="p-5 space-y-4 overflow-y-auto flex-1">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                  Title
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Dinner, Cab, Stay"
+                  value={expTitle}
+                  onChange={(e) => setExpTitle(e.target.value)}
+                  className="w-full px-3.5 py-3 rounded-xl text-sm outline-none"
+                  style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }}
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                    Amount
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="0"
+                    value={expAmount}
+                    onChange={(e) => setExpAmount(e.target.value)}
+                    className="w-full px-3.5 py-3 rounded-xl text-sm font-bold outline-none tabular-nums"
+                    style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }}
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    value={expDate}
+                    onChange={(e) => setExpDate(e.target.value)}
+                    className="w-full px-3.5 py-3 rounded-xl text-sm outline-none"
+                    style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                  Category
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => (
+                    <button
+                      type="button"
+                      key={key}
+                      onClick={() => setExpCategory(key as ExpenseCategory)}
+                      className="px-3 py-1.5 rounded-full text-[11px] font-semibold"
+                      style={{
+                        background: expCategory === key ? 'var(--primary)' : 'var(--bg-raised)',
+                        color: expCategory === key ? 'var(--primary-foreground)' : 'var(--text-secondary)',
+                      }}
+                    >
+                      {cfg.label.split(' ')[0]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold inline-flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+                    <CreditCard className="w-3.5 h-3.5" />
+                    Who paid?
+                  </label>
+                  <div className="flex p-0.5 rounded-lg text-[11px] font-semibold" style={{ background: 'var(--bg-raised)' }}>
+                    <button
+                      type="button"
+                      onClick={() => setPayerMode('single')}
+                      className="px-2.5 py-1 rounded-md"
+                      style={{
+                        background: payerMode === 'single' ? 'var(--primary)' : 'transparent',
+                        color: payerMode === 'single' ? 'var(--primary-foreground)' : 'var(--text-muted)',
+                      }}
+                    >
+                      Single
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPayerMode('multiple');
+                        if (singlePayerId && parsedTotalAmount > 0 && Object.keys(multiplePayers).length === 0) {
+                          setMultiplePayers({ [singlePayerId]: String(parsedTotalAmount) });
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded-md"
+                      style={{
+                        background: payerMode === 'multiple' ? 'var(--primary)' : 'transparent',
+                        color: payerMode === 'multiple' ? 'var(--primary-foreground)' : 'var(--text-muted)',
+                      }}
+                    >
+                      Multiple
+                    </button>
+                  </div>
+                </div>
+
+                {payerMode === 'single' ? (
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {currentTrip.participants.map((p) => (
+                      <button
+                        type="button"
+                        key={p.id}
+                        onClick={() => setSinglePayerId(p.id)}
+                        className="p-2.5 rounded-xl text-xs font-semibold text-left"
+                        style={{
+                          background: singlePayerId === p.id ? 'rgba(15,118,110,0.12)' : 'var(--bg-raised)',
+                          border: `1px solid ${singlePayerId === p.id ? 'var(--primary)' : 'var(--border-soft)'}`,
+                          color: 'var(--text-primary)',
+                        }}
+                      >
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {currentTrip.participants.map((p) => (
+                      <div
+                        key={p.id}
+                        className="p-2.5 rounded-xl flex items-center justify-between gap-2"
+                        style={{ background: 'var(--bg-raised)' }}
+                      >
+                        <span className="text-xs font-semibold truncate">{p.name}</span>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder="0"
+                            value={multiplePayers[p.id] || ''}
+                            onChange={(e) => setMultiplePayers((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                            className="w-20 px-2 py-1.5 text-xs font-bold text-right outline-none rounded-lg tabular-nums"
+                            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }}
+                          />
+                          {payerRemainingBalance > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const assignedToOthers = Object.entries(multiplePayers)
+                                  .filter(([k]) => k !== p.id)
+                                  .reduce((acc, [, v]) => acc + (Number(v) || 0), 0);
+                                const remainder = Math.max(0, parsedTotalAmount - assignedToOthers);
+                                setMultiplePayers((prev) => ({ ...prev, [p.id]: String(remainder) }));
+                              }}
+                              className="text-[10px] font-semibold"
+                              style={{ color: 'var(--primary)' }}
+                            >
+                              Fill
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    <p
+                      className="text-[11px] font-semibold"
+                      style={{ color: isPayerBalanced ? 'var(--emerald)' : 'var(--rose)' }}
+                    >
+                      {isPayerBalanced
+                        ? 'Balanced'
+                        : `Remaining ${currency}${payerRemainingBalance.toLocaleString('en-IN')}`}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold inline-flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+                    <Split className="w-3.5 h-3.5" />
+                    Split among
+                  </label>
+                  <div className="flex p-0.5 rounded-lg text-[11px] font-semibold" style={{ background: 'var(--bg-raised)' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSplitMode('all');
+                        setSelectedBeneficiaries(currentTrip.participants.map((p) => p.id));
+                      }}
+                      className="px-2.5 py-1 rounded-md"
+                      style={{
+                        background: splitMode === 'all' ? 'var(--primary)' : 'transparent',
+                        color: splitMode === 'all' ? 'var(--primary-foreground)' : 'var(--text-muted)',
+                      }}
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSplitMode('custom')}
+                      className="px-2.5 py-1 rounded-md"
+                      style={{
+                        background: splitMode === 'custom' ? 'var(--primary)' : 'transparent',
+                        color: splitMode === 'custom' ? 'var(--primary-foreground)' : 'var(--text-muted)',
+                      }}
+                    >
+                      Custom
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {currentTrip.participants.map((p) => {
+                    const isChecked = selectedBeneficiaries.includes(p.id);
+                    return (
+                      <label
+                        key={p.id}
+                        className="p-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 cursor-pointer"
+                        style={{
+                          background: isChecked ? 'rgba(15,118,110,0.12)' : 'var(--bg-raised)',
+                          border: `1px solid ${isChecked ? 'var(--primary)' : 'var(--border-soft)'}`,
+                          color: 'var(--text-primary)',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedBeneficiaries([...selectedBeneficiaries, p.id]);
+                            } else if (selectedBeneficiaries.length > 1) {
+                              setSelectedBeneficiaries(selectedBeneficiaries.filter((id) => id !== p.id));
+                            }
+                          }}
+                          className="rounded"
+                        />
+                        <span className="truncate">{p.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                  Notes (optional)
+                </label>
+                <input
+                  type="text"
+                  value={expNotes}
+                  onChange={(e) => setExpNotes(e.target.value)}
+                  className="w-full px-3.5 py-3 rounded-xl text-sm outline-none"
+                  style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }}
+                />
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                {editingExpense && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await handleDeleteExpense(editingExpense.id);
+                      setIsExpenseModalOpen(false);
+                    }}
+                    className="h-12 px-4 rounded-xl text-sm font-semibold"
+                    style={{ background: 'rgba(194,59,74,0.1)', color: 'var(--rose)' }}
+                  >
+                    Delete
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  disabled={payerMode === 'multiple' && !isPayerBalanced}
+                  className="flex-1 h-12 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+                  style={{ background: 'var(--primary)' }}
+                >
+                  {editingExpense ? 'Save changes' : 'Add expense'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* New trip sheet */}
+      {isNewTripModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div
+            className="absolute inset-0"
+            style={{ background: 'rgba(0,0,0,0.45)' }}
+            onClick={() => setIsNewTripModalOpen(false)}
+          />
+          <div
+            className="relative w-full max-w-md rounded-t-[20px] sm:rounded-[20px] overflow-hidden flex flex-col"
+            style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-soft)',
+              maxHeight: '90vh',
+            }}
+          >
+            <div
+              className="flex items-center justify-between px-5 pt-4 pb-3 shrink-0"
+              style={{ borderBottom: '1px solid var(--border-soft)' }}
+            >
+              <h3 className="text-base font-bold">New trip</h3>
+              <button
+                type="button"
+                onClick={() => setIsNewTripModalOpen(false)}
+                className="h-9 w-9 rounded-xl inline-flex items-center justify-center"
+                style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateTrip} className="p-5 space-y-4 overflow-y-auto">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                  Trip name
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Goa Trip"
+                  value={newTripName}
+                  onChange={(e) => setNewTripName(e.target.value)}
+                  className="w-full px-3.5 py-3 rounded-xl text-sm outline-none"
+                  style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }}
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                    Destination
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Optional"
+                    value={newTripDestination}
+                    onChange={(e) => setNewTripDestination(e.target.value)}
+                    className="w-full px-3.5 py-3 rounded-xl text-sm outline-none"
+                    style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                    Start date
+                  </label>
+                  <input
+                    type="date"
+                    value={newTripStartDate}
+                    onChange={(e) => setNewTripStartDate(e.target.value)}
+                    className="w-full px-3.5 py-3 rounded-xl text-sm outline-none"
+                    style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                  Add from contacts ({selectedContactIds.length})
+                </label>
+                {contacts.length === 0 ? (
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    No contacts yet
+                  </p>
+                ) : (
+                  <div className="max-h-36 overflow-y-auto space-y-1">
+                    {contacts.map((c) => {
+                      const isSelected = selectedContactIds.includes(c.id);
+                      return (
+                        <button
+                          type="button"
+                          key={c.id}
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedContactIds(selectedContactIds.filter((id) => id !== c.id));
+                            } else {
+                              setSelectedContactIds([...selectedContactIds, c.id]);
+                            }
+                          }}
+                          className="w-full p-2.5 rounded-xl text-xs font-semibold flex items-center justify-between"
+                          style={{
+                            background: isSelected ? 'rgba(15,118,110,0.12)' : 'var(--bg-raised)',
+                            border: `1px solid ${isSelected ? 'var(--primary)' : 'var(--border-soft)'}`,
+                            color: 'var(--text-primary)',
+                          }}
+                        >
+                          <span>{c.name}</span>
+                          {isSelected && <Check className="w-3.5 h-3.5" style={{ color: 'var(--primary)' }} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                  Other names (comma separated)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Aman, Priya"
+                  value={customParticipantNames}
+                  onChange={(e) => setCustomParticipantNames(e.target.value)}
+                  className="w-full px-3.5 py-3 rounded-xl text-sm outline-none"
+                  style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }}
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full h-12 rounded-xl text-sm font-semibold text-white"
+                style={{ background: 'var(--primary)' }}
+              >
+                Create trip
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Share sheet */}
+      {isShareModalOpen && currentTrip && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div
+            className="absolute inset-0"
+            style={{ background: 'rgba(0,0,0,0.45)' }}
+            onClick={() => setIsShareModalOpen(false)}
+          />
+          <div
+            className="relative w-full max-w-md rounded-t-[20px] sm:rounded-[20px] overflow-hidden p-5 space-y-4"
+            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold">Share trip</h3>
+              <button
+                type="button"
+                onClick={() => setIsShareModalOpen(false)}
+                className="h-9 w-9 rounded-xl inline-flex items-center justify-center"
+                style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              Anyone with the link can view expenses and who pays. Trip members with accounts can mark what they owe.
+            </p>
+
+            {publicShareUrl && (
+              <div
+                className="p-3 rounded-xl flex items-center justify-between gap-2"
+                style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}
+              >
+                <span className="text-xs truncate font-mono" style={{ color: 'var(--text-secondary)' }}>
+                  {publicShareUrl}
+                </span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(publicShareUrl);
+                    setCopiedShareLink(true);
+                    setTimeout(() => setCopiedShareLink(false), 2000);
+                  }}
+                  className="h-9 px-3 rounded-xl text-xs font-semibold text-white shrink-0"
+                  style={{ background: 'var(--primary)' }}
+                >
+                  {copiedShareLink ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleShareToWhatsApp}
+              disabled={isGeneratingShare}
+              className="w-full h-12 rounded-xl text-sm font-semibold text-white inline-flex items-center justify-center gap-2"
+              style={{ background: 'var(--emerald)' }}
+            >
+              <Share2 className="w-4 h-4" />
+              {copiedWhatsApp ? 'Summary copied' : 'Share WhatsApp summary'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
