@@ -88,7 +88,7 @@ export default function PwaProvider() {
             Install Udharwale
           </p>
           <p className="text-[11px] mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>
-            Add to your home screen for faster access and an offline app shell.
+            By Naeem Navjivan — add to your home screen for faster access and an offline app shell.
           </p>
           <div className="mt-2.5 flex items-center gap-2">
             <button

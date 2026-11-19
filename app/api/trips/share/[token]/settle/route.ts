@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
+import { getCurrentUser } from '@/lib/session';
+import { canManageSettlement, resolveTripShareViewer } from '@/lib/trip-access';
 import Trip from '@/models/Trip';
 
 export const dynamic = 'force-dynamic';
@@ -13,6 +15,14 @@ export async function POST(
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
+    const user = await getCurrentUser();
+    if (!user?.id) {
+      return NextResponse.json(
+        { error: 'Sign in with your Udharwale account to mark payments' },
+        { status: 401 }
+      );
+    }
+
     const { token } = await params;
     if (!token) {
       return NextResponse.json({ error: 'Token is required' }, { status: 400 });
@@ -22,7 +32,6 @@ export async function POST(
     const {
       settlementId,
       isSettled,
-      settledBy,
       paymentMethod = 'UPI',
       note,
       paymentAmount,
@@ -41,13 +50,43 @@ export async function POST(
       return NextResponse.json({ error: 'Trip not found or link expired' }, { status: 404 });
     }
 
+    const access = await resolveTripShareViewer(trip, user);
+    if (!access.canSettle) {
+      return NextResponse.json(
+        {
+          error:
+            'Your account is not on this trip. Use the same phone/email saved for your participant, or ask the owner to link your contact.',
+        },
+        { status: 403 }
+      );
+    }
+
     const existingSettlements = Array.isArray(trip.settlements) ? [...trip.settlements] : [];
-    const index = existingSettlements.findIndex((s: any) => s.id === settlementId);
+    const index = existingSettlements.findIndex((s: { id?: string }) => s.id === settlementId);
     const existing = index >= 0 ? existingSettlements[index] : null;
 
-    const totalAmount = roundMoney(
-      Number(body.amount ?? existing?.amount) || 0
-    );
+    const settlementRef = {
+      fromId: body.fromId || existing?.fromId || '',
+      fromName: body.fromName || existing?.fromName || '',
+      toId: body.toId || existing?.toId || '',
+      toName: body.toName || existing?.toName || '',
+    };
+
+    if (!canManageSettlement(access, settlementRef)) {
+      return NextResponse.json(
+        {
+          error: access.isOwner
+            ? 'Cannot update this settlement'
+            : 'You can only mark payments you owe on this trip',
+        },
+        { status: 403 }
+      );
+    }
+
+    // Attribute to the signed-in member — never trust client-supplied names
+    const confirmedBy = access.displayName;
+
+    const totalAmount = roundMoney(Number(body.amount ?? existing?.amount) || 0);
     const previousPaid = roundMoney(
       typeof existing?.paidAmount === 'number'
         ? existing.paidAmount
@@ -81,18 +120,17 @@ export async function POST(
             id: `pay_${Date.now()}`,
             amount: delta,
             paidAt: new Date().toISOString(),
-            paidBy: settledBy || existing?.settledBy || 'Friend',
+            paidBy: confirmedBy,
             paymentMethod: paymentMethod || 'UPI',
             note: note || '',
           },
         ];
       }
-      nextSettledBy = settledBy || existing?.settledBy || 'Friend';
+      nextSettledBy = confirmedBy;
       nextMethod = paymentMethod || existing?.paymentMethod || 'UPI';
       nextNote = note !== undefined ? note : existing?.note || '';
       nextSettledAt = new Date().toISOString();
     } else {
-      // Incremental payment — default to remaining (full settle) when amount omitted
       const remaining = Math.max(0, roundMoney(totalAmount - previousPaid));
       const pay = roundMoney(
         typeof paymentAmount === 'number' && !Number.isNaN(paymentAmount)
@@ -108,13 +146,13 @@ export async function POST(
             id: `pay_${Date.now()}`,
             amount: pay,
             paidAt: new Date().toISOString(),
-            paidBy: settledBy || existing?.settledBy || 'Friend',
+            paidBy: confirmedBy,
             paymentMethod: paymentMethod || 'UPI',
             note: note || '',
           },
         ];
       }
-      nextSettledBy = settledBy || existing?.settledBy || 'Friend';
+      nextSettledBy = confirmedBy;
       nextMethod = paymentMethod || existing?.paymentMethod || 'UPI';
       nextNote = note !== undefined ? note : existing?.note || '';
       nextSettledAt = new Date().toISOString();
@@ -126,10 +164,10 @@ export async function POST(
 
     const record = {
       id: settlementId,
-      fromId: body.fromId || existing?.fromId || '',
-      fromName: body.fromName || existing?.fromName || '',
-      toId: body.toId || existing?.toId || '',
-      toName: body.toName || existing?.toName || '',
+      fromId: settlementRef.fromId,
+      fromName: settlementRef.fromName,
+      toId: settlementRef.toId,
+      toName: settlementRef.toName,
       amount: totalAmount,
       fromContactId: body.fromContactId || existing?.fromContactId,
       toContactId: body.toContactId || existing?.toContactId,
@@ -157,7 +195,7 @@ export async function POST(
       success: true,
       settlements: trip.settlements,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating shared settlement:', error);
     return NextResponse.json({ error: 'Failed to update settlement' }, { status: 500 });
   }

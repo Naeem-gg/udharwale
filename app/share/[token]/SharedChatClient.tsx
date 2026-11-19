@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import { ArrowRight, CheckCircle2, Loader2, ReceiptText } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import CreatorCredit from '@/app/components/CreatorCredit';
+import { SITE_CREATOR } from '@/lib/seo';
 
 type SharedTx = {
   id: string;
@@ -210,15 +212,10 @@ export default function SharedChatClient({ token }: { token: string }) {
               <p className="font-branding text-lg leading-none" style={{ color: 'var(--primary)' }}>
                 Udharwale
               </p>
-              {data ? (
-                <p className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
-                  {data.ownerName} · {data.contactName}
-                </p>
-              ) : (
-                <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                  Shared khata
-                </p>
-              )}
+              <p className="text-[10px] mt-0.5 font-semibold truncate" style={{ color: 'var(--text-muted)' }}>
+                by {SITE_CREATOR}
+                {data ? ` · ${data.ownerName} · ${data.contactName}` : ''}
+              </p>
             </div>
           </div>
         </div>
@@ -377,6 +374,7 @@ export default function SharedChatClient({ token }: { token: string }) {
                   </div>
                 ))
               )}
+              <CreatorCredit withProduct className="pt-4 pb-2" />
             </div>
           </>
         )}

@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Copy,
   Loader2,
+  Lock,
   ReceiptText,
   RotateCcw,
   Share2,
@@ -15,6 +16,8 @@ import {
 } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import CreatorCredit from '@/app/components/CreatorCredit';
+import { SITE_CREATOR } from '@/lib/seo';
 import {
   Trip,
   TripSettlement,
@@ -53,11 +56,43 @@ function Avatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'md' }) {
   );
 }
 
+function formatWhen(iso?: string) {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return iso;
+  }
+}
+
+type ViewerState = {
+  authenticated: boolean;
+  isOwner: boolean;
+  isParticipant: boolean;
+  canSettle: boolean;
+  participantIds: string[];
+  displayName: string;
+};
+
 export default function SharedTripClient({ token }: { token: string }) {
   const [trip, setTrip] = useState<Trip | null>(null);
   const [ownerName, setOwnerName] = useState('');
+  const [viewer, setViewer] = useState<ViewerState>({
+    authenticated: false,
+    isOwner: false,
+    isParticipant: false,
+    canSettle: false,
+    participantIds: [],
+    displayName: '',
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'settle' | 'expenses'>('settle');
   const [tabReady, setTabReady] = useState(false);
   const [shared, setShared] = useState(false);
@@ -67,10 +102,18 @@ export default function SharedTripClient({ token }: { token: string }) {
   const [acknowledgingSettlement, setAcknowledgingSettlement] = useState<TripSettlement | null>(null);
   const [ackMethod, setAckMethod] = useState<'UPI' | 'Cash' | 'Bank' | 'Other'>('UPI');
   const [ackNote, setAckNote] = useState('');
-  const [ackPayerName, setAckPayerName] = useState('');
   const [ackSettleMode, setAckSettleMode] = useState<'full' | 'partial'>('full');
   const [ackAmount, setAckAmount] = useState('');
   const [isSubmittingAck, setIsSubmittingAck] = useState(false);
+
+  const loginHref = `/login?next=${encodeURIComponent(`/share/trip/${token}`)}`;
+  const signupHref = `/signup?next=${encodeURIComponent(`/share/trip/${token}`)}`;
+
+  const canManageSettlementRow = (st: { fromId?: string }) => {
+    if (!viewer.canSettle) return false;
+    if (viewer.isOwner) return true;
+    return !!st.fromId && viewer.participantIds.includes(st.fromId);
+  };
 
   useEffect(() => {
     if (!token) return;
@@ -85,6 +128,14 @@ export default function SharedTripClient({ token }: { token: string }) {
         if (!cancelled) {
           setTrip(data);
           setOwnerName(data.ownerName || 'Someone');
+          setViewer({
+            authenticated: !!data.viewer?.authenticated,
+            isOwner: !!data.viewer?.isOwner,
+            isParticipant: !!data.viewer?.isParticipant,
+            canSettle: !!data.viewer?.canSettle,
+            participantIds: Array.isArray(data.viewer?.participantIds) ? data.viewer.participantIds : [],
+            displayName: data.viewer?.displayName || '',
+          });
           setLoading(false);
         }
       })
@@ -133,56 +184,28 @@ export default function SharedTripClient({ token }: { token: string }) {
   };
 
   const openAcknowledgeModal = (st: TripSettlement, mode: 'full' | 'partial' = 'full') => {
+    if (!canManageSettlementRow(st)) {
+      setActionError(
+        viewer.authenticated
+          ? 'You can only mark payments you owe on this trip'
+          : 'Sign in with your Udharwale account to mark your payments'
+      );
+      return;
+    }
     const remaining =
       st.remainingAmount > 0.01 ? st.remainingAmount : Math.max(0, st.amount - (st.paidAmount || 0));
     setAcknowledgingSettlement(st);
-    setAckPayerName(st.fromName);
     setAckMethod('UPI');
     setAckNote('');
     setAckSettleMode(mode);
     setAckAmount(mode === 'full' ? remaining.toString() : '');
+    setActionError(null);
     setIsAckModalOpen(true);
-  };
-
-  const applyLocalSettlement = (st: TripSettlement, paymentAmt: number) => {
-    if (!trip) return;
-    const previousPaid = st.paidAmount || 0;
-    const newPaid = Math.min(st.amount, Math.round((previousPaid + paymentAmt) * 100) / 100);
-    const newRemaining = Math.max(0, Math.round((st.amount - newPaid) * 100) / 100);
-    const fullySettled = newRemaining <= 0.01;
-    const nowIso = new Date().toISOString();
-    const existing = trip.settlements ? [...trip.settlements] : [];
-    const idx = existing.findIndex((s) => s.id === st.id);
-    const record: TripSettlement = {
-      ...st,
-      paidAmount: fullySettled ? st.amount : newPaid,
-      remainingAmount: fullySettled ? 0 : newRemaining,
-      isSettled: fullySettled,
-      isPartial: !fullySettled && newPaid > 0.01,
-      payments: [
-        ...(st.payments || []),
-        {
-          id: `pay_${Date.now()}`,
-          amount: paymentAmt,
-          paidAt: nowIso,
-          paidBy: ackPayerName || st.fromName,
-          paymentMethod: ackMethod,
-          note: ackNote.trim(),
-        },
-      ],
-      settledAt: nowIso,
-      settledBy: ackPayerName || st.fromName,
-      paymentMethod: ackMethod,
-      note: ackNote.trim(),
-    };
-    if (idx >= 0) existing[idx] = record;
-    else existing.push(record);
-    setTrip({ ...trip, settlements: existing });
   };
 
   const handleConfirmAck = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!trip || !acknowledgingSettlement) return;
+    if (!trip || !acknowledgingSettlement || !canManageSettlementRow(acknowledgingSettlement)) return;
 
     const previousPaid = acknowledgingSettlement.paidAmount || 0;
     const remaining = Math.max(
@@ -198,6 +221,7 @@ export default function SharedTripClient({ token }: { token: string }) {
     if (paymentAmt <= 0.009) return;
 
     setIsSubmittingAck(true);
+    setActionError(null);
     try {
       const res = await fetch(`/api/trips/share/${token}/settle`, {
         method: 'POST',
@@ -210,29 +234,34 @@ export default function SharedTripClient({ token }: { token: string }) {
           toName: acknowledgingSettlement.toName,
           amount: acknowledgingSettlement.amount,
           paymentAmount: paymentAmt,
-          settledBy: ackPayerName || acknowledgingSettlement.fromName,
           paymentMethod: ackMethod,
           note: ackNote.trim(),
         }),
       });
-
-      if (res.ok) {
-        const body = await res.json();
-        setTrip({ ...trip, settlements: body.settlements });
-      } else {
-        applyLocalSettlement(acknowledgingSettlement, paymentAmt);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body?.error || 'Could not save payment');
       }
-    } catch {
-      applyLocalSettlement(acknowledgingSettlement, paymentAmt);
-    } finally {
-      setIsSubmittingAck(false);
+      setTrip({ ...trip, settlements: body.settlements });
       setIsAckModalOpen(false);
       setAcknowledgingSettlement(null);
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Could not save payment');
+    } finally {
+      setIsSubmittingAck(false);
     }
   };
 
   const handleRevertAck = async (st: TripSettlement) => {
-    if (!trip) return;
+    if (!trip || !canManageSettlementRow(st)) {
+      setActionError(
+        viewer.authenticated
+          ? 'You can only undo payments on your side of the trip'
+          : 'Sign in to manage your payments'
+      );
+      return;
+    }
+    setActionError(null);
     try {
       const res = await fetch(`/api/trips/share/${token}/settle`, {
         method: 'POST',
@@ -244,38 +273,13 @@ export default function SharedTripClient({ token }: { token: string }) {
           isSettled: false,
         }),
       });
-      if (res.ok) {
-        const body = await res.json();
-        setTrip({ ...trip, settlements: body.settlements });
-      } else {
-        const existing = trip.settlements ? [...trip.settlements] : [];
-        const idx = existing.findIndex((s) => s.id === st.id);
-        if (idx >= 0) {
-          existing[idx] = {
-            ...existing[idx],
-            paidAmount: 0,
-            remainingAmount: st.amount,
-            isSettled: false,
-            isPartial: false,
-            payments: [],
-          };
-        }
-        setTrip({ ...trip, settlements: existing });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body?.error || 'Could not undo payment');
       }
-    } catch {
-      const existing = trip.settlements ? [...trip.settlements] : [];
-      const idx = existing.findIndex((s) => s.id === st.id);
-      if (idx >= 0) {
-        existing[idx] = {
-          ...existing[idx],
-          paidAmount: 0,
-          remainingAmount: st.amount,
-          isSettled: false,
-          isPartial: false,
-          payments: [],
-        };
-      }
-      setTrip({ ...trip, settlements: existing });
+      setTrip({ ...trip, settlements: body.settlements });
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Could not undo payment');
     }
   };
 
@@ -334,7 +338,7 @@ export default function SharedTripClient({ token }: { token: string }) {
             <div className="min-w-0">
               <p className="text-sm font-bold truncate">{trip.name}</p>
               <p className="text-[11px] truncate" style={{ color: 'var(--text-muted)' }}>
-                Shared by {ownerName}
+                Shared by {ownerName} · Udharwale by {SITE_CREATOR}
               </p>
             </div>
           </div>
@@ -362,7 +366,6 @@ export default function SharedTripClient({ token }: { token: string }) {
       </header>
 
       <div className="mx-auto w-full max-w-lg px-4 pt-4 pb-3 space-y-3">
-        {/* One-glance summary */}
         <div
           className="rounded-2xl px-4 py-4 text-center"
           style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
@@ -394,12 +397,69 @@ export default function SharedTripClient({ token }: { token: string }) {
               </div>
               <p className="text-xs mt-1.5" style={{ color: 'var(--text-muted)' }}>
                 Total spent {currency}
-                {summary.totalSpend.toLocaleString('en-IN')} ·{' '}
-                {trip.participants.length} people
+                {summary.totalSpend.toLocaleString('en-IN')} · {trip.participants.length} people
               </p>
             </>
           )}
         </div>
+
+        {/* Transparency / permission banner */}
+        <div
+          className="rounded-2xl px-3.5 py-3 flex items-start gap-2.5"
+          style={{
+            background: viewer.canSettle ? 'rgba(15,118,110,0.08)' : 'var(--bg-surface)',
+            border: '1px solid var(--border-soft)',
+          }}
+        >
+          <Lock className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'var(--primary)' }} />
+          <div className="min-w-0 space-y-1">
+            {viewer.canSettle ? (
+              <p className="text-xs leading-snug" style={{ color: 'var(--text-secondary)' }}>
+                Signed in as{' '}
+                <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  {viewer.displayName || ownerName}
+                </span>
+                .{' '}
+                {viewer.isOwner
+                  ? 'As trip owner you can mark any payment.'
+                  : 'You can mark payments you owe — each confirmation is public.'}
+              </p>
+            ) : viewer.authenticated ? (
+              <p className="text-xs leading-snug" style={{ color: 'var(--text-secondary)' }}>
+                Your account isn&apos;t linked to a person on this trip. Ask {ownerName} to save your
+                phone/email on your participant, then refresh.
+              </p>
+            ) : (
+              <>
+                <p className="text-xs leading-snug" style={{ color: 'var(--text-secondary)' }}>
+                  Anyone can view. Trip members with an Udharwale account can sign in and mark only
+                  what they owe.
+                </p>
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  <Link href={loginHref} className="text-xs font-semibold" style={{ color: 'var(--primary)' }}>
+                    Sign in to mark paid →
+                  </Link>
+                  <Link href={signupHref} className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+                    Create account
+                  </Link>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {actionError && (
+          <p
+            className="text-xs text-center rounded-xl px-3 py-2"
+            style={{
+              background: 'rgba(194,59,74,0.08)',
+              color: 'var(--rose)',
+              border: '1px solid rgba(194,59,74,0.2)',
+            }}
+          >
+            {actionError}
+          </p>
+        )}
 
         <div
           className="flex p-1 rounded-2xl gap-1"
@@ -452,6 +512,7 @@ export default function SharedTripClient({ token }: { token: string }) {
                     st.remainingAmount > 0.01
                       ? st.remainingAmount
                       : Math.max(0, st.amount - (st.paidAmount || 0));
+                  const payments = st.payments || [];
 
                   return (
                     <div
@@ -485,29 +546,64 @@ export default function SharedTripClient({ token }: { token: string }) {
                         </p>
                       </div>
 
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openAcknowledgeModal(st, 'full')}
-                          className="flex-1 h-11 rounded-xl text-sm font-semibold text-white inline-flex items-center justify-center gap-1.5"
-                          style={{ background: 'var(--emerald)' }}
+                      {payments.length > 0 && (
+                        <div
+                          className="rounded-xl px-3 py-2 space-y-1.5"
+                          style={{ background: 'var(--bg-raised)' }}
                         >
-                          <CheckCircle2 className="w-4 h-4" />
-                          {isPartial ? 'Pay rest' : 'Mark paid'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openAcknowledgeModal(st, 'partial')}
-                          className="h-11 px-3 rounded-xl text-sm font-semibold"
-                          style={{
-                            background: 'var(--bg-raised)',
-                            color: 'var(--text-secondary)',
-                            border: '1px solid var(--border-soft)',
-                          }}
-                        >
-                          Partial
-                        </button>
-                      </div>
+                          <p
+                            className="text-[10px] font-semibold uppercase tracking-wider"
+                            style={{ color: 'var(--text-muted)' }}
+                          >
+                            Payment log
+                          </p>
+                          {payments.map((p) => (
+                            <p key={p.id} className="text-[11px] leading-snug" style={{ color: 'var(--text-secondary)' }}>
+                              <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                                {currency}
+                                {p.amount.toLocaleString('en-IN')}
+                              </span>
+                              {' · confirmed by '}
+                              <span className="font-semibold">{p.paidBy || st.settledBy || ownerName}</span>
+                              {p.paymentMethod ? ` · ${p.paymentMethod}` : ''}
+                              {p.paidAt ? ` · ${formatWhen(p.paidAt)}` : ''}
+                              {p.note ? ` · ${p.note}` : ''}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+
+                      {canManageSettlementRow(st) ? (
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openAcknowledgeModal(st, 'full')}
+                            className="flex-1 h-11 rounded-xl text-sm font-semibold text-white inline-flex items-center justify-center gap-1.5"
+                            style={{ background: 'var(--emerald)' }}
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            {isPartial ? 'Pay rest' : 'Mark paid'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openAcknowledgeModal(st, 'partial')}
+                            className="h-11 px-3 rounded-xl text-sm font-semibold"
+                            style={{
+                              background: 'var(--bg-raised)',
+                              color: 'var(--text-secondary)',
+                              border: '1px solid var(--border-soft)',
+                            }}
+                          >
+                            Partial
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                          {viewer.authenticated
+                            ? `Waiting for ${st.fromName} to mark paid`
+                            : `${st.fromName} can mark this after signing in`}
+                        </p>
+                      )}
                     </div>
                   );
                 })}
@@ -520,45 +616,71 @@ export default function SharedTripClient({ token }: { token: string }) {
                     >
                       Already paid
                     </p>
-                    {settledSettlements.map((st) => (
-                      <div
-                        key={st.id}
-                        className="rounded-2xl px-3.5 py-3 flex items-center gap-3"
-                        style={{
-                          background: 'rgba(4,120,87,0.06)',
-                          border: '1px solid rgba(4,120,87,0.15)',
-                        }}
-                      >
-                        <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: 'var(--emerald)' }} />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm truncate">
-                            <span className="font-semibold">{st.fromName}</span>
-                            <span style={{ color: 'var(--text-muted)' }}> → </span>
-                            <span className="font-semibold">{st.toName}</span>
-                          </p>
-                          <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                            {currency}
-                            {st.amount.toLocaleString('en-IN')}
-                            {st.paymentMethod ? ` · ${st.paymentMethod}` : ''}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleRevertAck(st)}
-                          className="h-8 px-2.5 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1"
-                          style={{ color: 'var(--text-muted)', background: 'var(--bg-raised)' }}
+                    {settledSettlements.map((st) => {
+                      const payments = st.payments || [];
+                      return (
+                        <div
+                          key={st.id}
+                          className="rounded-2xl px-3.5 py-3 space-y-2"
+                          style={{
+                            background: 'rgba(4,120,87,0.06)',
+                            border: '1px solid rgba(4,120,87,0.15)',
+                          }}
                         >
-                          <RotateCcw className="w-3 h-3" />
-                          Undo
-                        </button>
-                      </div>
-                    ))}
+                          <div className="flex items-center gap-3">
+                            <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: 'var(--emerald)' }} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm truncate">
+                                <span className="font-semibold">{st.fromName}</span>
+                                <span style={{ color: 'var(--text-muted)' }}> → </span>
+                                <span className="font-semibold">{st.toName}</span>
+                              </p>
+                              <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                                {currency}
+                                {st.amount.toLocaleString('en-IN')}
+                                {st.settledBy ? ` · confirmed by ${st.settledBy}` : ''}
+                                {st.settledAt ? ` · ${formatWhen(st.settledAt)}` : ''}
+                                {st.paymentMethod ? ` · ${st.paymentMethod}` : ''}
+                              </p>
+                            </div>
+                            {canManageSettlementRow(st) && (
+                              <button
+                                type="button"
+                                onClick={() => handleRevertAck(st)}
+                                className="h-8 px-2.5 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1"
+                                style={{ color: 'var(--text-muted)', background: 'var(--bg-raised)' }}
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                                Undo
+                              </button>
+                            )}
+                          </div>
+                          {payments.length > 1 && (
+                            <div className="pl-7 space-y-1">
+                              {payments.map((p) => (
+                                <p key={p.id} className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                                  {currency}
+                                  {p.amount.toLocaleString('en-IN')}
+                                  {p.paidBy ? ` · ${p.paidBy}` : ''}
+                                  {p.paidAt ? ` · ${formatWhen(p.paidAt)}` : ''}
+                                  {p.note ? ` · ${p.note}` : ''}
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                          {st.note && (
+                            <p className="pl-7 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                              Note: {st.note}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </>
             )}
 
-            {/* Simple per-person status */}
             <div className="pt-3 space-y-2">
               <p
                 className="text-[11px] font-semibold uppercase tracking-wider"
@@ -668,22 +790,29 @@ export default function SharedTripClient({ token }: { token: string }) {
           </>
         )}
 
-        <div className="pt-4 text-center">
+        <div className="pt-4 text-center space-y-2">
           <Link href="/signup" className="text-xs font-semibold" style={{ color: 'var(--primary)' }}>
             Make your own trip on Udharwale →
           </Link>
+          <CreatorCredit withProduct />
         </div>
       </div>
 
-      {/* Mark paid sheet */}
-      {isAckModalOpen && acknowledgingSettlement && (
+      {isAckModalOpen && acknowledgingSettlement && canManageSettlementRow(acknowledgingSettlement) && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-          <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.45)' }} onClick={() => setIsAckModalOpen(false)} />
+          <div
+            className="absolute inset-0"
+            style={{ background: 'rgba(0,0,0,0.45)' }}
+            onClick={() => setIsAckModalOpen(false)}
+          />
           <div
             className="relative w-full max-w-md rounded-t-[20px] sm:rounded-[20px] overflow-hidden"
             style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
           >
-            <div className="flex items-center justify-between px-5 pt-4 pb-3" style={{ borderBottom: '1px solid var(--border-soft)' }}>
+            <div
+              className="flex items-center justify-between px-5 pt-4 pb-3"
+              style={{ borderBottom: '1px solid var(--border-soft)' }}
+            >
               <div>
                 <h3 className="text-base font-bold">Mark paid</h3>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
@@ -707,7 +836,7 @@ export default function SharedTripClient({ token }: { token: string }) {
                   {remainingForAck.toLocaleString('en-IN')}
                 </p>
                 <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                  due now
+                  Confirmed publicly as {viewer.displayName || ownerName}
                 </p>
               </div>
 
@@ -790,7 +919,7 @@ export default function SharedTripClient({ token }: { token: string }) {
                         color: ackMethod === m ? 'var(--primary-foreground)' : 'var(--text-secondary)',
                       }}
                     >
-                      {m === 'UPI' ? 'UPI' : m}
+                      {m}
                     </button>
                   ))}
                 </div>
@@ -798,29 +927,11 @@ export default function SharedTripClient({ token }: { token: string }) {
 
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
-                  Who paid?
+                  Public note (optional)
                 </label>
                 <input
                   type="text"
-                  value={ackPayerName}
-                  onChange={(e) => setAckPayerName(e.target.value)}
-                  className="w-full px-3.5 py-3 rounded-xl text-sm outline-none font-medium"
-                  style={{
-                    background: 'var(--bg-raised)',
-                    border: '1px solid var(--border-soft)',
-                    color: 'var(--text-primary)',
-                  }}
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
-                  Note (optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. GPay"
+                  placeholder="e.g. Rahul paid via GPay"
                   value={ackNote}
                   onChange={(e) => setAckNote(e.target.value)}
                   className="w-full px-3.5 py-3 rounded-xl text-sm outline-none"

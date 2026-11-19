@@ -13,6 +13,8 @@ import {
 } from './types';
 import UpcomingFeatures from './UpcomingFeatures';
 import TripExpensesView from './TripExpensesView';
+import CreatorCredit from './CreatorCredit';
+import { SITE_CREATOR, SITE_CREDIT_LINE, SITE_NAME } from '@/lib/seo';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -1288,7 +1290,7 @@ export default function Dashboard() {
 
   const handleExportBackup = () => {
     const backup = {
-      app: 'Udharwale',
+      app: SITE_CREDIT_LINE,
       exportedAt: new Date().toISOString(),
       user: { name: userName, email: userEmail },
       settings: { theme, defaultTxMode, compactLedgerView, showBalances },
@@ -1345,7 +1347,7 @@ export default function Dashboard() {
 
   const handleCopyLedgerSummary = async () => {
     const summary = [
-      'Udharwale Ledger Summary',
+      `${SITE_CREDIT_LINE} — Ledger Summary`,
       `User: ${userName || 'Unknown'}${userEmail ? ` <${userEmail}>` : ''}`,
       `Contacts: ${ledgerSummary.contactCount}`,
       `Transactions: ${ledgerSummary.transactionCount}`,
@@ -1420,7 +1422,7 @@ export default function Dashboard() {
         <body>
           <button onclick="window.print()" style="float:right;padding:8px 12px;border:1px solid #cbd5e1;border-radius:8px;background:white;color:#111827;font-weight:700;">Print / Save PDF</button>
           <h1>Udharwale Ledger</h1>
-          <div class="muted">Exported ${new Date().toLocaleString('en-IN')} · ${escapeHtml(userName || 'Account')}</div>
+          <div class="muted">Exported ${new Date().toLocaleString('en-IN')} · ${escapeHtml(userName || 'Account')} · ${escapeHtml(SITE_CREDIT_LINE)}</div>
           <div class="stats">
             <div class="stat"><div class="label">Contacts</div><div class="value">${ledgerSummary.contactCount}</div></div>
             <div class="stat"><div class="label">Transactions</div><div class="value">${ledgerSummary.transactionCount}</div></div>
@@ -1447,6 +1449,7 @@ export default function Dashboard() {
                 `).join('')}
             </tbody>
           </table>
+          <p class="muted" style="margin-top:24px;">${escapeHtml(SITE_CREDIT_LINE)}</p>
         </body>
       </html>
     `);
@@ -3121,6 +3124,22 @@ export default function Dashboard() {
                       &quot;Add to Home Screen / Install app&quot; option. The service worker caches the app
                       shell and static assets; live ledgers still need a connection to sync.
                     </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-primary/15 bg-card/80">
+                  <CardContent className="p-5 space-y-2 text-center">
+                    <p className="font-branding text-lg" style={{ color: 'var(--primary)' }}>
+                      {SITE_NAME}
+                    </p>
+                    <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      Built by {SITE_CREATOR}
+                    </p>
+                    <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                      Personal khata for friends, loans, and shared trips — designed and maintained by{' '}
+                      {SITE_CREATOR}.
+                    </p>
+                    <CreatorCredit withProduct className="pt-1" />
                   </CardContent>
                 </Card>
 

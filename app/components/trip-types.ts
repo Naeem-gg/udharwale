@@ -450,7 +450,7 @@ export function formatWhatsAppSummary(trip: Trip, userName?: string): string {
     text += splitLine;
   });
 
-  text += `\n✨ *Calculated transparently with Udharwale*`;
+  text += `\n✨ *Calculated transparently with Udharwale by Naeem Navjivan*`;
   return text;
 }
 

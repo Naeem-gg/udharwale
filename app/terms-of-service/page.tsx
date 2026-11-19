@@ -10,8 +10,8 @@ export const metadata: Metadata = {
     canonical: absoluteUrl('/terms-of-service'),
   },
   openGraph: {
-    title: 'Terms of Service | Udharwale',
-    description: 'Basic rules for using the Udharwale personal ledger app.',
+    title: 'Terms of Service | Udharwale by Naeem Navjivan',
+    description: 'Basic rules for using Udharwale by Naeem Navjivan.',
     url: absoluteUrl('/terms-of-service'),
   },
 };
@@ -61,7 +61,13 @@ export default function TermsOfServicePage() {
         {
           title: 'Limitation of Liability',
           body: [
-            'Udharwale is provided as-is. To the maximum extent allowed by law, the maintainer is not responsible for disputes, missed payments, lost exports, inaccurate entries, or decisions made based on app data.',
+            'Udharwale is provided as-is by Naeem Navjivan. To the maximum extent allowed by law, the maintainer is not responsible for disputes, missed payments, lost exports, inaccurate entries, or decisions made based on app data.',
+          ],
+        },
+        {
+          title: 'Creator',
+          body: [
+            'Udharwale is created and maintained by Naeem Navjivan.',
           ],
         },
       ]}

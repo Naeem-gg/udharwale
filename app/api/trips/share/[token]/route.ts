@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
+import { getCurrentUser } from '@/lib/session';
+import { resolveTripShareViewer } from '@/lib/trip-access';
 import Trip from '@/models/Trip';
 import User from '@/models/User';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
@@ -22,7 +24,12 @@ export async function GET(
       return NextResponse.json({ error: 'Trip not found or link expired' }, { status: 404 });
     }
 
-    const owner = await User.findById(trip.userId).select('name');
+    const [owner, sessionUser] = await Promise.all([
+      User.findById(trip.userId).select('name'),
+      getCurrentUser(),
+    ]);
+
+    const access = await resolveTripShareViewer(trip, sessionUser);
 
     return NextResponse.json({
       id: trip.id,
@@ -38,10 +45,17 @@ export async function GET(
       ownerName: owner?.name || 'Someone',
       status: trip.status || 'active',
       createdAt: trip.createdAt,
+      viewer: {
+        authenticated: access.authenticated,
+        isOwner: access.isOwner,
+        isParticipant: access.isParticipant,
+        canSettle: access.canSettle,
+        participantIds: access.participantIds,
+        displayName: access.displayName,
+      },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching shared trip:', error);
     return NextResponse.json({ error: 'Failed to load shared trip' }, { status: 500 });
   }
 }
-

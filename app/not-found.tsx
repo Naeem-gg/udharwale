@@ -18,6 +18,7 @@ export default function NotFound() {
     >
       <div className="app-shell w-full text-center space-y-6 px-5">
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Udharwale</p>
+        <p className="text-[11px] font-semibold text-muted-foreground">by Naeem Navjivan</p>
         <h1 className="text-6xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
           404
         </h1>

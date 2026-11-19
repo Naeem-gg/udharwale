@@ -10,8 +10,8 @@ export const metadata: Metadata = {
     canonical: absoluteUrl('/privacy-policy'),
   },
   openGraph: {
-    title: 'Privacy Policy | Udharwale',
-    description: 'Learn how Udharwale protects your personal ledger data.',
+    title: 'Privacy Policy | Udharwale by Naeem Navjivan',
+    description: 'Learn how Udharwale by Naeem Navjivan protects your personal ledger data.',
     url: absoluteUrl('/privacy-policy'),
   },
 };

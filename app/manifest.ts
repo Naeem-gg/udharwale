@@ -1,9 +1,9 @@
 import type { MetadataRoute } from 'next';
-import { DEFAULT_DESCRIPTION, SITE_NAME } from '@/lib/seo';
+import { DEFAULT_DESCRIPTION, SITE_CREATOR, SITE_NAME } from '@/lib/seo';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: `${SITE_NAME} — Digital Khata`,
+    name: `${SITE_NAME} by ${SITE_CREATOR}`,
     short_name: SITE_NAME,
     description: DEFAULT_DESCRIPTION,
     start_url: '/dashboard',

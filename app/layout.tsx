@@ -54,7 +54,7 @@ export const metadata: Metadata = {
     locale: "en_IN",
     url: SITE_URL,
     siteName: SITE_NAME,
-    title: `${SITE_NAME} — Personal khata for everyday balances`,
+    title: `${SITE_NAME} by ${SITE_CREATOR} — Personal khata for everyday balances`,
     description: DEFAULT_DESCRIPTION,
     images: [
       {
@@ -67,10 +67,10 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: `${SITE_NAME} — Digital Khata`,
+    title: `${SITE_NAME} by ${SITE_CREATOR} — Digital Khata`,
     description: DEFAULT_DESCRIPTION,
     images: ["/opengraph-image"],
-    creator: "@udharwale",
+    creator: SITE_CREATOR,
   },
   robots: {
     index: true,

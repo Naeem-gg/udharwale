@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { ArrowRight, BookOpen } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import CreatorCredit from '@/app/components/CreatorCredit';
+import { SITE_CREATOR, SITE_NAME } from '@/lib/seo';
 
 export default function LandingPage() {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
@@ -31,7 +33,10 @@ export default function LandingPage() {
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
               <BookOpen className="h-4.5 w-4.5" aria-hidden="true" />
             </div>
-            <span className="font-branding text-lg text-[var(--text-primary)]">Udharwale</span>
+            <div>
+              <span className="font-branding text-lg text-[var(--text-primary)] block leading-none">Udharwale</span>
+              <span className="text-[10px] font-semibold text-primary">by {SITE_CREATOR}</span>
+            </div>
           </div>
           {isLoggedIn === null ? (
             <div className="h-8 w-16 rounded-lg shimmer-bg" />
@@ -47,9 +52,7 @@ export default function LandingPage() {
         </header>
 
         <main className="flex flex-1 flex-col justify-center py-10">
-          <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
-            By Naeem Navjivan
-          </p>
+          <CreatorCredit variant="hero" className="mb-4" />
           <h1 className="font-branding text-[2.75rem] leading-[1.05] text-[var(--text-primary)] sm:text-5xl">
             Udharwale
           </h1>
@@ -88,6 +91,7 @@ export default function LandingPage() {
         </main>
 
         <footer className="space-y-3 border-t border-[var(--border-soft)] pt-5 text-center text-[11px] text-muted-foreground">
+          <CreatorCredit withProduct />
           <div className="flex items-center justify-center gap-4">
             <Link href="/privacy-policy" className="hover:text-primary">
               Privacy
@@ -96,7 +100,9 @@ export default function LandingPage() {
               Terms
             </Link>
           </div>
-          <p>© 2026 Udharwale</p>
+          <p>
+            © 2026 {SITE_NAME} · {SITE_CREATOR}
+          </p>
         </footer>
       </div>
     </div>

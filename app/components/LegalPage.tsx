@@ -36,7 +36,7 @@ export default function LegalPage({
             </div>
             <div>
               <p className="font-branding text-xl text-primary">Udharwale</p>
-              <p className="text-[10px] font-bold uppercase text-muted-foreground">By Naeem Navjivan</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-primary">By Naeem Navjivan</p>
             </div>
           </div>
         </header>
@@ -63,6 +63,10 @@ export default function LegalPage({
             <div className="mt-8 rounded-lg border border-border bg-secondary/60 p-4 text-sm text-muted-foreground">
               This page is provided for product transparency and is not legal advice. If Udharwale is used commercially or published broadly, have these terms reviewed for your jurisdiction.
             </div>
+
+            <p className="mt-6 text-center text-xs font-semibold text-primary">
+              Udharwale by Naeem Navjivan
+            </p>
           </CardContent>
         </Card>
       </div>
