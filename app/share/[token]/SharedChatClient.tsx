@@ -38,19 +38,19 @@ type SharedLedger = {
   transactions: SharedTx[];
 };
 
-const AVATAR_GRADIENTS = [
-  'from-cyan-500 to-teal-600',
-  'from-amber-500 to-orange-600',
-  'from-rose-500 to-pink-600',
-  'from-sky-500 to-blue-600',
-  'from-lime-500 to-emerald-600',
-  'from-fuchsia-500 to-pink-600',
+const AVATAR_TONES = [
+  'bg-[#0f766e]',
+  'bg-[#115e59]',
+  'bg-[#134e4a]',
+  'bg-[#1e3a36]',
+  'bg-[#0e7490]',
+  'bg-[#3d4f47]',
 ];
 
 function avatarGradient(name: string) {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
-  return AVATAR_GRADIENTS[Math.abs(hash) % AVATAR_GRADIENTS.length];
+  return AVATAR_TONES[Math.abs(hash) % AVATAR_TONES.length];
 }
 
 function initials(name: string) {
@@ -92,7 +92,7 @@ function PersonChip({ name, size = 'md' }: { name: string; size?: 'sm' | 'md' | 
   return (
     <div
       className={cn(
-        'rounded-full bg-gradient-to-tr flex items-center justify-center font-black text-white shrink-0 ring-2 ring-[var(--bg-base)] shadow-lg',
+        'rounded-full flex items-center justify-center font-bold text-white shrink-0 ring-2 ring-[var(--bg-base)]',
         dim,
         avatarGradient(name)
       )}
@@ -350,7 +350,7 @@ export default function SharedChatClient({ token }: { token: string }) {
                   >
                     <Banknote className="w-4 h-4 text-cyan-200" />
                   </div>
-                  <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                  <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
                     ledger
                   </span>
                 </motion.div>
@@ -364,7 +364,7 @@ export default function SharedChatClient({ token }: { token: string }) {
               </div>
 
               <div className="text-center px-2">
-                <h1 className="text-2xl font-black tracking-tight leading-tight">{headline}</h1>
+                <h1 className="text-2xl font-bold tracking-tight leading-tight">{headline}</h1>
                 <p className="text-sm mt-2 leading-relaxed max-w-sm mx-auto" style={{ color: 'var(--text-secondary)' }}>
                   {subcopy}
                 </p>
@@ -391,14 +391,14 @@ export default function SharedChatClient({ token }: { token: string }) {
                 />
                 <div className="relative flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-[10px] font-black uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                    <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
                       {absBalance === 0 ? 'All clear' : 'Open balance'}
                     </p>
                     {absBalance === 0 ? (
-                      <p className="text-2xl font-black mt-1 tracking-tight">Settled</p>
+                      <p className="text-2xl font-bold mt-1 tracking-tight">Settled</p>
                     ) : (
                       <>
-                        <p className="text-3xl font-black tabular-nums mt-1 tracking-tight">
+                        <p className="text-3xl font-bold tabular-nums mt-1 tracking-tight">
                           ₹{absBalance.toLocaleString('en-IN')}
                         </p>
                         <p className="text-xs font-semibold mt-1.5 leading-snug" style={{ color: 'var(--text-secondary)' }}>
@@ -545,7 +545,7 @@ export default function SharedChatClient({ token }: { token: string }) {
                                   {toName}
                                 </span>
                               </div>
-                              <p className="text-2xl font-black tabular-nums leading-none mt-1 tracking-tight">
+                              <p className="text-2xl font-bold tabular-nums leading-none mt-1 tracking-tight">
                                 ₹{tx.amount.toLocaleString('en-IN')}
                               </p>
                             </div>

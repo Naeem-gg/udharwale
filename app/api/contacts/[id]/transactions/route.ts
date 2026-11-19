@@ -25,7 +25,7 @@ export async function POST(
     const { id } = await params;
     const body = await req.json();
 
-    const { amount, type, remark, date, mode, category, id: txId, createdAt } = body;
+    const { amount, type, remark, date, mode, category, dueDate, id: txId, createdAt } = body;
 
     if (!amount || !type || !remark || !date || !mode || !txId) {
       return NextResponse.json(
@@ -36,6 +36,8 @@ export async function POST(
 
     const allowedCategories = ['food', 'travel', 'rent', 'business', 'personal', 'other'];
     const safeCategory = allowedCategories.includes(category) ? category : 'other';
+    const safeDueDate =
+      typeof dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? dueDate : null;
 
     const access = await findAccessibleContact(id, userId);
     if (!access) {
@@ -55,6 +57,7 @@ export async function POST(
       createdAt: typeof createdAt === 'string' && createdAt ? createdAt : now,
       mode,
       category: safeCategory,
+      dueDate: safeDueDate,
       createdByUserId: userId,
       updatedByUserId: userId,
       updatedAt: now,

@@ -44,7 +44,7 @@ export default function LegalPage({
         <Card className="border-primary/15 bg-card/85 backdrop-blur">
           <CardContent className="p-6 md:p-8">
             <p className="text-xs font-bold uppercase text-primary">Effective {effectiveDate}</p>
-            <h1 className="mt-3 text-3xl font-black md:text-4xl">{title}</h1>
+            <h1 className="mt-3 text-3xl font-bold md:text-4xl">{title}</h1>
             <p className="mt-4 text-sm leading-7 text-muted-foreground">{intro}</p>
 
             <div className="mt-8 space-y-7">

@@ -43,7 +43,7 @@ export default function ConfirmDialog({
             {tone === 'danger' ? '⚠️' : '📦'}
           </div>
           <div className="min-w-0">
-            <h3 id="confirm-dialog-title" className="text-base font-black" style={{ color: 'var(--text-primary)' }}>
+            <h3 id="confirm-dialog-title" className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
               {title}
             </h3>
             <p className="mt-1 text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>

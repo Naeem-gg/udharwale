@@ -1,64 +1,53 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '@/lib/utils';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Plus,
-  Share2,
-  Users,
-  CreditCard,
-  Split,
-  ReceiptText,
-  ChevronDown,
-  Trash2,
   Check,
-  Search,
-  ArrowRight,
-  TrendingUp,
-  TrendingDown,
-  X,
-  Calendar,
-  AlertCircle,
-  FolderPlus,
-  MapPin,
   CheckCircle2,
   Clock,
+  CreditCard,
+  FolderPlus,
   RotateCcw,
+  Search,
   Send,
+  Share2,
   ShieldCheck,
+  Split,
+  TrendingUp,
+  X
 } from 'lucide-react';
-import { Contact } from './types';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  CATEGORY_CONFIG,
+  ExpenseCategory,
+  ExpensePayer,
+  ExpenseSplit,
   Trip,
   TripExpense,
   TripParticipant,
   TripSettlement,
-  ExpenseCategory,
-  ExpensePayer,
-  ExpenseSplit,
-  CATEGORY_CONFIG,
   calculateTripSummary,
   formatWhatsAppSummary,
   getDemoTrip,
 } from './trip-types';
-import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { Contact } from './types';
 
 const STORAGE_KEY = 'udharwale-trips-v1';
 
 /* ─── Avatar color generator ─── */
-const AVATAR_GRADIENTS = [
-  'from-violet-500 to-indigo-600',
-  'from-emerald-500 to-teal-600',
-  'from-amber-500 to-orange-600',
-  'from-pink-500 to-rose-600',
-  'from-cyan-500 to-blue-600',
-  'from-fuchsia-500 to-purple-600',
+const AVATAR_TONES = [
+  'bg-[#0f766e]',
+  'bg-[#115e59]',
+  'bg-[#134e4a]',
+  'bg-[#1e3a36]',
+  'bg-[#0e7490]',
+  'bg-[#3d4f47]',
 ];
 function avatarGradient(name: string) {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
-  return AVATAR_GRADIENTS[Math.abs(hash) % AVATAR_GRADIENTS.length];
+  return AVATAR_TONES[Math.abs(hash) % AVATAR_TONES.length];
 }
 
 interface TripExpensesViewProps {
@@ -497,7 +486,7 @@ export default function TripExpensesView({
         id: 'p_you',
         name: `${userName || 'You'}`,
         isCurrentUser: true,
-        avatarColor: 'from-violet-500 to-indigo-600',
+        avatarColor: 'bg-[#0f766e]',
       },
     ];
 
@@ -509,7 +498,7 @@ export default function TripExpensesView({
           name: contact.name,
           contactId: contact.id,
           phone: contact.phone,
-          avatarColor: 'from-emerald-500 to-teal-600',
+          avatarColor: 'bg-[#0f766e]',
         });
       }
     });
@@ -524,7 +513,7 @@ export default function TripExpensesView({
           participants.push({
             id: 'p_custom_' + Date.now() + '_' + i,
             name,
-            avatarColor: 'from-amber-500 to-pink-600',
+            avatarColor: 'bg-[#3d4f47]',
           });
         }
       });
@@ -649,7 +638,7 @@ export default function TripExpensesView({
     try {
       await onRecordToLedger(targetContactId, ledgerAmount, type, remark);
       showToast(
-        `Recorded ₹${ledgerAmount.toLocaleString('en-IN')} settlement in ${otherPersonName}'s ledger! ✨`,
+        `Recorded ₹${ledgerAmount.toLocaleString('en-IN')} settlement in ${otherPersonName}'s ledger`,
         'success'
       );
     } catch {
@@ -692,7 +681,7 @@ export default function TripExpensesView({
       >
         <div className="flex items-center justify-between gap-3 mb-2">
           <div className="min-w-0">
-            <h1 className="text-xl font-black leading-none" style={{ color: 'var(--text-primary)' }}>Trips</h1>
+            <h1 className="text-xl font-bold leading-none" style={{ color: 'var(--text-primary)' }}>Trips</h1>
             <p className="text-[11px] mt-1 truncate" style={{ color: 'var(--text-muted)' }}>
               {currentTrip?.destination || 'Group expenses'} · {currentTrip?.participants.length || 0} people
             </p>
@@ -711,7 +700,7 @@ export default function TripExpensesView({
               type="button"
               onClick={openAddExpenseModal}
               className="h-9 px-3.5 rounded-full text-xs font-bold text-white"
-              style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}
+              style={{ background: 'linear-gradient(135deg,var(--primary),var(--primary))' }}
             >
               + Expense
             </button>
@@ -734,13 +723,13 @@ export default function TripExpensesView({
         {tripSummary && (
           <div className="mt-2.5 grid grid-cols-3 gap-2">
             <div className="rounded-2xl px-2.5 py-2 text-center" style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>
-              <p className="text-sm font-black tabular-nums" style={{ color: 'var(--text-primary)' }}>
+              <p className="text-sm font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>
                 {currency}{tripSummary.totalSpend.toLocaleString('en-IN')}
               </p>
               <p className="text-[10px] font-bold mt-0.5" style={{ color: 'var(--text-muted)' }}>Spent</p>
             </div>
             <div className="rounded-2xl px-2.5 py-2 text-center" style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>
-              <p className="text-sm font-black tabular-nums leading-tight" style={{ color: '#34d399' }}>
+              <p className="text-sm font-bold tabular-nums leading-tight" style={{ color: '#34d399' }}>
                 {tripSummary.hasUnevenShares
                   ? `${currency}${tripSummary.minShare.toLocaleString('en-IN')}–${tripSummary.maxShare.toLocaleString('en-IN')}`
                   : `${currency}${tripSummary.perHeadAverage.toLocaleString('en-IN')}`}
@@ -750,7 +739,7 @@ export default function TripExpensesView({
               </p>
             </div>
             <div className="rounded-2xl px-2.5 py-2 text-center" style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>
-              <p className="text-sm font-black tabular-nums" style={{ color: tripSummary.totalPendingAmount > 0 ? '#fb7185' : '#34d399' }}>
+              <p className="text-sm font-bold tabular-nums" style={{ color: tripSummary.totalPendingAmount > 0 ? '#fb7185' : '#34d399' }}>
                 {currency}{tripSummary.totalPendingAmount.toLocaleString('en-IN')}
               </p>
               <p className="text-[10px] font-bold mt-0.5" style={{ color: 'var(--text-muted)' }}>Pending</p>
@@ -799,8 +788,8 @@ export default function TripExpensesView({
               onClick={() => setActiveTab(tab.id)}
               className="flex-1 py-2 rounded-xl text-xs font-bold transition-colors"
               style={{
-                background: activeTab === tab.id ? 'rgba(99,102,241,0.2)' : 'transparent',
-                color: activeTab === tab.id ? '#a5b4fc' : 'var(--text-muted)',
+                background: activeTab === tab.id ? 'rgba(15,118,110,0.2)' : 'transparent',
+                color: activeTab === tab.id ? 'var(--primary)' : 'var(--text-muted)',
               }}
             >
               {tab.label}
@@ -826,14 +815,14 @@ export default function TripExpensesView({
               >
                 <div className="flex items-center justify-between gap-3 mb-2">
                   <div>
-                    <p className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>
+                    <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
                       {tripSummary.settlementProgressPct}% settled
                     </p>
                     <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
                       {tripSummary.settledSettlementsCount}/{tripSummary.settlements.length} transfers
                     </p>
                   </div>
-                  <p className="text-sm font-black tabular-nums" style={{ color: tripSummary.totalPendingAmount > 0 ? '#fb7185' : '#34d399' }}>
+                  <p className="text-sm font-bold tabular-nums" style={{ color: tripSummary.totalPendingAmount > 0 ? '#fb7185' : '#34d399' }}>
                     {currency}{tripSummary.totalPendingAmount.toLocaleString('en-IN')} due
                   </p>
                 </div>
@@ -850,7 +839,7 @@ export default function TripExpensesView({
                 style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>
+                  <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
                     Who pays whom
                   </h3>
                   <div className="flex p-0.5 rounded-lg text-[11px] font-bold" style={{ background: 'var(--bg-raised)' }}>
@@ -889,7 +878,7 @@ export default function TripExpensesView({
                 {filteredSettlements.length === 0 ? (
                   <div className="p-6 rounded-xl bg-slate-800/40 text-center space-y-1">
                     <p className="text-xs font-bold text-slate-300">
-                      {settlementFilter === 'pending' ? '🎉 No pending transfers!' : 'No transfers match this filter.'}
+                      {settlementFilter === 'pending' ? 'No pending transfers' : 'No transfers match this filter.'}
                     </p>
                   </div>
                 ) : (
@@ -918,7 +907,7 @@ export default function TripExpensesView({
                             <div className="flex items-center gap-2.5 min-w-0">
                               <div
                                 className={cn(
-                                  'w-8 h-8 rounded-lg bg-gradient-to-tr flex items-center justify-center font-black text-xs text-white shrink-0',
+                                  'w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs text-white shrink-0',
                                   avatarGradient(st.fromName)
                                 )}
                               >
@@ -926,19 +915,19 @@ export default function TripExpensesView({
                               </div>
                               <div className="min-w-0">
                                 <div className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
-                                  <span className="text-rose-400 font-extrabold">{st.fromName}</span>
+                                  <span className="text-rose-400 font-bold">{st.fromName}</span>
                                   <span className="text-slate-500 font-normal">→</span>
-                                  <span className="text-emerald-400 font-extrabold">{st.toName}</span>
+                                  <span className="text-emerald-400 font-bold">{st.toName}</span>
                                   {isSettled ? (
-                                    <span className="text-[9px] font-extrabold text-emerald-300 bg-emerald-500/20 px-1.5 py-0.2 rounded flex items-center gap-0.5">
+                                    <span className="text-[9px] font-bold text-emerald-300 bg-emerald-500/20 px-1.5 py-0.2 rounded flex items-center gap-0.5">
                                       <CheckCircle2 className="w-2.5 h-2.5" /> Settled
                                     </span>
                                   ) : isPartial ? (
-                                    <span className="text-[9px] font-extrabold text-amber-300 bg-amber-500/20 px-1.5 py-0.2 rounded flex items-center gap-0.5">
+                                    <span className="text-[9px] font-bold text-amber-300 bg-amber-500/20 px-1.5 py-0.2 rounded flex items-center gap-0.5">
                                       <Clock className="w-2.5 h-2.5" /> Partial
                                     </span>
                                   ) : (
-                                    <span className="text-[9px] font-extrabold text-amber-300 bg-amber-500/20 px-1.5 py-0.2 rounded flex items-center gap-0.5">
+                                    <span className="text-[9px] font-bold text-amber-300 bg-amber-500/20 px-1.5 py-0.2 rounded flex items-center gap-0.5">
                                       <Clock className="w-2.5 h-2.5" /> Due
                                     </span>
                                   )}
@@ -956,7 +945,7 @@ export default function TripExpensesView({
                             <div className="text-right shrink-0">
                               <div
                                 className={cn(
-                                  'text-base font-black tabular-nums',
+                                  'text-base font-bold tabular-nums',
                                   isSettled ? 'text-emerald-400 line-through opacity-75' : 'text-white'
                                 )}
                               >
@@ -987,7 +976,7 @@ export default function TripExpensesView({
                                   <motion.button
                                     whileTap={{ scale: 0.94 }}
                                     onClick={() => openAcknowledgeModal(st, 'full')}
-                                    className="px-2.5 py-1 rounded-lg text-[11px] font-extrabold text-white bg-emerald-600 hover:bg-emerald-500 transition-all inline-flex items-center gap-1 shadow-sm"
+                                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-500 transition-all inline-flex items-center gap-1 shadow-sm"
                                   >
                                     <CheckCircle2 className="w-3 h-3" />
                                     <span>{isPartial ? 'Pay Rest' : 'Mark Paid'}</span>
@@ -1019,7 +1008,7 @@ export default function TripExpensesView({
                               <motion.button
                                 whileTap={{ scale: 0.94 }}
                                 onClick={() => handleRecordSettlement(st)}
-                                className="px-2 py-1 rounded-lg text-[11px] font-bold text-violet-300 bg-violet-600/20 hover:bg-violet-600/30 transition-colors inline-flex items-center gap-1"
+                                className="px-2 py-1 rounded-lg text-[11px] font-bold text-primary bg-violet-600/20 hover:bg-violet-600/30 transition-colors inline-flex items-center gap-1"
                                 title="Record in Udharwale ledger"
                               >
                                 <TrendingUp className="w-3 h-3" />
@@ -1039,7 +1028,7 @@ export default function TripExpensesView({
                 style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
               >
                 <div>
-                  <h3 className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>
+                  <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
                     Each person&apos;s share
                   </h3>
                   <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
@@ -1078,7 +1067,7 @@ export default function TripExpensesView({
                           <div className="flex items-center gap-2 min-w-0">
                             <div
                               className={cn(
-                                'w-7 h-7 rounded-lg bg-gradient-to-tr flex items-center justify-center font-black text-[10px] text-white shrink-0',
+                                'w-7 h-7 rounded-lg flex items-center justify-center font-bold text-[10px] text-white shrink-0',
                                 avatarGradient(s.participant.name)
                               )}
                             >
@@ -1087,7 +1076,7 @@ export default function TripExpensesView({
                             <div className="min-w-0">
                               <p className="text-xs font-bold text-white truncate">
                                 {s.participant.name}
-                                {s.participant.isCurrentUser && <span className="text-[9px] text-violet-400 ml-1">(You)</span>}
+                                {s.participant.isCurrentUser && <span className="text-[9px] text-primary ml-1">(You)</span>}
                               </p>
                               <p className="text-[10px] text-slate-400 truncate">
                                 Share{' '}
@@ -1110,23 +1099,23 @@ export default function TripExpensesView({
                           <div className="text-right shrink-0">
                             {owes ? (
                               s.pendingDebt > 0 ? (
-                                <span className="text-[10px] font-extrabold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20 inline-flex items-center gap-1">
+                                <span className="text-[10px] font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20 inline-flex items-center gap-1">
                                   <Clock className="w-2.5 h-2.5" />
                                   {currency}{s.pendingDebt.toLocaleString('en-IN')} Due
                                 </span>
                               ) : (
-                                <span className="text-[10px] font-extrabold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 inline-flex items-center gap-1">
+                                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 inline-flex items-center gap-1">
                                   <CheckCircle2 className="w-2.5 h-2.5" /> All Paid
                                 </span>
                               )
                             ) : isOwed ? (
                               s.pendingCredit > 0 ? (
-                                <span className="text-[10px] font-extrabold text-violet-300 bg-violet-500/10 px-2 py-0.5 rounded border border-violet-500/20 inline-flex items-center gap-1">
+                                <span className="text-[10px] font-bold text-primary bg-violet-500/10 px-2 py-0.5 rounded border border-violet-500/20 inline-flex items-center gap-1">
                                   <Clock className="w-2.5 h-2.5" />
                                   {currency}{s.pendingCredit.toLocaleString('en-IN')} Due
                                 </span>
                               ) : (
-                                <span className="text-[10px] font-extrabold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 inline-flex items-center gap-1">
+                                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 inline-flex items-center gap-1">
                                   <CheckCircle2 className="w-2.5 h-2.5" /> Received
                                 </span>
                               )
@@ -1183,9 +1172,9 @@ export default function TripExpensesView({
                   onClick={() => setCategoryFilter('all')}
                   className="px-3 py-1.5 rounded-full text-[11px] font-bold shrink-0"
                   style={{
-                    background: categoryFilter === 'all' ? 'rgba(99,102,241,0.2)' : 'var(--bg-surface)',
-                    border: `1px solid ${categoryFilter === 'all' ? 'rgba(99,102,241,0.35)' : 'var(--border-soft)'}`,
-                    color: categoryFilter === 'all' ? '#a5b4fc' : 'var(--text-muted)',
+                    background: categoryFilter === 'all' ? 'rgba(15,118,110,0.2)' : 'var(--bg-surface)',
+                    border: `1px solid ${categoryFilter === 'all' ? 'rgba(15,118,110,0.35)' : 'var(--border-soft)'}`,
+                    color: categoryFilter === 'all' ? 'var(--primary)' : 'var(--text-muted)',
                   }}
                 >
                   All
@@ -1197,9 +1186,9 @@ export default function TripExpensesView({
                     onClick={() => setCategoryFilter(catKey)}
                     className="px-3 py-1.5 rounded-full text-[11px] font-bold shrink-0 inline-flex items-center gap-1"
                     style={{
-                      background: categoryFilter === catKey ? 'rgba(99,102,241,0.2)' : 'var(--bg-surface)',
-                      border: `1px solid ${categoryFilter === catKey ? 'rgba(99,102,241,0.35)' : 'var(--border-soft)'}`,
-                      color: categoryFilter === catKey ? '#a5b4fc' : 'var(--text-muted)',
+                      background: categoryFilter === catKey ? 'rgba(15,118,110,0.2)' : 'var(--bg-surface)',
+                      border: `1px solid ${categoryFilter === catKey ? 'rgba(15,118,110,0.35)' : 'var(--border-soft)'}`,
+                      color: categoryFilter === catKey ? 'var(--primary)' : 'var(--text-muted)',
                     }}
                   >
                     <span>{config.icon}</span>
@@ -1221,7 +1210,7 @@ export default function TripExpensesView({
                     type="button"
                     onClick={handleLoadDemoTrip}
                     className="text-xs font-bold px-3 py-2 rounded-xl"
-                    style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.3)' }}
+                    style={{ background: 'rgba(15,118,110,0.15)', color: 'var(--primary)', border: '1px solid rgba(15,118,110,0.3)' }}
                   >
                     Load sample trip
                   </button>
@@ -1267,7 +1256,7 @@ export default function TripExpensesView({
                             <h4 className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>
                               {expense.title}
                             </h4>
-                            <p className="text-sm font-black tabular-nums shrink-0" style={{ color: 'var(--text-primary)' }}>
+                            <p className="text-sm font-bold tabular-nums shrink-0" style={{ color: 'var(--text-primary)' }}>
                               {currency}{expense.amount.toLocaleString('en-IN')}
                             </p>
                           </div>
@@ -1319,7 +1308,7 @@ export default function TripExpensesView({
                     <ShieldCheck className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="font-black text-sm text-white">Acknowledge Payment</h3>
+                    <h3 className="font-bold text-sm text-white">Acknowledge Payment</h3>
                     <p className="text-[10px] text-slate-400">Confirm settlement has been cleared</p>
                   </div>
                 </div>
@@ -1336,7 +1325,7 @@ export default function TripExpensesView({
                   className="p-3 rounded-xl space-y-1 border"
                   style={{ background: 'rgba(16,185,129,0.06)', borderColor: 'rgba(16,185,129,0.2)' }}
                 >
-                  <span className="text-[9px] font-extrabold uppercase text-emerald-400 tracking-wider">
+                  <span className="text-[9px] font-bold uppercase text-emerald-400 tracking-wider">
                     Settlement Transfer
                   </span>
                   <div className="text-xs font-bold text-white flex items-center justify-between gap-2">
@@ -1344,7 +1333,7 @@ export default function TripExpensesView({
                       <strong className="text-rose-400">{acknowledgingSettlement.fromName}</strong> →{' '}
                       <strong className="text-emerald-400">{acknowledgingSettlement.toName}</strong>
                     </span>
-                    <span className="text-base font-black text-white tabular-nums shrink-0">
+                    <span className="text-base font-bold text-white tabular-nums shrink-0">
                       {currency}{acknowledgingSettlement.amount.toLocaleString('en-IN')}
                     </span>
                   </div>
@@ -1385,7 +1374,7 @@ export default function TripExpensesView({
                           setAckAmount(m.id === 'full' ? rem.toString() : '');
                         }}
                         className={cn(
-                          'py-1.5 px-1 rounded-lg text-xs font-extrabold transition-all text-center',
+                          'py-1.5 px-1 rounded-lg text-xs font-bold transition-all text-center',
                           ackSettleMode === m.id
                             ? 'bg-emerald-600 text-white shadow-md'
                             : 'bg-slate-800/60 text-slate-400 hover:text-white'
@@ -1402,7 +1391,7 @@ export default function TripExpensesView({
                     {ackSettleMode === 'full' ? 'Amount (remaining)' : 'Amount paying now'}
                   </label>
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
                       {currency}
                     </span>
                     <input
@@ -1439,7 +1428,7 @@ export default function TripExpensesView({
                         key={m.id}
                         onClick={() => setAckPaymentMethod(m.id as any)}
                         className={cn(
-                          'py-1.5 px-1 rounded-lg text-xs font-extrabold transition-all text-center',
+                          'py-1.5 px-1 rounded-lg text-xs font-bold transition-all text-center',
                           ackPaymentMethod === m.id
                             ? 'bg-emerald-600 text-white shadow-md'
                             : 'bg-slate-800/60 text-slate-400 hover:text-white'
@@ -1470,7 +1459,7 @@ export default function TripExpensesView({
                   <motion.button
                     whileTap={{ scale: 0.96 }}
                     type="submit"
-                    className="w-full py-2.5 rounded-xl text-xs font-black text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-md shadow-emerald-600/25 transition-all flex items-center justify-center gap-1.5"
+                    className="w-full py-2.5 rounded-xl text-xs font-bold text-white bg-primary hover:opacity-90  transition-all flex items-center justify-center gap-1.5"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>
@@ -1514,7 +1503,7 @@ export default function TripExpensesView({
                 className="flex items-center justify-between px-4 py-3 border-b shrink-0"
                 style={{ borderColor: 'var(--border-soft)' }}
               >
-                <h3 className="font-black text-sm text-white">
+                <h3 className="font-bold text-sm text-white">
                   {editingExpense ? 'Edit Trip Expense' : 'Add Trip Expense'}
                 </h3>
                 <button
@@ -1551,7 +1540,7 @@ export default function TripExpensesView({
                       placeholder="e.g. 5000"
                       value={expAmount}
                       onChange={(e) => setExpAmount(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl text-sm font-black outline-none text-emerald-400"
+                      className="w-full px-3 py-2 rounded-xl text-sm font-bold outline-none text-emerald-400"
                       style={{
                         background: 'var(--bg-raised)',
                         border: '1px solid var(--border-soft)',
@@ -1639,7 +1628,7 @@ export default function TripExpensesView({
                           payerMode === 'multiple' ? 'bg-violet-600 text-white' : 'text-slate-400'
                         )}
                       >
-                        Multiple ✨
+                        Multiple
                       </button>
                     </div>
                   </div>
@@ -1658,7 +1647,7 @@ export default function TripExpensesView({
                               : 'bg-slate-800/40 text-slate-300 border border-transparent'
                           )}
                         >
-                          <span className="w-5 h-5 rounded bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[10px] font-black">
+                          <span className="w-5 h-5 rounded bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[10px] font-bold">
                             {p.name[0]}
                           </span>
                           <span className="truncate">{p.name}</span>
@@ -1694,7 +1683,7 @@ export default function TripExpensesView({
                                     const val = e.target.value;
                                     setMultiplePayers((prev) => ({ ...prev, [p.id]: val }));
                                   }}
-                                  className="w-20 px-2 py-1 text-xs font-black text-right outline-none rounded text-emerald-400"
+                                  className="w-20 px-2 py-1 text-xs font-bold text-right outline-none rounded text-emerald-400"
                                   style={{
                                     background: 'var(--bg-surface)',
                                     border: '1px solid var(--border-soft)',
@@ -1714,7 +1703,7 @@ export default function TripExpensesView({
                                         [p.id]: String(remainder),
                                       }));
                                     }}
-                                    className="text-[10px] font-bold text-violet-400 hover:text-violet-300 underline shrink-0"
+                                    className="text-[10px] font-bold text-primary hover:text-primary underline shrink-0"
                                   >
                                     +Fill
                                   </button>
@@ -1735,7 +1724,7 @@ export default function TripExpensesView({
                       >
                         <span>
                           {isPayerBalanced
-                            ? '✨ Balanced!'
+                            ? 'Balanced'
                             : `Remaining: ${currency}${payerRemainingBalance}`}
                         </span>
                         <span>
@@ -1756,7 +1745,7 @@ export default function TripExpensesView({
                 >
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                      <Split className="w-3 h-3 text-violet-400" />
+                      <Split className="w-3 h-3 text-primary" />
                       Split Among
                     </label>
 
@@ -1821,7 +1810,7 @@ export default function TripExpensesView({
                   </div>
 
                   {parsedTotalAmount > 0 && selectedBeneficiaries.length > 0 && (
-                    <div className="text-[10px] font-semibold pt-0.5" style={{ color: '#a5b4fc' }}>
+                    <div className="text-[10px] font-semibold pt-0.5" style={{ color: 'var(--primary)' }}>
                       {selectedBeneficiaries.length === 1
                         ? `Personal — full ${currency}${parsedTotalAmount.toLocaleString('en-IN')} counts only for them`
                         : selectedBeneficiaries.length < (currentTrip?.participants.length || selectedBeneficiaries.length)
@@ -1852,10 +1841,10 @@ export default function TripExpensesView({
                     type="submit"
                     disabled={payerMode === 'multiple' && !isPayerBalanced}
                     className={cn(
-                      'w-full py-2.5 rounded-xl text-xs font-black text-white shadow-xl transition-all',
+                      'w-full py-2.5 rounded-xl text-xs font-bold text-white shadow-xl transition-all',
                       payerMode === 'multiple' && !isPayerBalanced
                         ? 'bg-slate-700 opacity-50 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500'
+                        : 'bg-[#0f766e] hover:opacity-90'
                     )}
                   >
                     {editingExpense ? 'Save Changes' : 'Post to Trip Chat 💸'}
@@ -1897,7 +1886,7 @@ export default function TripExpensesView({
                 className="flex items-center justify-between px-4 py-3 border-b shrink-0"
                 style={{ borderColor: 'var(--border-soft)' }}
               >
-                <h3 className="font-black text-sm text-white">Create New Trip</h3>
+                <h3 className="font-bold text-sm text-white">Create New Trip</h3>
                 <button
                   onClick={() => setIsNewTripModalOpen(false)}
                   className="p-1 rounded-lg text-slate-400 hover:text-white"
@@ -1957,7 +1946,7 @@ export default function TripExpensesView({
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
                     <span>Add from Contacts</span>
-                    <span className="text-[10px] text-violet-400 font-semibold">
+                    <span className="text-[10px] text-primary font-semibold">
                       {selectedContactIds.length} selected
                     </span>
                   </label>
@@ -1987,7 +1976,7 @@ export default function TripExpensesView({
                             )}
                           >
                             <span>{c.name}</span>
-                            {isSelected && <Check className="w-3.5 h-3.5 text-violet-400" />}
+                            {isSelected && <Check className="w-3.5 h-3.5 text-primary" />}
                           </button>
                         );
                       })}
@@ -2016,7 +2005,7 @@ export default function TripExpensesView({
                   <motion.button
                     whileTap={{ scale: 0.96 }}
                     type="submit"
-                    className="w-full py-2.5 rounded-xl text-xs font-black text-white bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 shadow-xl transition-all"
+                    className="w-full py-2.5 rounded-xl text-xs font-bold text-white bg-[#0f766e] hover:opacity-90 shadow-xl transition-all"
                   >
                     Create Trip 🚀
                   </motion.button>
@@ -2053,7 +2042,7 @@ export default function TripExpensesView({
               }}
             >
               <div className="flex items-center justify-between">
-                <h3 className="font-black text-sm text-white">Share Trip Expenses</h3>
+                <h3 className="font-bold text-sm text-white">Share Trip Expenses</h3>
                 <button
                   onClick={() => setIsShareModalOpen(false)}
                   className="p-1 rounded-lg text-slate-400 hover:text-white"
@@ -2094,7 +2083,7 @@ export default function TripExpensesView({
                 <motion.button
                   whileTap={{ scale: 0.96 }}
                   onClick={handleShareToWhatsApp}
-                  className="w-full py-2.5 rounded-xl text-xs font-extrabold text-white flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20"
+                  className="w-full py-2.5 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20"
                   style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
                 >
                   <Share2 className="w-3.5 h-3.5" />

@@ -1,7 +1,7 @@
 import { ImageResponse } from 'next/og';
 
 export const runtime = 'edge';
-export const alt = 'Udharwale - Smart Digital Debt Ledger';
+export const alt = 'Udharwale - Digital Khata';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
@@ -10,80 +10,67 @@ export default function Image() {
     (
       <div
         style={{
-          background: '#03040a',
+          background: '#f4f1ec',
           width: '100%',
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
-          alignItems: 'center',
+          alignItems: 'flex-start',
           justifyContent: 'center',
-          position: 'relative',
+          padding: '72px',
         }}
       >
-        {/* Background aurora glows */}
         <div
           style={{
-            position: 'absolute',
-            top: '-20%',
-            left: '-10%',
-            width: '800px',
-            height: '800px',
-            background: 'radial-gradient(circle, rgba(124,58,237,0.2) 0%, transparent 60%)',
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            bottom: '-20%',
-            right: '-10%',
-            width: '700px',
-            height: '700px',
-            background: 'radial-gradient(circle, rgba(6,182,212,0.15) 0%, transparent 60%)',
-          }}
-        />
-        
-        {/* Icon & Title Container */}
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 50, zIndex: 10 }}>
-          <div
-            style={{
-              width: 120,
-              height: 120,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)',
-              borderRadius: 36,
-              fontSize: 64,
-              boxShadow: '0 12px 40px rgba(124,58,237,0.5)',
-              marginRight: 32,
-            }}
-          >
-            🧾
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: 72, fontWeight: 900, color: 'white', letterSpacing: '-0.02em', lineHeight: 1 }}>
-              Udharwale
-            </span>
-            <span style={{ fontSize: 24, fontWeight: 700, color: '#c084fc', textTransform: 'uppercase', letterSpacing: '0.15em', marginTop: 12 }}>
-              By Naeem Navjivan
-            </span>
-          </div>
-        </div>
-
-        {/* Headline */}
-        <div
-          style={{
-            fontSize: 76,
+            width: 88,
+            height: 88,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: '#0f766e',
+            borderRadius: 24,
+            color: '#ffffff',
+            fontSize: 44,
             fontWeight: 800,
-            color: 'white',
-            textAlign: 'center',
-            lineHeight: 1.1,
-            zIndex: 10,
-            maxWidth: '1000px',
-            textShadow: '0 4px 20px rgba(0,0,0,0.5)',
+            marginBottom: 36,
           }}
         >
-          Settle debts, track loans,<br/>maintain trust.
+          U
+        </div>
+        <div
+          style={{
+            fontSize: 72,
+            fontWeight: 800,
+            color: '#14201c',
+            letterSpacing: '-0.04em',
+            lineHeight: 1,
+            marginBottom: 18,
+          }}
+        >
+          Udharwale
+        </div>
+        <div
+          style={{
+            fontSize: 28,
+            fontWeight: 600,
+            color: '#3d4f47',
+            maxWidth: 760,
+            lineHeight: 1.35,
+          }}
+        >
+          Personal khata for friends, loans, and shared bills.
+        </div>
+        <div
+          style={{
+            marginTop: 28,
+            fontSize: 18,
+            fontWeight: 700,
+            color: '#0f766e',
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+          }}
+        >
+          By Naeem Navjivan
         </div>
       </div>
     ),

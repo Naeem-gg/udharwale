@@ -30,6 +30,7 @@ const TransactionSchema = new Schema({
     enum: ['food', 'travel', 'rent', 'business', 'personal', 'other'],
     default: 'other',
   },
+  dueDate: { type: String, required: false, default: null },
   createdByUserId: { type: Schema.Types.ObjectId, ref: 'User', required: false },
   updatedByUserId: { type: Schema.Types.ObjectId, ref: 'User', required: false },
   updatedAt: { type: String, required: false },
@@ -48,6 +49,7 @@ const ContactSchema = new Schema({
   phone: { type: String, required: true },
   email: { type: String },
   shareToken: { type: String, required: false, unique: true, sparse: true }, // Public read-only chat link
+  dueDate: { type: String, required: false, default: null }, // Balance-level reminder (YYYY-MM-DD)
   transactions: [TransactionSchema],
   createdAt: { type: String, required: true }
 }, {
@@ -76,6 +78,7 @@ export interface ITransactionSub extends Document {
   createdAt?: string;
   mode: string;
   category?: string;
+  dueDate?: string | null;
   createdByUserId?: mongoose.Types.ObjectId;
   updatedByUserId?: mongoose.Types.ObjectId;
   updatedAt?: string;
@@ -93,6 +96,7 @@ export interface IContactDoc extends Document {
   phone: string;
   email?: string;
   shareToken?: string;
+  dueDate?: string | null;
   transactions: ITransactionSub[];
   createdAt: string;
 }

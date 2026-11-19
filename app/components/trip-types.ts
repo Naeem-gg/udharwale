@@ -128,13 +128,13 @@ export const CATEGORY_CONFIG: Record<
   ExpenseCategory,
   { label: string; icon: string; tone: string; bg: string }
 > = {
-  food: { label: 'Food & Dining', icon: '🍽️', tone: '#f97316', bg: 'rgba(249,115,22,0.12)' },
-  stay: { label: 'Stay & Hotels', icon: '🏨', tone: '#8b5cf6', bg: 'rgba(139,92,246,0.12)' },
-  transport: { label: 'Travel & Cabs', icon: '🚕', tone: '#06b6d4', bg: 'rgba(6,182,212,0.12)' },
-  activities: { label: 'Activities & Fun', icon: '🎟️', tone: '#ec4899', bg: 'rgba(236,72,153,0.12)' },
-  drinks: { label: 'Drinks & Nightlife', icon: '🍹', tone: '#a855f7', bg: 'rgba(168,85,247,0.12)' },
-  shopping: { label: 'Shopping & Groceries', icon: '🛍️', tone: '#10b981', bg: 'rgba(16,185,129,0.12)' },
-  general: { label: 'General / Misc', icon: '🧾', tone: '#64748b', bg: 'rgba(100,116,139,0.12)' },
+  food: { label: 'Food & Dining', icon: '', tone: '#b45309', bg: 'rgba(180,83,9,0.1)' },
+  stay: { label: 'Stay & Hotels', icon: '', tone: '#0f766e', bg: 'rgba(15,118,110,0.1)' },
+  transport: { label: 'Travel & Cabs', icon: '', tone: '#0e7490', bg: 'rgba(14,116,144,0.1)' },
+  activities: { label: 'Activities & Fun', icon: '', tone: '#047857', bg: 'rgba(4,120,87,0.1)' },
+  drinks: { label: 'Drinks & Nightlife', icon: '', tone: '#0f766e', bg: 'rgba(15,118,110,0.08)' },
+  shopping: { label: 'Shopping & Groceries', icon: '', tone: '#047857', bg: 'rgba(4,120,87,0.1)' },
+  general: { label: 'General / Misc', icon: '', tone: '#5f6f68', bg: 'rgba(95,111,104,0.1)' },
 };
 
 /**
@@ -465,7 +465,7 @@ export function getDemoTrip(currentUserName = 'You', contacts: Contact[] = []): 
     id: 'p_you',
     name: currentUserName || 'You',
     isCurrentUser: true,
-    avatarColor: 'from-violet-500 to-indigo-600',
+    avatarColor: 'bg-[#0f766e]',
   };
 
   const friend1 = contacts[0]?.name || 'Rahul';
@@ -476,19 +476,19 @@ export function getDemoTrip(currentUserName = 'You', contacts: Contact[] = []): 
     id: 'p_rahul',
     name: friend1,
     contactId: contacts[0]?.id,
-    avatarColor: 'from-emerald-500 to-teal-600',
+    avatarColor: 'bg-[#115e59]',
   };
   const p3: TripParticipant = {
     id: 'p_aman',
     name: friend2,
     contactId: contacts[1]?.id,
-    avatarColor: 'from-amber-500 to-orange-600',
+    avatarColor: 'bg-[#134e4a]',
   };
   const p4: TripParticipant = {
     id: 'p_priya',
     name: friend3,
     contactId: contacts[2]?.id,
-    avatarColor: 'from-pink-500 to-rose-600',
+    avatarColor: 'bg-[#0e7490]',
   };
 
   const participants = [p1, p2, p3, p4];

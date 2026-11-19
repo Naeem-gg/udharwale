@@ -19,6 +19,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { useTheme } from '@/app/theme-provider';
 import ConfirmDialog from './ConfirmDialog';
+import { buildBalanceReminders, formatReminderLabel } from '@/lib/reminders';
 
 // Custom CSS-based Confetti Particle component for settlements
 interface ConfettiParticle {
@@ -92,11 +93,13 @@ export default function Dashboard() {
   const [txMode, setTxMode] = useState<ModeType>(getStoredDefaultTxMode);
   const [txCategory, setTxCategory] = useState<LedgerCategory>('other');
   const [txDate, setTxDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [txDueDate, setTxDueDate] = useState('');
 
   // --- Add Contact Form State ---
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
+  const [contactDueDate, setContactDueDate] = useState('');
   const [contactInitialBalance, setContactInitialBalance] = useState('');
   const [contactInitialType, setContactInitialType] = useState<'credit' | 'debit'>('credit');
   const [isImportingContacts, setIsImportingContacts] = useState(false);
@@ -512,6 +515,11 @@ export default function Dashboard() {
     return { distribution, ledgerCategories, grandTotal };
   }, [contacts]);
 
+  const balanceReminders = useMemo(
+    () => buildBalanceReminders(contacts, { upcomingDays: 14 }),
+    [contacts]
+  );
+
   // --- Handlers: Add/Edit Friend ---
   const handleAddContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -585,13 +593,22 @@ export default function Dashboard() {
           name: contactName.trim(),
           phone: contactPhone.trim(),
           email: contactEmail.trim() || undefined,
+          dueDate: contactDueDate || null,
         }),
       });
 
       if (res.ok) {
         const updatedContact = await res.json();
         const updatedContacts = contacts.map(c =>
-          c.id === selectedContactId ? { ...c, name: updatedContact.name, phone: updatedContact.phone, email: updatedContact.email } : c
+          c.id === selectedContactId
+            ? {
+                ...c,
+                name: updatedContact.name,
+                phone: updatedContact.phone,
+                email: updatedContact.email,
+                dueDate: updatedContact.dueDate || null,
+              }
+            : c
         );
         saveContactsState(updatedContacts);
         setIsEditContactOpen(false);
@@ -719,6 +736,7 @@ export default function Dashboard() {
     setTxMode(defaultTxMode);
     setTxCategory('other');
     setTxDate(new Date().toISOString().split('T')[0]);
+    setTxDueDate('');
     setEditingTransaction(null);
     setIsAddTransactionOpen(true);
   };
@@ -733,6 +751,7 @@ export default function Dashboard() {
       tx.category && LEDGER_CATEGORIES.includes(tx.category) ? tx.category : 'other'
     );
     setTxDate(tx.date);
+    setTxDueDate(tx.dueDate || '');
     setIsAddTransactionOpen(true);
   };
 
@@ -758,6 +777,7 @@ export default function Dashboard() {
             mode: txMode,
             category: txCategory,
             date: txDate,
+            dueDate: txDueDate || null,
           }),
         });
 
@@ -796,6 +816,7 @@ export default function Dashboard() {
             mode: txMode,
             category: txCategory,
             date: txDate,
+            dueDate: txDueDate || null,
           }),
         });
 
@@ -982,6 +1003,7 @@ export default function Dashboard() {
     setTxMode('Cash');
     setTxCategory('personal');
     setTxDate(new Date().toISOString().split('T')[0]);
+    setTxDueDate('');
     setEditingTransaction(null);
     setIsAddTransactionOpen(true);
   };
@@ -1161,22 +1183,19 @@ export default function Dashboard() {
     }
   };
 
-  // --- Seed Avatar Visual Gradient Creator ---
-  const getAvatarGradient = (name: string) => {
-    const gradients = [
-      'from-emerald-400 to-teal-600',
-      'from-indigo-400 to-indigo-600',
-      'from-rose-400 to-rose-600',
-      'from-amber-400 to-orange-500',
-      'from-fuchsia-400 to-purple-600',
-      'from-sky-400 to-blue-600',
-      'from-pink-400 to-rose-500',
+  const getAvatarTone = (name: string) => {
+    const tones = [
+      'bg-[#0f766e]',
+      'bg-[#115e59]',
+      'bg-[#134e4a]',
+      'bg-[#1e3a36]',
+      'bg-[#0e7490]',
+      'bg-[#155e75]',
+      'bg-[#3d4f47]',
     ];
     let sum = 0;
-    for (let i = 0; i < name.length; i++) {
-      sum += name.charCodeAt(i);
-    }
-    return gradients[sum % gradients.length];
+    for (let i = 0; i < name.length; i++) sum += name.charCodeAt(i);
+    return tones[sum % tones.length];
   };
 
   const formatChatDateLabel = (dateStr: string) => {
@@ -1662,7 +1681,7 @@ export default function Dashboard() {
           >
             <div className="flex items-start justify-between gap-4 px-5 py-4" style={{ borderBottom: '1px solid var(--border-soft)' }}>
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#818cf8' }}>Security Center</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--primary)' }}>Security Center</p>
                 <h3 className="mt-1 text-lg font-extrabold" style={{ color: 'var(--text-primary)' }}>{securityModalCopy.title}</h3>
                 <p className="mt-1 text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>{securityModalCopy.description}</p>
               </div>
@@ -1681,7 +1700,7 @@ export default function Dashboard() {
             </div>
 
             <form onSubmit={handleSecurityUpdate} className="p-5 space-y-4">
-              <div className="rounded-2xl p-3 text-xs leading-relaxed" style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.18)', color: 'var(--text-secondary)' }}>
+              <div className="rounded-2xl p-3 text-xs leading-relaxed" style={{ background: 'rgba(15,118,110,0.08)', border: '1px solid rgba(15,118,110,0.18)', color: 'var(--text-secondary)' }}>
                 Confirming your current password keeps sensitive recovery settings from being changed from an unattended session.
               </div>
 
@@ -1799,8 +1818,8 @@ export default function Dashboard() {
             {/* Error state */}
             {dbStatus === 'error' && (
               <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-6">
-                <div className="w-20 h-20 rounded-3xl flex items-center justify-center text-4xl"
-                  style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.15)' }}>🔌</div>
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-sm font-semibold"
+                  style={{ background: 'rgba(194,59,74,0.08)', border: '1px solid rgba(194,59,74,0.15)', color: 'var(--rose)' }}>Offline</div>
                 <div className="space-y-2">
                   <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Couldn't load your data</h3>
                   <p className="text-sm max-w-xs" style={{ color: 'var(--text-secondary)' }}>Check your internet connection and try again.</p>
@@ -1816,21 +1835,21 @@ export default function Dashboard() {
                 <div className="px-4 pt-3 pb-2 shrink-0" style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-soft)' }}>
                   <div className="flex items-center justify-between gap-3 mb-3">
                     <div className="min-w-0">
-                      <h1 className="text-xl font-black leading-none" style={{ color: 'var(--text-primary)' }}>Friends</h1>
+                      <h1 className="text-xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>Friends</h1>
                       <p className="text-[11px] mt-1 truncate" style={{ color: 'var(--text-muted)' }}>
                         {dbStatus === 'connected' ? 'Synced' : 'Syncing…'} · {userName || 'You'}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <button onClick={() => { setActiveTab('trips'); setMobileView('list'); }}
-                        className="h-8 px-2.5 rounded-full flex items-center gap-1.5 text-xs font-bold transition-all text-violet-300 shadow-sm"
-                        style={{ background: 'rgba(124,58,237,0.12)', border: '1px solid rgba(139,92,246,0.3)' }}
-                        title="Trip Expenses & Split Calculator">
-                        <span>✈️ Trips</span>
+                        className="h-9 px-3 rounded-xl flex items-center gap-1.5 text-xs font-semibold transition-all text-primary"
+                        style={{ background: 'var(--accent)', border: '1px solid transparent' }}
+                        title="Trip expenses">
+                        <span>Trips</span>
                       </button>
                       <button onClick={() => setShowBalances(!showBalances)}
-                        className="w-9 h-9 rounded-full flex items-center justify-center"
-                        style={{ background: showBalances ? 'rgba(99,102,241,0.15)' : 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: showBalances ? '#818cf8' : 'var(--text-muted)' }}
+                        className="w-10 h-10 rounded-xl flex items-center justify-center"
+                        style={{ background: showBalances ? 'var(--accent)' : 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: showBalances ? 'var(--primary)' : 'var(--text-muted)' }}
                         aria-label={showBalances ? 'Hide balances' : 'Show balances'}>
                         {showBalances
                           ? <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
@@ -1838,7 +1857,7 @@ export default function Dashboard() {
                       </button>
                       <button onClick={() => { setIsAddContactOpen(true); setImportStatus(null); }}
                         className="w-9 h-9 rounded-full flex items-center justify-center text-white"
-                        style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}
+                        style={{ background: 'linear-gradient(135deg,var(--primary),var(--primary))' }}
                         aria-label="Add contact">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
@@ -1867,10 +1886,10 @@ export default function Dashboard() {
                       className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide transition-all"
                       style={{
                         background: statusFilter === f
-                          ? f === 'credit' ? 'rgba(16,185,129,0.15)' : f === 'debit' ? 'rgba(244,63,94,0.15)' : f === 'settled' ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.15)'
+                          ? f === 'credit' ? 'rgba(16,185,129,0.15)' : f === 'debit' ? 'rgba(244,63,94,0.15)' : f === 'settled' ? 'rgba(15,118,110,0.15)' : 'rgba(15,118,110,0.15)'
                           : 'var(--bg-raised)',
                         color: statusFilter === f
-                          ? f === 'credit' ? '#6ee7b7' : f === 'debit' ? '#fda4af' : f === 'settled' ? '#a5b4fc' : '#a5b4fc'
+                          ? f === 'credit' ? '#6ee7b7' : f === 'debit' ? '#fda4af' : f === 'settled' ? 'var(--primary)' : 'var(--primary)'
                           : 'var(--text-muted)',
                         border: `1px solid ${statusFilter === f ? 'rgba(255,255,255,0.1)' : 'var(--border-muted)'}`,
                       }}>
@@ -1929,22 +1948,23 @@ export default function Dashboard() {
                           const isSelected = selectedContactId === contact.id;
                           const isPeekingThis = peekingContactId === contact.id;
                           const revealed = showBalances || isPeekingThis;
-                          const avatarGradient = getAvatarGradient(contact.name);
+                          const avatarTone = getAvatarTone(contact.name);
                           const balanceColor = balance > 0 ? '#10b981' : balance < 0 ? '#f43f5e' : 'var(--text-muted)';
                           const borderColor = balance > 0 ? '#10b981' : balance < 0 ? '#f43f5e' : 'transparent';
+                          const dueReminder = balanceReminders.find((r) => r.contactId === contact.id);
 
                           return (
                             <div key={contact.id}
                               className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-all duration-150`}
                               style={{
-                                background: isSelected ? 'rgba(99,102,241,0.08)' : 'transparent',
-                                borderLeft: `3px solid ${isSelected ? '#6366f1' : borderColor}`,
+                                background: isSelected ? 'rgba(15,118,110,0.08)' : 'transparent',
+                                borderLeft: `3px solid ${isSelected ? 'var(--primary)' : borderColor}`,
                               }}
                               onClick={() => { setSelectedContactId(contact.id); setMobileView('ledger'); }}>
 
                               {/* Avatar */}
-                              <div className={`w-11 h-11 rounded-full shrink-0 bg-gradient-to-tr ${avatarGradient} flex items-center justify-center font-black text-sm text-white`}
-                                style={{ boxShadow: isSelected ? `0 0 0 2px #6366f1` : 'none' }}>
+                              <div className={`w-11 h-11 rounded-full shrink-0 ${avatarTone} flex items-center justify-center font-bold text-sm text-white`}
+                                style={{ boxShadow: isSelected ? `0 0 0 2px var(--primary)` : 'none' }}>
                                 {getInitials(contact.name)}
                               </div>
 
@@ -1954,20 +1974,36 @@ export default function Dashboard() {
                                   <p className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{contact.name}</p>
                                   {(contact.role === 'peer' || contact.peerLinked) && (
                                     <span
-                                      className="shrink-0 text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-full"
+                                      className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full"
                                       style={{
-                                        background: contact.role === 'peer' ? 'rgba(6,182,212,0.15)' : 'rgba(167,139,250,0.15)',
-                                        color: contact.role === 'peer' ? '#22d3ee' : '#c4b5fd',
+                                        background: contact.role === 'peer' ? 'rgba(6,182,212,0.15)' : 'rgba(15,118,110,0.15)',
+                                        color: contact.role === 'peer' ? '#22d3ee' : 'var(--primary)',
                                       }}
                                     >
                                       {contact.role === 'peer' ? 'Linked' : 'Shared'}
                                     </span>
                                   )}
+                                  {dueReminder && (
+                                    <span
+                                      className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full"
+                                      style={{
+                                        background:
+                                          dueReminder.urgency === 'overdue'
+                                            ? 'rgba(244,63,94,0.15)'
+                                            : 'rgba(245,158,11,0.15)',
+                                        color: dueReminder.urgency === 'overdue' ? '#fb7185' : '#fbbf24',
+                                      }}
+                                    >
+                                      {dueReminder.urgency === 'overdue' ? 'Overdue' : 'Due'}
+                                    </span>
+                                  )}
                                 </div>
                                 <p className="text-[11px] truncate" style={{ color: 'var(--text-muted)' }}>
-                                  {contact.role === 'peer'
-                                    ? `From ${contact.ownerName || 'someone'} · both can edit`
-                                    : contact.phone || 'No phone'}
+                                  {dueReminder
+                                    ? formatReminderLabel(dueReminder)
+                                    : contact.role === 'peer'
+                                      ? `From ${contact.ownerName || 'someone'} · both can edit`
+                                      : contact.phone || 'No phone'}
                                 </p>
                               </div>
 
@@ -1979,7 +2015,7 @@ export default function Dashboard() {
                                       {balance > 0 ? "you'll get" : 'you owe'}
                                     </p>
                                   )}
-                                  <p className="text-sm font-black" style={{ color: balanceColor }}>
+                                  <p className="text-sm font-bold" style={{ color: balanceColor }}>
                                     {balance === 0 ? (
                                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}>Settled</span>
                                     ) : revealed ? (
@@ -1996,7 +2032,7 @@ export default function Dashboard() {
                                     onTouchEnd={e => { e.stopPropagation(); setPeekingContactId(null); }}
                                     className="p-1 rounded-md transition-all select-none"
                                     title="Hold to peek"
-                                    style={{ color: isPeekingThis ? '#818cf8' : 'var(--text-muted)' }}>
+                                    style={{ color: isPeekingThis ? 'var(--primary)' : 'var(--text-muted)' }}>
                                     {isPeekingThis
                                       ? <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                                       : <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" /></svg>
@@ -2041,7 +2077,7 @@ export default function Dashboard() {
                         style={{ background: 'color-mix(in srgb, var(--bg-surface) 88%, transparent)', border: '1px solid var(--border-soft)' }}
                       >
                         <div className="flex items-center gap-2 min-w-0">
-                          <div className={`w-7 h-7 rounded-full shrink-0 bg-gradient-to-tr ${getAvatarGradient(selectedContact.name)} flex items-center justify-center font-black text-[10px] text-white`}>
+                          <div className={`w-7 h-7 rounded-full shrink-0 ${getAvatarTone(selectedContact.name)} flex items-center justify-center font-bold text-[10px] text-white`}>
                             {getInitials(selectedContact.name)}
                           </div>
                           <div className="min-w-0">
@@ -2050,7 +2086,7 @@ export default function Dashboard() {
                                 {selectedContact.name}
                               </p>
                               {(selectedContact.role === 'peer' || selectedContact.peerLinked) && (
-                                <span className="shrink-0 text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full"
+                                <span className="shrink-0 text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-full"
                                   style={{ background: 'rgba(6,182,212,0.18)', color: '#22d3ee' }}>
                                   Both edit
                                 </span>
@@ -2079,7 +2115,7 @@ export default function Dashboard() {
                         style={{
                           background: 'color-mix(in srgb, var(--bg-surface) 88%, transparent)',
                           border: '1px solid var(--border-soft)',
-                          color: isLedgerSearchOpen || ledgerSearchQuery ? '#818cf8' : 'var(--text-muted)',
+                          color: isLedgerSearchOpen || ledgerSearchQuery ? 'var(--primary)' : 'var(--text-muted)',
                         }}
                         aria-label="Search in chat"
                       >
@@ -2150,8 +2186,8 @@ export default function Dashboard() {
                               {contactBal !== 0 && selectedContact.role !== 'peer' && (
                                 <button onClick={() => { setIsContactMenuOpen(false); handleWhatsAppReminder(); }}
                                   className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                  style={{ color: '#6366f1' }}
-                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,0.08)'}
+                                  style={{ color: 'var(--primary)' }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(15,118,110,0.08)'}
                                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
                                   💬 WhatsApp reminder
                                 </button>
@@ -2171,7 +2207,7 @@ export default function Dashboard() {
                                 <button onClick={() => { setIsContactMenuOpen(false); handleCopyChatLink(); }}
                                   className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
                                   style={{ color: '#a78bfa' }}
-                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(167,139,250,0.08)'}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(15,118,110,0.08)'}
                                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
                                   🔗 Copy chat link
                                 </button>
@@ -2180,8 +2216,8 @@ export default function Dashboard() {
                               {selectedContact.role !== 'peer' && (
                                 <button onClick={() => { setIsContactMenuOpen(false); setIsShareModalOpen(true); }}
                                   className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                  style={{ color: '#8b5cf6' }}
-                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(139,92,246,0.08)'}
+                                  style={{ color: 'var(--primary)' }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(15,118,110,0.08)'}
                                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
                                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
                                   Share / copy record
@@ -2194,6 +2230,7 @@ export default function Dashboard() {
                                   setContactName(selectedContact.name);
                                   setContactPhone(selectedContact.phone);
                                   setContactEmail(selectedContact.email || '');
+                                  setContactDueDate(selectedContact.dueDate || '');
                                   setIsEditContactOpen(true);
                                 }}
                                   className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
@@ -2344,7 +2381,7 @@ export default function Dashboard() {
                                       {isGave ? 'You gave' : 'You got'}
                                     </p>
                                     <p
-                                      className={`${compactLedgerView ? 'text-xl' : 'text-2xl'} font-black tabular-nums mt-0.5 leading-none`}
+                                      className={`${compactLedgerView ? 'text-xl' : 'text-2xl'} font-bold tabular-nums mt-0.5 leading-none`}
                                       style={{ color: isGave ? '#10b981' : '#f43f5e' }}
                                     >
                                       ₹{tx.amount.toLocaleString('en-IN')}
@@ -2361,13 +2398,14 @@ export default function Dashboard() {
                                       {tx.mode === 'Online Transfer' ? 'Online' : 'Cash'}
                                       {' · '}
                                       {LEDGER_CATEGORY_CONFIG[tx.category && LEDGER_CATEGORIES.includes(tx.category) ? tx.category : 'other'].label}
+                                      {tx.dueDate ? ` · Due ${formatEventDate(tx.dueDate)}` : ''}
                                     </p>
                                     <div className="mt-2.5 flex items-center gap-3">
                                       <button
                                         type="button"
                                         onClick={() => handleOpenEditTx(tx)}
                                         className="text-[11px] font-bold"
-                                        style={{ color: '#a5b4fc' }}
+                                        style={{ color: 'var(--primary)' }}
                                       >
                                         Edit
                                       </button>
@@ -2413,15 +2451,15 @@ export default function Dashboard() {
                         onClick={() => handleOpenAddTx('got')}
                         className="flex items-center gap-2 pl-2 pr-4 py-1.5 rounded-full text-sm font-bold active:scale-[0.97] transition-all"
                         style={{
-                          background: 'linear-gradient(135deg, rgba(251,113,133,0.22), rgba(225,29,72,0.10))',
+                          background: 'rgba(194,59,74,0.08)',
                           border: '1px solid rgba(251,113,133,0.35)',
                           color: '#fb7185',
                           boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)',
                         }}
                       >
                         <span
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-base font-black leading-none"
-                          style={{ background: 'linear-gradient(145deg, #fda4af, #e11d48)', boxShadow: '0 6px 16px rgba(244,63,94,0.4)' }}
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-base font-bold leading-none"
+                          style={{ background: 'var(--rose)' }}
                         >
                           ↓
                         </span>
@@ -2432,15 +2470,15 @@ export default function Dashboard() {
                         onClick={() => handleOpenAddTx('gave')}
                         className="flex items-center gap-2 pl-2 pr-4 py-1.5 rounded-full text-sm font-bold active:scale-[0.97] transition-all"
                         style={{
-                          background: 'linear-gradient(135deg, rgba(52,211,153,0.22), rgba(5,150,105,0.10))',
+                          background: 'rgba(4,120,87,0.08)',
                           border: '1px solid rgba(52,211,153,0.35)',
                           color: '#34d399',
                           boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)',
                         }}
                       >
                         <span
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-base font-black leading-none"
-                          style={{ background: 'linear-gradient(145deg, #6ee7b7, #059669)', boxShadow: '0 6px 16px rgba(16,185,129,0.4)' }}
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-base font-bold leading-none"
+                          style={{ background: 'var(--emerald)' }}
                         >
                           ↑
                         </span>
@@ -2467,21 +2505,19 @@ export default function Dashboard() {
             {dbStatus === 'connected' && activeTab === 'insights' && (
               <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-5">
                 <div className="px-1 pt-1">
-                  <h1 className="text-xl font-black leading-none" style={{ color: 'var(--text-primary)' }}>Overview</h1>
+                  <h1 className="text-xl font-bold leading-none" style={{ color: 'var(--text-primary)' }}>Overview</h1>
                   <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>Balances at a glance</p>
                 </div>
 
                 {/* Main wallet card */}
                 <div className="relative p-6 rounded-3xl overflow-hidden"
-                  style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(79,70,229,0.06) 100%)', border: '1px solid rgba(99,102,241,0.2)' }}>
-                  <div className="absolute top-0 right-0 w-48 h-48 pointer-events-none"
-                    style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%)', transform: 'translate(20%,-20%)' }} />
+                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
                   <div className="relative z-10">
                     <div className="flex items-start justify-between">
                       <div>
-                        <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'rgba(165,180,252,0.7)' }}>NET WALLET BALANCE</p>
+                        <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Net balance</p>
                         <div className="flex items-baseline gap-2 mt-2">
-                          <h2 className="text-4xl font-black tabular-nums"
+                          <h2 className="text-4xl font-bold tabular-nums"
                             style={{ color: showBalances ? (stats.netBalance >= 0 ? '#6ee7b7' : '#fda4af') : 'var(--text-primary)' }}>
                             {showBalances
                               ? `${stats.netBalance >= 0 ? '+' : '-'}₹${Math.abs(stats.netBalance).toLocaleString('en-IN')}`
@@ -2494,7 +2530,7 @@ export default function Dashboard() {
                       </div>
                       <button onClick={() => setShowBalances(!showBalances)}
                         className="p-2 rounded-xl transition-all"
-                        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', color: '#a5b4fc' }}>
+                        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--primary)' }}>
                         {showBalances
                           ? <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                           : <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" /></svg>
@@ -2509,7 +2545,7 @@ export default function Dashboard() {
                       ].map(({ label, value, color, glow }) => (
                         <div key={label} className="p-3 rounded-2xl" style={{ background: glow, border: `1px solid ${color}20` }}>
                           <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: `${color}99` }}>{label}</p>
-                          <p className="text-xl font-black tabular-nums mt-1" style={{ color }}>
+                          <p className="text-xl font-bold tabular-nums mt-1" style={{ color }}>
                             {showBalances ? `₹${value.toLocaleString('en-IN')}` : '****'}
                           </p>
                         </div>
@@ -2521,22 +2557,104 @@ export default function Dashboard() {
                 {/* Trip Expenses Highlight Banner */}
                 <div
                   onClick={() => { setActiveTab('trips'); setMobileView('list'); }}
-                  className="p-4 rounded-3xl flex items-center justify-between gap-3 cursor-pointer transition-all hover:scale-[1.01]"
+                  className="p-4 rounded-2xl flex items-center justify-between gap-3 cursor-pointer"
                   style={{
-                    background: 'linear-gradient(135deg, rgba(124,58,237,0.12), rgba(99,102,241,0.06))',
-                    border: '1px solid rgba(139,92,246,0.25)',
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-soft)',
                   }}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-violet-600 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-md">
-                      ✈️
+                    <div className="w-10 h-10 rounded-xl bg-primary text-primary-foreground flex items-center justify-center shrink-0 text-xs font-bold">
+                      Trip
                     </div>
                     <div className="min-w-0">
-                      <h4 className="font-extrabold text-sm text-white truncate">Trip Expenses & Bill Splits</h4>
-                      <p className="text-xs text-slate-400 truncate">Calculate per-head costs, partial payer splits & settlements</p>
+                      <h4 className="font-semibold text-sm truncate" style={{ color: 'var(--text-primary)' }}>Trip expenses</h4>
+                      <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>Split bills and settle with the group</p>
                     </div>
                   </div>
-                  <span className="text-xs font-bold text-violet-400 shrink-0">Open →</span>
+                  <span className="text-xs font-semibold text-primary shrink-0">Open</span>
+                </div>
+
+                {/* Due reminders */}
+                <div
+                  className="rounded-3xl p-4 space-y-3"
+                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                        Due reminders
+                      </h3>
+                      <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                        Overdue and upcoming balances in the next 14 days
+                      </p>
+                    </div>
+                    {balanceReminders.length > 0 && (
+                      <Badge variant="secondary">{balanceReminders.length}</Badge>
+                    )}
+                  </div>
+
+                  {balanceReminders.length === 0 ? (
+                    <p className="text-xs py-2" style={{ color: 'var(--text-muted)' }}>
+                      No due dates yet. Set one on a transaction or contact to see reminders here.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {balanceReminders.slice(0, 8).map((reminder) => {
+                        const tone =
+                          reminder.urgency === 'overdue'
+                            ? '#f43f5e'
+                            : reminder.urgency === 'today'
+                              ? '#f59e0b'
+                              : '#38bdf8';
+                        return (
+                          <button
+                            key={reminder.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedContactId(reminder.contactId);
+                              setActiveTab('ledgers');
+                              setMobileView('ledger');
+                            }}
+                            className="w-full text-left rounded-2xl p-3 transition-all hover:translate-x-0.5"
+                            style={{
+                              background: `color-mix(in srgb, ${tone} 10%, var(--bg-raised))`,
+                              border: `1px solid color-mix(in srgb, ${tone} 30%, transparent)`,
+                            }}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-sm font-extrabold truncate" style={{ color: 'var(--text-primary)' }}>
+                                  {reminder.contactName}
+                                </p>
+                                <p className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
+                                  {reminder.remark || 'Open balance'}
+                                  {' · '}
+                                  {reminder.source === 'contact' ? 'Balance due' : 'Entry due'}
+                                </p>
+                                <p className="text-[11px] font-bold mt-1" style={{ color: tone }}>
+                                  {formatReminderLabel(reminder)}
+                                  {' · '}
+                                  {new Date(`${reminder.dueDate}T00:00:00`).toLocaleDateString('en-IN', {
+                                    day: 'numeric',
+                                    month: 'short',
+                                  })}
+                                </p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="text-sm font-bold tabular-nums" style={{ color: tone }}>
+                                  {showBalances ? `₹${reminder.amount.toLocaleString('en-IN')}` : '****'}
+                                </p>
+                                <p className="text-[10px] font-bold mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                                  {reminder.direction === 'receive' ? 'To receive' : 'To pay'}
+                                </p>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* Cash vs Online + category insights */}
@@ -2555,8 +2673,8 @@ export default function Dashboard() {
                         </p>
                       </div>
                       {([
-                        { key: 'Cash' as const, label: 'Cash', icon: '💵', color: '#f59e0b' },
-                        { key: 'Online Transfer' as const, label: 'Online', icon: '🏦', color: '#38bdf8' },
+                        { key: 'Cash' as const, label: 'Cash', icon: 'Cash', color: 'var(--amber)' },
+                        { key: 'Online Transfer' as const, label: 'Online', icon: 'UPI', color: 'var(--cyan)' },
                       ]).map(({ key, label, icon, color }) => {
                         const value = categoryDistribution.distribution[key];
                         const pct =
@@ -2569,7 +2687,7 @@ export default function Dashboard() {
                               <span className="font-bold" style={{ color: 'var(--text-secondary)' }}>
                                 {icon} {label}
                               </span>
-                              <span className="font-black tabular-nums" style={{ color: 'var(--text-primary)' }}>
+                              <span className="font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>
                                 {showBalances ? `₹${value.toLocaleString('en-IN')}` : '****'}
                                 <span className="text-[10px] font-bold ml-1.5" style={{ color: 'var(--text-muted)' }}>
                                   {pct}%
@@ -2616,10 +2734,10 @@ export default function Dashboard() {
                             return (
                               <div key={cat} className="space-y-1.5">
                                 <div className="flex items-center justify-between gap-2 text-xs">
-                                  <span className="font-bold" style={{ color: 'var(--text-secondary)' }}>
-                                    {cfg.icon} {cfg.label}
+                                  <span className="font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                                    {cfg.label}
                                   </span>
-                                  <span className="font-black tabular-nums" style={{ color: 'var(--text-primary)' }}>
+                                  <span className="font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>
                                     {showBalances ? `₹${value.toLocaleString('en-IN')}` : '****'}
                                     <span className="text-[10px] font-bold ml-1.5" style={{ color: 'var(--text-muted)' }}>
                                       {pct}%
@@ -2653,7 +2771,7 @@ export default function Dashboard() {
                           <button key={c.id} onClick={() => { setSelectedContactId(c.id); setActiveTab('ledgers'); setMobileView('ledger'); }}
                             className="w-full flex items-center gap-3 p-4 rounded-2xl text-left transition-all hover:translate-x-1"
                             style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
-                            <div className={`w-9 h-9 rounded-xl shrink-0 bg-gradient-to-tr ${getAvatarGradient(c.name)} flex items-center justify-center font-black text-xs text-white`}>
+                            <div className={`w-9 h-9 rounded-xl shrink-0 ${getAvatarTone(c.name)} flex items-center justify-center font-bold text-xs text-white`}>
                               {getInitials(c.name)}
                             </div>
                             <div className="flex-1 min-w-0">
@@ -2662,7 +2780,7 @@ export default function Dashboard() {
                                 {c.transactions.length} transaction{c.transactions.length !== 1 ? 's' : ''}
                               </p>
                             </div>
-                            <p className="font-black text-sm tabular-nums shrink-0" style={{ color: bal > 0 ? '#10b981' : '#f43f5e' }}>
+                            <p className="font-bold text-sm tabular-nums shrink-0" style={{ color: bal > 0 ? '#10b981' : '#f43f5e' }}>
                               {bal > 0 ? '+' : '-'}₹{Math.abs(bal).toLocaleString('en-IN')}
                             </p>
                             <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--text-muted)' }}>
@@ -2676,8 +2794,7 @@ export default function Dashboard() {
 
                 {contacts.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
-                    <div className="text-5xl">📊</div>
-                    <p className="font-bold" style={{ color: 'var(--text-secondary)' }}>No data yet — add your first contact to see insights</p>
+                    <p className="font-semibold" style={{ color: 'var(--text-secondary)' }}>No data yet — add your first contact to see insights</p>
                   </div>
                 )}
               </div>
@@ -2688,21 +2805,21 @@ export default function Dashboard() {
               <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-5">
                 {/* Profile hero */}
                 <div
-                  className="relative overflow-hidden rounded-3xl p-5"
+                  className="relative overflow-hidden rounded-2xl p-5"
                   style={{
-                    background: 'linear-gradient(145deg, rgba(124,58,237,0.22), rgba(6,182,212,0.08) 55%, var(--bg-surface))',
+                    background: 'var(--bg-surface)',
                     border: '1px solid var(--border-soft)',
                   }}
                 >
                   <div className="flex items-start gap-4">
                     <div
-                      className={`w-16 h-16 rounded-full shrink-0 bg-gradient-to-tr ${getAvatarGradient(userName || 'U')} flex items-center justify-center font-black text-xl text-white shadow-lg`}
+                      className={`w-16 h-16 rounded-2xl shrink-0 ${getAvatarTone(userName || 'U')} flex items-center justify-center font-bold text-xl text-white`}
                     >
                       {getInitials(userName || 'U')}
                     </div>
                     <div className="min-w-0 flex-1 pt-0.5">
-                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-primary">Your account</p>
-                      <h1 className="text-xl font-black leading-tight mt-1 truncate" style={{ color: 'var(--text-primary)' }}>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Your account</p>
+                      <h1 className="text-xl font-bold leading-tight mt-1 truncate" style={{ color: 'var(--text-primary)' }}>
                         {userName || 'Your name'}
                       </h1>
                       <p className="text-xs mt-1 truncate" style={{ color: 'var(--text-secondary)' }}>{userEmail || '—'}</p>
@@ -2724,7 +2841,7 @@ export default function Dashboard() {
                       },
                     ].map(({ label, value }) => (
                       <div key={label} className="rounded-2xl px-2.5 py-2 text-center" style={{ background: 'color-mix(in srgb, var(--bg-base) 55%, transparent)', border: '1px solid var(--border-soft)' }}>
-                        <p className="text-sm font-black tabular-nums" style={{ color: 'var(--text-primary)' }}>{value}</p>
+                        <p className="text-sm font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>{value}</p>
                         <p className="text-[10px] font-bold mt-0.5" style={{ color: 'var(--text-muted)' }}>{label}</p>
                       </div>
                     ))}
@@ -2745,7 +2862,7 @@ export default function Dashboard() {
                   <CardContent className="p-5 space-y-5">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style={{ background: 'rgba(99,102,241,0.1)' }}>⚙️</div>
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-[11px] font-bold text-primary" style={{ background: 'var(--accent)' }}>Prefs</div>
                         <div>
                           <h3 className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Ledger Preferences</h3>
                           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Small defaults that make daily entry faster</p>
@@ -2767,7 +2884,7 @@ export default function Dashboard() {
                               onClick={() => setDefaultTxMode(mode)}
                               className="h-10"
                             >
-                              {mode === 'Cash' ? '💵' : '🏦'} {mode}
+                              {mode === 'Cash' ? 'Cash' : 'Online'}
                             </Button>
                           ))}
                         </div>
@@ -2911,7 +3028,7 @@ export default function Dashboard() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                             </svg>
                           </div>
-                          <h4 className="mt-3 text-sm font-black" style={{ color: 'var(--text-primary)' }}>{item.title}</h4>
+                          <h4 className="mt-3 text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{item.title}</h4>
                           <p className="mt-1 min-h-[2.5rem] text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>{item.desc}</p>
                           <p className="mt-3 text-[10px] font-bold uppercase tracking-widest" style={{ color: '#34d399' }}>{item.meta}</p>
                         </button>
@@ -2928,7 +3045,7 @@ export default function Dashboard() {
                 <Card className="border-primary/15 bg-card/80">
                   <CardContent className="p-5 space-y-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'rgba(99,102,241,0.1)' }}>🎬</div>
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'rgba(15,118,110,0.1)' }}>🎬</div>
                       <div>
                         <h3 className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Demo Dataset</h3>
                         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Replace current ledgers with sample contacts for presentations</p>
@@ -2956,7 +3073,7 @@ export default function Dashboard() {
                 <Card className="bg-card/80" style={{ border: '1px solid rgba(244,63,94,0.18)' }}>
                   <CardContent className="p-5 space-y-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'rgba(244,63,94,0.1)' }}>⚠️</div>
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-[11px] font-bold" style={{ background: 'rgba(194,59,74,0.1)', color: 'var(--rose)' }}>Care</div>
                       <div>
                         <h3 className="font-bold text-sm" style={{ color: '#f43f5e' }}>Danger Zone</h3>
                         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Irreversible actions — proceed carefully</p>
@@ -2978,6 +3095,32 @@ export default function Dashboard() {
                     >
                       Wipe All Data
                     </Button>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-primary/15 bg-card/80">
+                  <CardContent className="p-5 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center text-lg"
+                        style={{ background: 'rgba(15,118,110,0.12)' }}
+                      >
+                        App
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>
+                          Install as app
+                        </h3>
+                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                          Home-screen install with an offline shell when the network drops
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                      On supported browsers, use the install banner or your browser&apos;s
+                      &quot;Add to Home Screen / Install app&quot; option. The service worker caches the app
+                      shell and static assets; live ledgers still need a connection to sync.
+                    </p>
                   </CardContent>
                 </Card>
 
@@ -3015,10 +3158,13 @@ export default function Dashboard() {
                 },
               ] as const).map(({ tab, label, icon }) => (
                 <button key={tab} onClick={() => { setActiveTab(tab); setMobileView('list'); }}
-                  className="flex-1 flex flex-col items-center justify-center gap-1 py-2.5 transition-all"
-                  style={{ color: activeTab === tab ? '#818cf8' : 'var(--text-muted)' }}>
+                  className="flex-1 flex flex-col items-center justify-center gap-1 py-2.5 transition-colors relative"
+                  style={{ color: activeTab === tab ? 'var(--primary)' : 'var(--text-muted)' }}>
+                  {activeTab === tab && (
+                    <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-8 rounded-full bg-primary" />
+                  )}
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">{icon}</svg>
-                  <span className="text-[10px] font-bold">{label}</span>
+                  <span className="text-[10px] font-semibold">{label}</span>
                 </button>
               ))}
             </nav>
@@ -3050,10 +3196,10 @@ export default function Dashboard() {
               {/* Mobile contact sync */}
               <div className="p-4 rounded-2xl space-y-3" style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>
                 <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl flex items-center justify-center text-lg" style={{ background: 'rgba(99,102,241,0.1)' }}>📱</div>
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center text-[10px] font-bold text-primary" style={{ background: 'var(--accent)' }}>Sync</div>
                   <div>
-                    <h4 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Import from Phone</h4>
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Sync your contacts instantly</p>
+                    <h4 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Import from phone</h4>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Sync contacts on supported browsers</p>
                   </div>
                 </div>
 
@@ -3074,7 +3220,7 @@ export default function Dashboard() {
                         ) : '👤 Select Single'}
                       </button>
                       <button type="button" disabled={isImportingContacts} onClick={() => handleImportContacts(true)}
-                        className="btn-primary flex-1 text-xs px-2 py-2.5" style={{ background: 'linear-gradient(135deg, #4f46e5, #4338ca)' }}>
+                        className="btn-primary flex-1 text-xs px-2 py-2.5">
                         {isImportingContacts ? (
                           <>
                             <svg className="w-3 h-3 animate-spin inline-block mr-1" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>
@@ -3086,12 +3232,12 @@ export default function Dashboard() {
                     {importStatus && (
                       <div className="flex items-start gap-2 p-3 rounded-xl"
                         style={{
-                          background: importStatus.type === 'success' ? 'rgba(16,185,129,0.08)' : importStatus.type === 'info' ? 'rgba(99,102,241,0.08)' : 'rgba(244,63,94,0.08)',
-                          border: `1px solid ${importStatus.type === 'success' ? 'rgba(16,185,129,0.2)' : importStatus.type === 'info' ? 'rgba(99,102,241,0.2)' : 'rgba(244,63,94,0.2)'}`,
+                          background: importStatus.type === 'success' ? 'rgba(16,185,129,0.08)' : importStatus.type === 'info' ? 'rgba(15,118,110,0.08)' : 'rgba(244,63,94,0.08)',
+                          border: `1px solid ${importStatus.type === 'success' ? 'rgba(16,185,129,0.2)' : importStatus.type === 'info' ? 'rgba(15,118,110,0.2)' : 'rgba(244,63,94,0.2)'}`,
                         }}>
                         <span className="shrink-0 text-sm">{importStatus.type === 'success' ? '✅' : importStatus.type === 'info' ? 'ℹ️' : '⚠️'}</span>
                         <p className="text-xs font-medium leading-relaxed"
-                          style={{ color: importStatus.type === 'success' ? '#6ee7b7' : importStatus.type === 'info' ? '#a5b4fc' : '#fda4af' }}>
+                          style={{ color: importStatus.type === 'success' ? '#6ee7b7' : importStatus.type === 'info' ? 'var(--primary)' : '#fda4af' }}>
                           {importStatus.message}
                         </p>
                       </div>
@@ -3169,31 +3315,24 @@ export default function Dashboard() {
         const isGot = txType === 'got';
         const accent = isGot ? '#f43f5e' : '#10b981';
         const accentSoft = isGot ? '#fb7185' : '#34d399';
-        const sheetBg = isGot
-          ? 'linear-gradient(180deg, rgba(244,63,94,0.16) 0%, var(--bg-surface) 38%)'
-          : 'linear-gradient(180deg, rgba(16,185,129,0.16) 0%, var(--bg-surface) 38%)';
-        const glow = isGot
-          ? 'radial-gradient(ellipse at top, rgba(244,63,94,0.22) 0%, transparent 55%)'
-          : 'radial-gradient(ellipse at top, rgba(16,185,129,0.22) 0%, transparent 55%)';
+        const sheetBg = 'var(--bg-surface)';
 
         return (
           <div className="fixed inset-0 z-50 flex items-end justify-center">
-            <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(10px)' }}
+            <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.45)' }}
               onClick={() => setIsAddTransactionOpen(false)} />
-            <div className="relative w-full max-w-md animate-slide-up rounded-t-[28px] overflow-hidden"
+            <div className="relative w-full max-w-md animate-slide-up rounded-t-[20px] overflow-hidden"
               style={{ background: sheetBg, border: '1px solid var(--border-soft)', maxHeight: '92vh', overflowY: 'auto' }}>
 
-              <div className="pointer-events-none absolute inset-x-0 top-0 h-40" style={{ background: glow }} />
-
               {/* Handle + header */}
-              <div className="relative px-5 pt-3 pb-2">
+              <div className="relative px-5 pt-3 pb-2" style={{ borderTop: `3px solid ${accent}` }}>
                 <div className="mx-auto mb-4 h-1 w-10 rounded-full" style={{ background: 'var(--border-bright)' }} />
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em]" style={{ color: accentSoft }}>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: accentSoft }}>
                       {editingTransaction ? 'Edit entry' : 'New entry'}
                     </p>
-                    <h3 className="mt-1 text-xl font-black leading-tight" style={{ color: 'var(--text-primary)' }}>
+                    <h3 className="mt-1 text-xl font-bold leading-tight" style={{ color: 'var(--text-primary)' }}>
                       {editingTransaction ? 'Edit Transaction' : isGot ? 'You got money' : 'You gave money'}
                     </h3>
                     <p className="mt-1 text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -3237,7 +3376,7 @@ export default function Dashboard() {
                         }}
                       >
                         <span
-                          className="w-10 h-10 rounded-full flex items-center justify-center text-white text-lg font-black"
+                          className="w-10 h-10 rounded-full flex items-center justify-center text-white text-lg font-bold"
                           style={{
                             background: active ? grad : 'var(--bg-overlay)',
                             color: active ? 'white' : 'var(--text-muted)',
@@ -3247,7 +3386,7 @@ export default function Dashboard() {
                           {arrow}
                         </span>
                         <span>
-                          <span className="block text-sm font-black" style={{ color: active ? color : 'var(--text-primary)' }}>{label}</span>
+                          <span className="block text-sm font-bold" style={{ color: active ? color : 'var(--text-primary)' }}>{label}</span>
                           <span className="block text-[10px] font-semibold" style={{ color: 'var(--text-muted)' }}>{hint}</span>
                         </span>
                       </button>
@@ -3263,9 +3402,9 @@ export default function Dashboard() {
                     border: `1px solid ${isGot ? 'rgba(244,63,94,0.2)' : 'rgba(16,185,129,0.2)'}`,
                   }}
                 >
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] mb-2" style={{ color: accentSoft }}>Amount</p>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] mb-2" style={{ color: accentSoft }}>Amount</p>
                   <div className="relative inline-flex items-center justify-center gap-1.5 w-full">
-                    <span className="text-3xl font-black" style={{ color: accentSoft }}>₹</span>
+                    <span className="text-3xl font-bold" style={{ color: accentSoft }}>₹</span>
                     <input
                       type="number"
                       required
@@ -3274,7 +3413,7 @@ export default function Dashboard() {
                       autoFocus
                       value={txAmount}
                       onChange={e => setTxAmount(e.target.value)}
-                      className="w-full max-w-[220px] bg-transparent text-center text-4xl font-black outline-none tabular-nums"
+                      className="w-full max-w-[220px] bg-transparent text-center text-4xl font-bold outline-none tabular-nums"
                       style={{ color: 'var(--text-primary)' }}
                       placeholder="0"
                     />
@@ -3307,7 +3446,7 @@ export default function Dashboard() {
                             border: `1px solid ${selected ? `${cfg.tone}55` : 'var(--border-soft)'}`,
                           }}
                         >
-                          {cfg.icon} {cfg.label}
+                          {cfg.label}
                         </button>
                       );
                     })}
@@ -3324,9 +3463,9 @@ export default function Dashboard() {
                     <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Mode</label>
                     <div className="grid grid-cols-2 gap-1.5 h-[42px]">
                       {([
-                        { mode: 'Cash' as const, icon: '💵' },
-                        { mode: 'Online Transfer' as const, icon: '🏦' },
-                      ]).map(({ mode, icon }) => {
+                        { mode: 'Cash' as const, label: 'Cash' },
+                        { mode: 'Online Transfer' as const, label: 'Online' },
+                      ]).map(({ mode, label }) => {
                         const selected = txMode === mode;
                         return (
                           <button
@@ -3334,7 +3473,7 @@ export default function Dashboard() {
                             type="button"
                             onClick={() => setTxMode(mode)}
                             title={mode}
-                            className="rounded-xl text-sm font-bold transition-all"
+                            className="rounded-xl text-xs font-semibold transition-all"
                             style={{
                               background: selected
                                 ? `color-mix(in srgb, ${accent} 18%, var(--bg-raised))`
@@ -3343,12 +3482,39 @@ export default function Dashboard() {
                               border: `1px solid ${selected ? `${accent}44` : 'var(--border-soft)'}`,
                             }}
                           >
-                            {icon}
+                            {label}
                           </button>
                         );
                       })}
                     </div>
                   </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                      Due date <span style={{ opacity: 0.55 }}>(Optional)</span>
+                    </label>
+                    {txDueDate && (
+                      <button
+                        type="button"
+                        onClick={() => setTxDueDate('')}
+                        className="text-[10px] font-bold"
+                        style={{ color: '#fda4af' }}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="date"
+                    value={txDueDate}
+                    onChange={(e) => setTxDueDate(e.target.value)}
+                    className="input-field rounded-2xl"
+                  />
+                  <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                    Reminds you on Overview before this repayment gets awkward.
+                  </p>
                 </div>
 
                 <div className="flex gap-3 pt-1">
@@ -3359,14 +3525,9 @@ export default function Dashboard() {
                   </button>
                   <button
                     type="submit"
-                    className="flex-[1.4] py-3.5 rounded-2xl font-black text-sm text-white active:scale-[0.98] transition-transform"
+                    className="flex-[1.4] py-3.5 rounded-2xl font-bold text-sm text-white active:scale-[0.98] transition-transform"
                     style={{
-                      background: isGot
-                        ? 'linear-gradient(135deg, #fb7185, #e11d48)'
-                        : 'linear-gradient(135deg, #34d399, #059669)',
-                      boxShadow: isGot
-                        ? '0 10px 28px rgba(244,63,94,0.35)'
-                        : '0 10px 28px rgba(16,185,129,0.35)',
+                      background: isGot ? 'var(--rose)' : 'var(--emerald)',
                     }}
                   >
                     {editingTransaction ? 'Save changes' : isGot ? 'Record Got' : 'Record Gave'}
@@ -3408,7 +3569,7 @@ export default function Dashboard() {
                   setIsShareModalOpen(false);
                 }}
                 className="w-full flex items-center gap-3 p-4 rounded-2xl text-left transition-all"
-                style={{ background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.25)' }}
+                style={{ background: 'rgba(15,118,110,0.08)', border: '1px solid rgba(15,118,110,0.25)' }}
               >
                 <span className="text-2xl">🔗</span>
                 <div className="flex-1 min-w-0">
@@ -3420,7 +3581,7 @@ export default function Dashboard() {
               </button>
 
               {([
-                { opt: 'all' as const, icon: '📋', label: 'Full record', desc: 'Everything + how much is left + chat link', color: '#818cf8', bg: 'rgba(99,102,241,0.08)', border: 'rgba(99,102,241,0.2)' },
+                { opt: 'all' as const, icon: '📋', label: 'Full record', desc: 'Everything + how much is left + chat link', color: 'var(--primary)', bg: 'rgba(15,118,110,0.08)', border: 'rgba(15,118,110,0.2)' },
                 { opt: 'gave' as const, icon: '↗️', label: 'What I paid', desc: 'Only money I gave them + chat link', color: '#6ee7b7', bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.2)' },
                 { opt: 'got' as const, icon: '↙️', label: 'What they paid', desc: 'Only money they gave me + chat link', color: '#fda4af', bg: 'rgba(244,63,94,0.08)', border: 'rgba(244,63,94,0.2)' },
               ] as const).map(({ opt, icon, label, desc, color, bg, border }) => (
@@ -3466,7 +3627,7 @@ export default function Dashboard() {
             style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
 
             <div className="px-5 py-4 shrink-0 flex items-center justify-between" style={{ borderBottom: '1px solid var(--border-soft)' }}>
-              <h3 className="font-black text-lg" style={{ color: 'var(--text-primary)' }}>Edit Contact</h3>
+              <h3 className="font-bold text-lg" style={{ color: 'var(--text-primary)' }}>Edit Contact</h3>
               <button onClick={() => setIsEditContactOpen(false)} className="w-8 h-8 rounded-full flex items-center justify-center transition-colors"
                 style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}
                 onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)'}
@@ -3494,11 +3655,35 @@ export default function Dashboard() {
                   <input type="email" value={contactEmail} onChange={e => setContactEmail(e.target.value)}
                     className="input-field w-full" placeholder="e.g. rahul@example.com" />
                 </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                    Balance due date <span style={{ opacity: 0.5 }}>(Optional)</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={contactDueDate}
+                    onChange={(e) => setContactDueDate(e.target.value)}
+                    className="input-field w-full"
+                  />
+                  <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    Surfaces on Overview reminders while this contact still has an open balance.
+                  </p>
+                  {contactDueDate && (
+                    <button
+                      type="button"
+                      onClick={() => setContactDueDate('')}
+                      className="text-[11px] font-bold"
+                      style={{ color: '#fda4af' }}
+                    >
+                      Clear due date
+                    </button>
+                  )}
+                </div>
               </form>
             </div>
 
             <div className="p-5 shrink-0" style={{ background: 'var(--bg-raised)', borderTop: '1px solid var(--border-soft)' }}>
-              <button type="submit" form="edit-contact-form" className="btn-primary w-full shadow-lg shadow-indigo-500/25">
+              <button type="submit" form="edit-contact-form" className="btn-primary w-full ">
                 Save Changes
               </button>
             </div>
@@ -3515,7 +3700,7 @@ export default function Dashboard() {
             style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
             <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--border-soft)' }}>
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#818cf8' }}>Profile</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--primary)' }}>Profile</p>
                 <h3 className="font-extrabold text-base mt-0.5" style={{ color: 'var(--text-primary)' }}>Edit account</h3>
               </div>
               <button type="button" disabled={isSavingProfile} onClick={() => setIsEditProfileOpen(false)}
@@ -3528,7 +3713,7 @@ export default function Dashboard() {
             </div>
             <form onSubmit={handleSaveProfile} className="p-5 space-y-4">
               <div className="flex justify-center">
-                <div className={`w-20 h-20 rounded-full bg-gradient-to-tr ${getAvatarGradient(profileName || userName || 'U')} flex items-center justify-center font-black text-2xl text-white`}>
+                <div className={`w-20 h-20 rounded-full ${getAvatarTone(profileName || userName || 'U')} flex items-center justify-center font-bold text-2xl text-white`}>
                   {getInitials(profileName || userName || 'U')}
                 </div>
               </div>
@@ -3568,7 +3753,7 @@ export default function Dashboard() {
             style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)', maxHeight: '80vh' }}>
             <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--border-soft)' }}>
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#818cf8' }}>Change log</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--primary)' }}>Change log</p>
                 <h3 className="font-extrabold text-base mt-0.5" style={{ color: 'var(--text-primary)' }}>
                   ₹{historyTx.amount.toLocaleString('en-IN')} · {historyTx.remark}
                 </h3>
@@ -3595,7 +3780,7 @@ export default function Dashboard() {
                 [...historyTx.history].reverse().map((entry, idx) => (
                   <div key={`${entry.at}-${idx}`} className="rounded-2xl p-3" style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-black uppercase tracking-wide" style={{ color: '#a5b4fc' }}>
+                      <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: 'var(--primary)' }}>
                         {entry.action}
                       </span>
                       <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>

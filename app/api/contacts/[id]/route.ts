@@ -20,7 +20,7 @@ export async function PUT(
     await connectToDatabase();
     const { id } = await params;
     const body = await req.json();
-    const { name, phone, email } = body;
+    const { name, phone, email, dueDate } = body;
 
     const contact = await Contact.findOne({ id, userId });
 
@@ -31,6 +31,10 @@ export async function PUT(
     if (name !== undefined) contact.name = name;
     if (phone !== undefined) contact.phone = normalizePhone(phone) || phone;
     if (email !== undefined) contact.email = email ? String(email).toLowerCase().trim() : undefined;
+    if (dueDate !== undefined) {
+      contact.dueDate =
+        typeof dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? dueDate : null;
+    }
 
     await contact.save();
     return NextResponse.json(serializeContactForUser(contact, 'owner'));

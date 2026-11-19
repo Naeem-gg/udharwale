@@ -21,12 +21,12 @@ export const LEDGER_CATEGORY_CONFIG: Record<
   LedgerCategory,
   { label: string; icon: string; tone: string }
 > = {
-  food: { label: 'Food', icon: '🍽️', tone: '#f97316' },
-  travel: { label: 'Travel', icon: '🚕', tone: '#06b6d4' },
-  rent: { label: 'Rent', icon: '🏠', tone: '#8b5cf6' },
-  business: { label: 'Business', icon: '💼', tone: '#10b981' },
-  personal: { label: 'Personal', icon: '🤝', tone: '#ec4899' },
-  other: { label: 'Other', icon: '🧾', tone: '#64748b' },
+  food: { label: 'Food', icon: '', tone: '#b45309' },
+  travel: { label: 'Travel', icon: '', tone: '#0e7490' },
+  rent: { label: 'Rent', icon: '', tone: '#0f766e' },
+  business: { label: 'Business', icon: '', tone: '#047857' },
+  personal: { label: 'Personal', icon: '', tone: '#0e7490' },
+  other: { label: 'Other', icon: '', tone: '#5f6f68' },
 };
 
 export interface TxHistoryEntry {
@@ -46,6 +46,8 @@ export interface Transaction {
   createdAt?: string;   // System logged timestamp (ISO) — when the record was created
   mode: ModeType;
   category?: LedgerCategory;
+  /** Optional repayment deadline (YYYY-MM-DD) */
+  dueDate?: string | null;
   updatedAt?: string;
   deletedAt?: string | null;
   createdByUserId?: string;
@@ -60,6 +62,8 @@ export interface Contact {
   phone: string;
   email?: string;
   shareToken?: string;
+  /** Optional deadline for clearing the open balance (YYYY-MM-DD) */
+  dueDate?: string | null;
   transactions: Transaction[];
   /** Soft-deleted + active with full history for audit UI */
   allTransactions?: Transaction[];
@@ -69,6 +73,21 @@ export interface Contact {
   peerUserId?: string;
   ownerName?: string;
   ownerUserId?: string;
+}
+
+export type ReminderUrgency = 'overdue' | 'today' | 'upcoming';
+
+export interface BalanceReminder {
+  id: string;
+  contactId: string;
+  contactName: string;
+  dueDate: string;
+  amount: number;
+  direction: 'receive' | 'pay';
+  source: 'contact' | 'transaction';
+  remark?: string;
+  urgency: ReminderUrgency;
+  daysUntil: number;
 }
 
 export type ActiveTab = 'ledgers' | 'trips' | 'insights' | 'settings';

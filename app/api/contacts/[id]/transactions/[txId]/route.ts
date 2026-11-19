@@ -25,7 +25,7 @@ export async function PUT(
     await connectToDatabase();
     const { id, txId } = await params;
     const body = await req.json();
-    const { amount, mode, remark, date, type, category } = body;
+    const { amount, mode, remark, date, type, category, dueDate } = body;
 
     const access = await findAccessibleContact(id, userId);
     if (!access) {
@@ -49,6 +49,10 @@ export async function PUT(
     if (type !== undefined) tx.type = toOwnerType(type, role);
     if (category !== undefined) {
       (tx as any).category = allowedCategories.includes(category) ? category : 'other';
+    }
+    if (dueDate !== undefined) {
+      (tx as any).dueDate =
+        typeof dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? dueDate : null;
     }
 
     (tx as any).updatedByUserId = userId;

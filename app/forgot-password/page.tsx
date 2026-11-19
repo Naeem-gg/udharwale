@@ -77,23 +77,26 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <main className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-[var(--bg-base)] p-4">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="aurora-blob animate-aurora absolute left-1/2 top-1/2 h-[520px] w-[520px] -translate-x-1/2 -translate-y-1/2 bg-[radial-gradient(circle,rgba(244,63,94,0.11)_0%,transparent_70%)]" />
-        <div className="aurora-blob animate-aurora absolute -right-20 -top-24 h-[440px] w-[440px] bg-[radial-gradient(circle,rgba(124,58,237,0.12)_0%,transparent_70%)] [animation-delay:3s]" />
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(124,58,237,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(124,58,237,0.035)_1px,transparent_1px)] bg-[size:60px_60px]" />
-      </div>
+    <main className="min-h-dvh bg-[var(--bg-base)]">
+      <div className="app-shell flex min-h-dvh flex-col justify-center px-5 py-8">
+        <div className="mb-6">
+          <Link href="/login" className="mb-5 inline-flex items-center gap-2.5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+              <ReceiptText className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <span className="font-branding text-xl text-[var(--text-primary)]">Udharwale</span>
+          </Link>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Reset password</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Recover access with your PIN or security answer</p>
+        </div>
 
-      <Card className="relative z-10 w-full max-w-md overflow-hidden border-primary/20 bg-card/85 backdrop-blur-2xl">
-        <CardHeader className="items-center border-b border-border text-center">
-          <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-lg bg-primary text-white shadow-lg shadow-primary/25">
-            <ReceiptText className="h-5 w-5" aria-hidden="true" />
-          </div>
+      <Card className="border-[var(--border-soft)] bg-[var(--bg-surface)]">
+        <CardHeader className="sr-only">
           <CardTitle>Reset Password</CardTitle>
           <CardDescription>Recover your account securely</CardDescription>
         </CardHeader>
 
-        <CardContent className="pt-6">
+        <CardContent className="p-5">
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
               <Alert variant="destructive">
@@ -117,20 +120,20 @@ export default function ForgotPasswordPage() {
               </div>
             </div>
 
-            <div className="space-y-2 border-t border-border pt-4">
-              <Label>How would you like to verify?</Label>
-              <div className="grid grid-cols-2 gap-1 rounded-md border border-border bg-background/60 p-1">
+            <div className="space-y-2 border-t border-[var(--border-soft)] pt-4">
+              <Label>Verify with</Label>
+              <div className="grid grid-cols-2 gap-1 rounded-xl border border-border bg-[var(--bg-raised)] p-1">
                 {([
-                  { value: 'pin' as const, label: '4-Digit PIN', icon: KeyRound },
+                  { value: 'pin' as const, label: 'PIN', icon: KeyRound },
                   { value: 'question' as const, label: 'Question', icon: HelpCircle },
                 ]).map(({ value, label, icon: Icon }) => (
                   <Button
                     key={value}
                     type="button"
-                    variant={recoveryMethod === value ? 'secondary' : 'ghost'}
+                    variant={recoveryMethod === value ? 'default' : 'ghost'}
                     size="sm"
                     onClick={() => setRecoveryMethod(value)}
-                    className={cn('h-10', recoveryMethod === value && 'text-foreground')}
+                    className="h-10"
                   >
                     <Icon className="h-4 w-4" aria-hidden="true" />
                     {label}
@@ -182,6 +185,7 @@ export default function ForgotPasswordPage() {
           </form>
         </CardContent>
       </Card>
+      </div>
     </main>
   );
 }

@@ -42,36 +42,29 @@ function LoginForm() {
   };
 
   return (
-    <main className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-[var(--bg-base)] p-4">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="aurora-blob animate-aurora absolute -left-24 -top-32 h-[600px] w-[600px] bg-[radial-gradient(circle,rgba(124,58,237,0.15)_0%,transparent_70%)]" />
-        <div className="aurora-blob animate-aurora absolute -bottom-24 -right-24 h-[500px] w-[500px] bg-[radial-gradient(circle,rgba(6,182,212,0.10)_0%,transparent_70%)] [animation-delay:5s] [animation-direction:reverse]" />
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(124,58,237,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(124,58,237,0.04)_1px,transparent_1px)] bg-[size:60px_60px]" />
-      </div>
-
-      <section className="relative z-10 w-full max-w-[400px] animate-fade-slide-up">
-        <div className="mb-8 flex flex-col items-center text-center">
-          <div className="relative mb-5">
-            <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-primary text-white shadow-[0_8px_32px_rgba(124,58,237,0.45)]">
-              <ReceiptText className="h-8 w-8" aria-hidden="true" />
+    <main className="min-h-dvh bg-[var(--bg-base)]">
+      <section className="app-shell flex min-h-dvh flex-col justify-center px-5 py-8">
+        <div className="mb-8">
+          <Link href="/" className="mb-6 inline-flex items-center gap-2.5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+              <ReceiptText className="h-5 w-5" aria-hidden="true" />
             </div>
-            <div className="absolute -inset-1 animate-ping rounded-lg bg-primary opacity-15" />
-          </div>
-          <span className="font-branding text-3xl text-white">Udharwale</span>
-          <span className="mt-1 text-[10px] font-bold uppercase text-primary">By Naeem Navjivan</span>
-          <p className="mt-2 text-sm font-medium text-muted-foreground">Your smart debt ledger</p>
+            <span className="font-branding text-xl text-[var(--text-primary)]">Udharwale</span>
+          </Link>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Welcome back</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Sign in with email or phone</p>
         </div>
 
-        <Card className="overflow-hidden border-primary/20 bg-card/85 backdrop-blur-2xl">
-          <CardHeader className="border-b border-border">
+        <Card className="border-[var(--border-soft)] bg-[var(--bg-surface)]">
+          <CardHeader className="sr-only">
             <CardTitle>Welcome back</CardTitle>
             <CardDescription>Sign in with email or phone</CardDescription>
           </CardHeader>
 
-          <CardContent className="pt-6">
+          <CardContent className="p-5">
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <Alert variant="destructive" className="animate-fade-slide-down">
+                <Alert variant="destructive">
                   <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                   <p className="font-medium">{error}</p>
                 </Alert>
@@ -148,10 +141,6 @@ function LoginForm() {
             </form>
           </CardContent>
         </Card>
-
-        <p className="mt-6 text-center text-xs text-[var(--text-faint)]">
-          Crafted with precision · Secure · Private
-        </p>
       </section>
     </main>
   );

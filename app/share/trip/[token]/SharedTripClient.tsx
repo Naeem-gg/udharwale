@@ -27,18 +27,18 @@ import {
 } from '@/app/components/trip-types';
 
 /* ─── Avatar colours (deterministic by name) ─── */
-const AVATAR_GRADIENTS = [
-  'from-violet-500 to-indigo-600',
-  'from-emerald-500 to-teal-600',
-  'from-amber-500 to-orange-600',
-  'from-pink-500 to-rose-600',
-  'from-cyan-500 to-blue-600',
-  'from-fuchsia-500 to-purple-600',
+const AVATAR_TONES = [
+  'bg-[#0f766e]',
+  'bg-[#115e59]',
+  'bg-[#134e4a]',
+  'bg-[#1e3a36]',
+  'bg-[#0e7490]',
+  'bg-[#3d4f47]',
 ];
 function avatarGradient(name: string) {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
-  return AVATAR_GRADIENTS[Math.abs(hash) % AVATAR_GRADIENTS.length];
+  return AVATAR_TONES[Math.abs(hash) % AVATAR_TONES.length];
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -288,7 +288,7 @@ export default function SharedTripClient({ token }: { token: string }) {
         <motion.div
           animate={{ scale: [1, 1.08, 1], opacity: [0.8, 1, 0.8] }}
           transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-          className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center shadow-2xl shadow-violet-500/40"
+          className="w-16 h-16 rounded-3xl bg-[#0f766e] flex items-center justify-center "
         >
           <ReceiptText className="w-7 h-7 text-white" />
         </motion.div>
@@ -322,7 +322,7 @@ export default function SharedTripClient({ token }: { token: string }) {
           🔗
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="space-y-2">
-          <h1 className="text-2xl font-black text-white">Trip Not Found</h1>
+          <h1 className="text-2xl font-bold text-white">Trip Not Found</h1>
           <p className="text-sm text-slate-400 max-w-sm">{error}</p>
         </motion.div>
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}>
@@ -391,7 +391,7 @@ export default function SharedTripClient({ token }: { token: string }) {
               {trip.destination}{trip.startDate ? ` · ${trip.startDate}` : ''}
             </p>
           ) : null}
-          <h1 className="text-2xl font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>{trip.name}</h1>
+          <h1 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>{trip.name}</h1>
           {trip.description ? (
             <p className="text-sm mt-1 leading-relaxed" style={{ color: 'var(--text-muted)' }}>{trip.description}</p>
           ) : null}
@@ -399,13 +399,13 @@ export default function SharedTripClient({ token }: { token: string }) {
 
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded-2xl px-2.5 py-2.5 text-center" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
-            <p className="text-base font-black tabular-nums" style={{ color: 'var(--text-primary)' }}>
+            <p className="text-base font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>
               {currency}{summary.totalSpend.toLocaleString('en-IN')}
             </p>
             <p className="text-[10px] font-bold mt-0.5" style={{ color: 'var(--text-muted)' }}>Spent</p>
           </div>
           <div className="rounded-2xl px-2.5 py-2.5 text-center" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
-            <p className="text-base font-black tabular-nums leading-tight" style={{ color: '#34d399' }}>
+            <p className="text-base font-bold tabular-nums leading-tight" style={{ color: '#34d399' }}>
               {summary.hasUnevenShares
                 ? `${currency}${summary.minShare.toLocaleString('en-IN')}–${summary.maxShare.toLocaleString('en-IN')}`
                 : `${currency}${summary.perHeadAverage.toLocaleString('en-IN')}`}
@@ -415,7 +415,7 @@ export default function SharedTripClient({ token }: { token: string }) {
             </p>
           </div>
           <div className="rounded-2xl px-2.5 py-2.5 text-center" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
-            <p className="text-base font-black tabular-nums" style={{ color: summary.totalPendingAmount > 0 ? '#fb7185' : '#34d399' }}>
+            <p className="text-base font-bold tabular-nums" style={{ color: summary.totalPendingAmount > 0 ? '#fb7185' : '#34d399' }}>
               {currency}{summary.totalPendingAmount.toLocaleString('en-IN')}
             </p>
             <p className="text-[10px] font-bold mt-0.5" style={{ color: 'var(--text-muted)' }}>Pending</p>
@@ -429,7 +429,7 @@ export default function SharedTripClient({ token }: { token: string }) {
               className="inline-flex items-center gap-1.5 shrink-0 rounded-full pl-1 pr-2.5 py-1"
               style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
             >
-              <div className={cn('w-6 h-6 rounded-full bg-gradient-to-tr flex items-center justify-center text-[10px] font-black text-white', avatarGradient(p.name))}>
+              <div className={cn('w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white', avatarGradient(p.name))}>
                 {p.name[0].toUpperCase()}
               </div>
               <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>{p.name}</span>
@@ -446,8 +446,8 @@ export default function SharedTripClient({ token }: { token: string }) {
             onClick={() => setActiveTab('expenses')}
             className="flex-1 py-2 rounded-xl text-xs font-bold transition-colors"
             style={{
-              background: activeTab === 'expenses' ? 'rgba(99,102,241,0.2)' : 'transparent',
-              color: activeTab === 'expenses' ? '#a5b4fc' : 'var(--text-muted)',
+              background: activeTab === 'expenses' ? 'rgba(15,118,110,0.2)' : 'transparent',
+              color: activeTab === 'expenses' ? 'var(--primary)' : 'var(--text-muted)',
             }}
           >
             Expenses
@@ -457,8 +457,8 @@ export default function SharedTripClient({ token }: { token: string }) {
             onClick={() => setActiveTab('settlement')}
             className="flex-1 py-2 rounded-xl text-xs font-bold transition-colors"
             style={{
-              background: activeTab === 'settlement' ? 'rgba(99,102,241,0.2)' : 'transparent',
-              color: activeTab === 'settlement' ? '#a5b4fc' : 'var(--text-muted)',
+              background: activeTab === 'settlement' ? 'rgba(15,118,110,0.2)' : 'transparent',
+              color: activeTab === 'settlement' ? 'var(--primary)' : 'var(--text-muted)',
             }}
           >
             {summary.pendingSettlementsCount > 0 ? `Settle (${summary.pendingSettlementsCount})` : 'Settle'}
@@ -484,14 +484,14 @@ export default function SharedTripClient({ token }: { token: string }) {
               >
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>
+                    <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
                       {summary.settlementProgressPct}% settled
                     </p>
                     <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
                       {summary.settledSettlementsCount}/{summary.settlements.length} transfers
                     </p>
                   </div>
-                  <p className="text-sm font-black tabular-nums" style={{ color: summary.totalPendingAmount > 0 ? '#fb7185' : '#34d399' }}>
+                  <p className="text-sm font-bold tabular-nums" style={{ color: summary.totalPendingAmount > 0 ? '#fb7185' : '#34d399' }}>
                     {currency}{summary.totalPendingAmount.toLocaleString('en-IN')} due
                   </p>
                 </div>
@@ -509,7 +509,7 @@ export default function SharedTripClient({ token }: { token: string }) {
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>
+                    <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
                       Who pays whom
                     </h3>
                     <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
@@ -552,9 +552,9 @@ export default function SharedTripClient({ token }: { token: string }) {
 
                 {filteredSettlements.length === 0 ? (
                   <div className="p-8 rounded-2xl bg-slate-800/40 text-center space-y-2">
-                    <p className="text-sm font-extrabold text-slate-300">
+                    <p className="text-sm font-bold text-slate-300">
                       {settlementFilter === 'pending'
-                        ? '🎉 Awesome! No pending settlements.'
+                        ? 'No pending settlements'
                         : settlementFilter === 'settled'
                         ? 'No acknowledged settlements yet.'
                         : 'No settlements required.'}
@@ -594,7 +594,7 @@ export default function SharedTripClient({ token }: { token: string }) {
                             <div className="flex items-center gap-3 min-w-0">
                               <div
                                 className={cn(
-                                  'w-10 h-10 rounded-xl bg-gradient-to-tr flex items-center justify-center font-black text-xs text-white shrink-0',
+                                  'w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs text-white shrink-0',
                                   avatarGradient(st.fromName)
                                 )}
                               >
@@ -602,22 +602,22 @@ export default function SharedTripClient({ token }: { token: string }) {
                               </div>
                               <div className="min-w-0">
                                 <div className="text-sm font-bold text-white flex items-center gap-2 flex-wrap">
-                                  <span className="text-rose-400 font-extrabold">{st.fromName}</span>
+                                  <span className="text-rose-400 font-bold">{st.fromName}</span>
                                   <span className="text-slate-500 font-normal">owes</span>
-                                  <span className="text-emerald-400 font-extrabold">{st.toName}</span>
+                                  <span className="text-emerald-400 font-bold">{st.toName}</span>
 
                                   {isSettled ? (
-                                    <span className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
+                                    <span className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider bg-emerald-500/20 px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
                                       <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                                       Paid & Settled
                                     </span>
                                   ) : isPartial ? (
-                                    <span className="text-[10px] font-extrabold text-amber-300 uppercase tracking-wider bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 flex items-center gap-1">
+                                    <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 flex items-center gap-1">
                                       <Clock className="w-3 h-3 text-amber-400" />
                                       Partial
                                     </span>
                                   ) : (
-                                    <span className="text-[10px] font-extrabold text-amber-300 uppercase tracking-wider bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 flex items-center gap-1">
+                                    <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 flex items-center gap-1">
                                       <Clock className="w-3 h-3 text-amber-400" />
                                       Pending
                                     </span>
@@ -646,7 +646,7 @@ export default function SharedTripClient({ token }: { token: string }) {
                             <div className="text-right shrink-0 self-end sm:self-auto">
                               <div
                                 className={cn(
-                                  'text-xl font-black tabular-nums',
+                                  'text-xl font-bold tabular-nums',
                                   isSettled ? 'text-emerald-400 line-through opacity-80' : 'text-white'
                                 )}
                               >
@@ -678,7 +678,7 @@ export default function SharedTripClient({ token }: { token: string }) {
                                 <motion.button
                                   whileTap={{ scale: 0.94 }}
                                   onClick={() => openAcknowledgeModal(st, 'full')}
-                                  className="px-3.5 py-1.5 rounded-xl text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-500 transition-all inline-flex items-center gap-1.5 shadow-md shadow-emerald-600/30"
+                                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 transition-all inline-flex items-center gap-1.5 "
                                 >
                                   <CheckCircle2 className="w-3.5 h-3.5" />
                                   <span>{isPartial ? 'Pay Remaining' : 'Mark Fully Settled'}</span>
@@ -709,7 +709,7 @@ export default function SharedTripClient({ token }: { token: string }) {
                   className="px-4 py-3"
                   style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-soft)' }}
                 >
-                  <h3 className="text-sm font-black" style={{ color: 'var(--text-primary)' }}>
+                  <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
                     Each person&apos;s share
                   </h3>
                   <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
@@ -740,7 +740,7 @@ export default function SharedTripClient({ token }: { token: string }) {
                           <div className="flex items-center gap-3 min-w-0">
                             <div
                               className={cn(
-                                'w-9 h-9 rounded-xl bg-gradient-to-tr flex items-center justify-center font-black text-xs text-white shrink-0',
+                                'w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs text-white shrink-0',
                                 avatarGradient(s.participant.name)
                               )}
                             >
@@ -770,7 +770,7 @@ export default function SharedTripClient({ token }: { token: string }) {
                             {owes ? (
                               s.pendingDebt > 0 ? (
                                 <div>
-                                  <span className="text-[10px] font-extrabold text-rose-400 uppercase tracking-wider bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/30 inline-flex items-center gap-1">
+                                  <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/30 inline-flex items-center gap-1">
                                     <Clock className="w-3 h-3 text-rose-400" />
                                     {currency}{s.pendingDebt.toLocaleString('en-IN')} Pending
                                   </span>
@@ -781,7 +781,7 @@ export default function SharedTripClient({ token }: { token: string }) {
                                   )}
                                 </div>
                               ) : (
-                                <span className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30 inline-flex items-center gap-1">
+                                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30 inline-flex items-center gap-1">
                                   <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                                   All Dues Paid ({currency}{s.settledDebt.toLocaleString('en-IN')})
                                 </span>
@@ -789,8 +789,8 @@ export default function SharedTripClient({ token }: { token: string }) {
                             ) : isOwed ? (
                               s.pendingCredit > 0 ? (
                                 <div>
-                                  <span className="text-[10px] font-extrabold text-violet-300 uppercase tracking-wider bg-violet-500/10 px-2 py-0.5 rounded-full border border-violet-500/30 inline-flex items-center gap-1">
-                                    <Clock className="w-3 h-3 text-violet-400" />
+                                  <span className="text-[10px] font-bold text-primary uppercase tracking-wider bg-violet-500/10 px-2 py-0.5 rounded-full border border-violet-500/30 inline-flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-primary" />
                                     {currency}{s.pendingCredit.toLocaleString('en-IN')} Due
                                   </span>
                                   {s.settledCredit > 0 && (
@@ -800,13 +800,13 @@ export default function SharedTripClient({ token }: { token: string }) {
                                   )}
                                 </div>
                               ) : (
-                                <span className="text-[10px] font-extrabold text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30 inline-flex items-center gap-1">
+                                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30 inline-flex items-center gap-1">
                                   <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                                   All Received ({currency}{s.settledCredit.toLocaleString('en-IN')})
                                 </span>
                               )
                             ) : (
-                              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider bg-slate-800 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-800 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
                                 <Sparkles className="w-3 h-3 text-emerald-400" />
                                 Even · Settled
                               </span>
@@ -841,7 +841,7 @@ export default function SharedTripClient({ token }: { token: string }) {
                     className="rounded-3xl p-5 space-y-3"
                     style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
                   >
-                    <h3 className="text-sm font-black text-white">Spending by Category</h3>
+                    <h3 className="text-sm font-bold text-white">Spending by Category</h3>
                     <div className="space-y-2.5">
                       {cats.map(([cat, amt], i) => {
                         const cfg = CATEGORY_CONFIG[cat as keyof typeof CATEGORY_CONFIG] || CATEGORY_CONFIG.general;
@@ -858,7 +858,7 @@ export default function SharedTripClient({ token }: { token: string }) {
                               <span className="flex items-center gap-1.5 font-bold" style={{ color: cfg.tone }}>
                                 <span>{cfg.icon}</span> {cfg.label}
                               </span>
-                              <span className="font-black tabular-nums text-white">
+                              <span className="font-bold tabular-nums text-white">
                                 {currency}{amt.toLocaleString('en-IN')}
                                 <span className="text-slate-500 font-normal ml-1">({pct}%)</span>
                               </span>
@@ -928,7 +928,7 @@ export default function SharedTripClient({ token }: { token: string }) {
                           <h4 className="text-sm font-bold truncate" style={{ color: 'var(--text-primary)' }}>
                             {expense.title}
                           </h4>
-                          <p className="text-sm font-black tabular-nums shrink-0" style={{ color: 'var(--text-primary)' }}>
+                          <p className="text-sm font-bold tabular-nums shrink-0" style={{ color: 'var(--text-primary)' }}>
                             {currency}{expense.amount.toLocaleString('en-IN')}
                           </p>
                         </div>
@@ -949,7 +949,7 @@ export default function SharedTripClient({ token }: { token: string }) {
           className="mt-4 p-5 rounded-2xl text-center space-y-3"
           style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
         >
-          <h3 className="text-base font-black" style={{ color: 'var(--text-primary)' }}>Track trips on Udharwale</h3>
+          <h3 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Track trips on Udharwale</h3>
           <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
             Split bills, settle dues, and share with friends — free.
           </p>
@@ -957,7 +957,7 @@ export default function SharedTripClient({ token }: { token: string }) {
             <Link
               href="/signup"
               className={cn(buttonVariants({ size: 'default' }), 'font-bold px-5 border-0 text-white')}
-              style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}
+              style={{ background: 'linear-gradient(135deg,var(--primary),var(--primary))' }}
             >
               Create free account
               <ArrowRight className="w-4 h-4 ml-1.5" />
@@ -1005,7 +1005,7 @@ export default function SharedTripClient({ token }: { token: string }) {
                     <ShieldCheck className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="font-black text-base text-white">Acknowledge Payment</h3>
+                    <h3 className="font-bold text-base text-white">Acknowledge Payment</h3>
                     <p className="text-[11px] text-slate-400">Let the group know this is settled</p>
                   </div>
                 </div>
@@ -1016,13 +1016,13 @@ export default function SharedTripClient({ token }: { token: string }) {
 
               <form onSubmit={handleConfirmAck} className="p-5 space-y-4">
                 <div className="p-4 rounded-2xl space-y-1.5 border" style={{ background: 'rgba(16,185,129,0.06)', borderColor: 'rgba(16,185,129,0.2)' }}>
-                  <span className="text-[10px] font-extrabold uppercase text-emerald-400 tracking-wider">Settlement Due</span>
+                  <span className="text-[10px] font-bold uppercase text-emerald-400 tracking-wider">Settlement Due</span>
                   <div className="text-sm font-bold text-white flex items-center justify-between gap-2">
                     <span>
                       <strong className="text-rose-400">{acknowledgingSettlement.fromName}</strong> owes{' '}
                       <strong className="text-emerald-400">{acknowledgingSettlement.toName}</strong>
                     </span>
-                    <span className="text-xl font-black text-white tabular-nums shrink-0">
+                    <span className="text-xl font-bold text-white tabular-nums shrink-0">
                       {currency}{acknowledgingSettlement.amount.toLocaleString('en-IN')}
                     </span>
                   </div>
@@ -1075,7 +1075,7 @@ export default function SharedTripClient({ token }: { token: string }) {
                           setAckAmount(m.id === 'full' ? rem.toString() : '');
                         }}
                         className={cn(
-                          'py-2 px-1 rounded-xl text-xs font-extrabold transition-all text-center',
+                          'py-2 px-1 rounded-xl text-xs font-bold transition-all text-center',
                           ackSettleMode === m.id
                             ? 'bg-emerald-600 text-white shadow-md'
                             : 'bg-slate-800/60 text-slate-400 hover:text-white'
@@ -1092,7 +1092,7 @@ export default function SharedTripClient({ token }: { token: string }) {
                     {ackSettleMode === 'full' ? 'Amount (remaining)' : 'Amount paying now'}
                   </label>
                   <div className="relative">
-                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
                       {currency}
                     </span>
                     <input
@@ -1126,7 +1126,7 @@ export default function SharedTripClient({ token }: { token: string }) {
                         key={m.id}
                         onClick={() => setAckMethod(m.id as any)}
                         className={cn(
-                          'py-2 px-1 rounded-xl text-xs font-extrabold transition-all text-center',
+                          'py-2 px-1 rounded-xl text-xs font-bold transition-all text-center',
                           ackMethod === m.id ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800/60 text-slate-400 hover:text-white'
                         )}
                       >
@@ -1153,7 +1153,7 @@ export default function SharedTripClient({ token }: { token: string }) {
                     whileTap={{ scale: 0.96 }}
                     disabled={isSubmittingAck}
                     type="submit"
-                    className="w-full py-3 rounded-2xl text-xs font-black text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-xl shadow-emerald-600/25 transition-all flex items-center justify-center gap-2"
+                    className="w-full py-3 rounded-2xl text-xs font-bold text-white bg-primary hover:opacity-90  transition-all flex items-center justify-center gap-2"
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     <span>
