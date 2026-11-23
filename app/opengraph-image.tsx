@@ -25,7 +25,6 @@ export default async function Image() {
           padding: '72px',
         }}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={iconSrc}
           width={96}
@@ -40,6 +39,7 @@ export default async function Image() {
         />
         <div
           style={{
+            display: 'flex',
             fontSize: 72,
             fontWeight: 800,
             color: '#14201c',
@@ -52,6 +52,7 @@ export default async function Image() {
         </div>
         <div
           style={{
+            display: 'flex',
             fontSize: 28,
             fontWeight: 600,
             color: '#3d4f47',
@@ -63,6 +64,7 @@ export default async function Image() {
         </div>
         <div
           style={{
+            display: 'flex',
             marginTop: 28,
             fontSize: 18,
             fontWeight: 700,
@@ -71,7 +73,7 @@ export default async function Image() {
             textTransform: 'uppercase',
           }}
         >
-          By {SITE_CREATOR}
+          {`By ${SITE_CREATOR}`}
         </div>
       </div>
     ),
