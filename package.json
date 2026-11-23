@@ -12,6 +12,7 @@
   "dependencies": {
     "@hookform/resolvers": "^7.0.7",
     "framer-motion": "^14.14.0",
+    "html-to-image": "^1.11.13",
     "lucide-react": "^1.76.0",
     "mongoose": "^9.12.2",
     "next": "16.4.6",

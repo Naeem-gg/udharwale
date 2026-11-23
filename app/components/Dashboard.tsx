@@ -21,7 +21,18 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { useTheme } from '@/app/theme-provider';
 import ConfirmDialog from './ConfirmDialog';
+import TransactionShareSheet, {
+  type TransactionSharePayload,
+} from './TransactionShareSheet';
 import { buildBalanceReminders, formatReminderLabel } from '@/lib/reminders';
+import {
+  Clock3,
+  History,
+  Pencil,
+  Share2,
+  Trash2,
+  X,
+} from 'lucide-react';
 
 // Custom CSS-based Confetti Particle component for settlements
 interface ConfettiParticle {
@@ -83,6 +94,8 @@ export default function Dashboard() {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [isContactMenuOpen, setIsContactMenuOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [txSharePayload, setTxSharePayload] = useState<TransactionSharePayload | null>(null);
+  const [detailTx, setDetailTx] = useState<Transaction | null>(null);
   const [showBalances, setShowBalances] = useState(false);
   const [peekingContactId, setPeekingContactId] = useState<string | null>(null);
   const [defaultTxMode, setDefaultTxMode] = useState<ModeType>(getStoredDefaultTxMode);
@@ -1671,6 +1684,192 @@ export default function Dashboard() {
         />
       )}
 
+      <TransactionShareSheet
+        open={!!txSharePayload}
+        data={txSharePayload}
+        onClose={() => setTxSharePayload(null)}
+        showToast={showToast}
+      />
+
+      {detailTx && selectedContact && (() => {
+        const isGave = detailTx.type === 'gave';
+        const accent = isGave ? 'var(--emerald)' : 'var(--rose)';
+        const cat =
+          LEDGER_CATEGORY_CONFIG[
+            detailTx.category && LEDGER_CATEGORIES.includes(detailTx.category)
+              ? detailTx.category
+              : 'other'
+          ];
+        const actions = [
+          {
+            key: 'share',
+            label: 'Share',
+            icon: Share2,
+            color: 'var(--primary)',
+            onClick: () => {
+              const tx = detailTx;
+              const contact = selectedContact;
+              setDetailTx(null);
+              void (async () => {
+                let chatLink: string | null = null;
+                try {
+                  chatLink = await getOrCreateShareUrl(contact.id);
+                } catch {
+                  chatLink = null;
+                }
+                setTxSharePayload({
+                  transaction: tx,
+                  contactName: contact.name,
+                  userName: userName || 'You',
+                  contactPhone: contact.phone || null,
+                  chatLink,
+                });
+              })();
+            },
+          },
+          {
+            key: 'edit',
+            label: 'Edit',
+            icon: Pencil,
+            color: 'var(--text-secondary)',
+            onClick: () => {
+              handleOpenEditTx(detailTx);
+              setDetailTx(null);
+            },
+          },
+          {
+            key: 'history',
+            label: 'History',
+            icon: History,
+            color: 'var(--text-muted)',
+            onClick: () => {
+              setHistoryTx(detailTx);
+              setDetailTx(null);
+            },
+          },
+          {
+            key: 'delete',
+            label: 'Delete',
+            icon: Trash2,
+            color: 'var(--rose)',
+            onClick: () => {
+              const id = detailTx.id;
+              setDetailTx(null);
+              void handleDeleteTransaction(id);
+            },
+          },
+        ] as const;
+
+        return (
+          <div className="fixed inset-0 z-[55] flex items-end sm:items-center justify-center">
+            <div
+              className="absolute inset-0"
+              style={{ background: 'rgba(0,0,0,0.45)' }}
+              onClick={() => setDetailTx(null)}
+            />
+            <div
+              className="relative w-full max-w-md rounded-t-[20px] sm:rounded-[20px] overflow-hidden animate-slide-up"
+              style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+            >
+              <div
+                className="flex items-start justify-between gap-3 px-5 pt-4 pb-3"
+                style={{ borderBottom: '1px solid var(--border-soft)' }}
+              >
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: accent }}>
+                    {isGave ? 'You gave' : 'You got'} · {selectedContact.name}
+                  </p>
+                  <p className="text-3xl font-bold tabular-nums mt-1 leading-none" style={{ color: accent }}>
+                    ₹{detailTx.amount.toLocaleString('en-IN')}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDetailTx(null)}
+                  className="h-9 w-9 rounded-xl inline-flex items-center justify-center shrink-0"
+                  style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}
+                  aria-label="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="px-5 py-4 space-y-3">
+                {detailTx.remark ? (
+                  <p className="text-sm font-medium leading-snug" style={{ color: 'var(--text-primary)' }}>
+                    {detailTx.remark}
+                  </p>
+                ) : null}
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  {[
+                    { label: 'Date', value: formatEventDate(detailTx.date) },
+                    { label: 'Mode', value: detailTx.mode === 'Online Transfer' ? 'Online' : 'Cash' },
+                    { label: 'Category', value: cat.label },
+                    {
+                      label: 'Due',
+                      value: detailTx.dueDate ? formatEventDate(detailTx.dueDate) : '—',
+                    },
+                  ].map((row) => (
+                    <div
+                      key={row.label}
+                      className="rounded-xl px-3 py-2.5"
+                      style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}
+                    >
+                      <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                        {row.label}
+                      </p>
+                      <p className="text-sm font-semibold mt-0.5" style={{ color: 'var(--text-primary)' }}>
+                        {row.value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {detailTx.dueDate ? (
+                  <p className="text-xs inline-flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+                    <Clock3 className="w-3.5 h-3.5" />
+                    Due {formatEventDate(detailTx.dueDate)}
+                  </p>
+                ) : null}
+              </div>
+
+              <div
+                className="grid grid-cols-4 gap-2 px-4 pt-2"
+                style={{
+                  borderTop: '1px solid var(--border-soft)',
+                  paddingBottom: 'max(0.85rem, env(safe-area-inset-bottom))',
+                }}
+              >
+                {actions.map(({ key, label, icon: Icon, color, onClick }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={onClick}
+                    className="flex flex-col items-center gap-1.5 py-2.5 rounded-xl active:opacity-80"
+                    style={{ background: 'var(--bg-raised)' }}
+                  >
+                    <span
+                      className="h-10 w-10 rounded-full inline-flex items-center justify-center"
+                      style={{
+                        background: key === 'delete' ? 'rgba(194,59,74,0.1)' : 'var(--bg-surface)',
+                        color,
+                        border: '1px solid var(--border-soft)',
+                      }}
+                    >
+                      <Icon className="w-4 h-4" />
+                    </span>
+                    <span className="text-[10px] font-semibold" style={{ color: 'var(--text-muted)' }}>
+                      {label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {securityModal && securityModalCopy && (
         <div className="fixed inset-0 z-50 flex items-end justify-center">
           <div
@@ -2368,8 +2567,10 @@ export default function Dashboard() {
                                   key={tx.id}
                                   className={`flex w-full ${isGave ? 'justify-end' : 'justify-start'} animate-fade-slide-up`}
                                 >
-                                  <div
-                                    className="max-w-[85%] rounded-2xl px-4 py-3"
+                                  <button
+                                    type="button"
+                                    onClick={() => setDetailTx(tx)}
+                                    className="max-w-[85%] rounded-2xl px-4 py-3 text-left active:opacity-90 transition-opacity"
                                     style={{
                                       background: isGave
                                         ? 'rgba(16,185,129,0.14)'
@@ -2389,12 +2590,14 @@ export default function Dashboard() {
                                     >
                                       ₹{tx.amount.toLocaleString('en-IN')}
                                     </p>
-                                    <p
-                                      className="text-sm mt-2 font-medium leading-snug"
-                                      style={{ color: 'var(--text-primary)' }}
-                                    >
-                                      {tx.remark}
-                                    </p>
+                                    {tx.remark ? (
+                                      <p
+                                        className="text-sm mt-2 font-medium leading-snug"
+                                        style={{ color: 'var(--text-primary)' }}
+                                      >
+                                        {tx.remark}
+                                      </p>
+                                    ) : null}
                                     <p className="text-[11px] mt-2" style={{ color: 'var(--text-muted)' }}>
                                       {formatEventDate(tx.date)}
                                       {' · '}
@@ -2403,33 +2606,7 @@ export default function Dashboard() {
                                       {LEDGER_CATEGORY_CONFIG[tx.category && LEDGER_CATEGORIES.includes(tx.category) ? tx.category : 'other'].label}
                                       {tx.dueDate ? ` · Due ${formatEventDate(tx.dueDate)}` : ''}
                                     </p>
-                                    <div className="mt-2.5 flex items-center gap-3">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleOpenEditTx(tx)}
-                                        className="text-[11px] font-bold"
-                                        style={{ color: 'var(--primary)' }}
-                                      >
-                                        Edit
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setHistoryTx(tx)}
-                                        className="text-[11px] font-bold"
-                                        style={{ color: 'var(--text-muted)' }}
-                                      >
-                                        History
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteTransaction(tx.id)}
-                                        className="text-[11px] font-bold"
-                                        style={{ color: '#fb7185' }}
-                                      >
-                                        Delete
-                                      </button>
-                                    </div>
-                                  </div>
+                                  </button>
                                 </div>
                               );
                             })}
