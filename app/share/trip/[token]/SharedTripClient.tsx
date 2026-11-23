@@ -9,13 +9,13 @@ import {
   Copy,
   Loader2,
   Lock,
-  ReceiptText,
   RotateCcw,
   Share2,
   X,
 } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import BrandMark from '@/app/components/BrandMark';
 import CreatorCredit from '@/app/components/CreatorCredit';
 import { SITE_CREATOR } from '@/lib/seo';
 import {
@@ -329,12 +329,7 @@ export default function SharedTripClient({ token }: { token: string }) {
       >
         <div className="mx-auto max-w-lg px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div
-              className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-white"
-              style={{ background: 'var(--primary)' }}
-            >
-              <ReceiptText className="w-4 h-4" />
-            </div>
+            <BrandMark size={36} />
             <div className="min-w-0">
               <p className="text-sm font-bold truncate">{trip.name}</p>
               <p className="text-[11px] truncate" style={{ color: 'var(--text-muted)' }}>

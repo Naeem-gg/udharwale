@@ -1,5 +1,5 @@
 import type { MetadataRoute } from 'next';
-import { DEFAULT_DESCRIPTION, SITE_CREATOR, SITE_NAME } from '@/lib/seo';
+import { DEFAULT_DESCRIPTION, SITE_CREATOR, SITE_ICON, SITE_ICON_192, SITE_NAME } from '@/lib/seo';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
@@ -15,13 +15,19 @@ export default function manifest(): MetadataRoute.Manifest {
     categories: ['finance', 'productivity'],
     icons: [
       {
-        src: '/icon',
+        src: SITE_ICON_192,
+        sizes: '192x192',
+        type: 'image/png',
+        purpose: 'any',
+      },
+      {
+        src: SITE_ICON,
         sizes: '512x512',
         type: 'image/png',
         purpose: 'any',
       },
       {
-        src: '/icon',
+        src: SITE_ICON,
         sizes: '512x512',
         type: 'image/png',
         purpose: 'maskable',

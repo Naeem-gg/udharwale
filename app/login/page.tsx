@@ -4,7 +4,8 @@ import React, { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { signIn } from 'next-auth/react';
-import { Eye, EyeOff, Loader2, Lock, Mail, ReceiptText, TriangleAlert } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Lock, Mail, TriangleAlert } from 'lucide-react';
+import BrandMark from '@/app/components/BrandMark';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -46,14 +47,13 @@ function LoginForm() {
     <main className="min-h-dvh bg-[var(--bg-base)]">
       <section className="app-shell flex min-h-dvh flex-col justify-center px-5 py-8">
         <div className="mb-8">
-          <Link href="/" className="mb-6 inline-flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-              <ReceiptText className="h-5 w-5" aria-hidden="true" />
-            </div>
-            <div>
-              <span className="font-branding text-xl text-[var(--text-primary)] block leading-none">Udharwale</span>
-              <CreatorCredit variant="hero" className="mt-1.5 normal-case tracking-normal text-[10px]" />
-            </div>
+          <Link href="/" className="mb-6 inline-flex">
+            <BrandMark
+              size={40}
+              withName
+              priority
+              subtitle={<CreatorCredit variant="hero" className="mt-0.5 normal-case tracking-normal text-[10px]" />}
+            />
           </Link>
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">Welcome back</h1>
           <p className="mt-1 text-sm text-muted-foreground">Sign in with email or phone</p>

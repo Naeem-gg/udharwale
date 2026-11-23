@@ -3,6 +3,10 @@ export const SITE_NAME = 'Udharwale';
 export const SITE_CREATOR = 'Naeem Navjivan';
 export const SITE_CREDIT_LINE = `${SITE_NAME} by ${SITE_CREATOR}`;
 export const SITE_BUILT_BY = `Built by ${SITE_CREATOR}`;
+/** Primary brand mark (PWA / UI / share receipts). */
+export const SITE_ICON = '/icons/udharwale-512.png';
+export const SITE_ICON_192 = '/icons/udharwale-192.png';
+export const SITE_FAVICON = '/favicon.ico';
 
 export const DEFAULT_DESCRIPTION =
   `Free personal khata book by ${SITE_CREATOR} — track money you gave, money you got, settlements, and WhatsApp reminders. Private and simple.`;

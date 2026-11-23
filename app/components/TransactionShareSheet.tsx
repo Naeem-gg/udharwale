@@ -3,7 +3,7 @@
 import React, { useRef, useState } from 'react';
 import { Check, Copy, Download, Loader2, Share2, X } from 'lucide-react';
 import { toPng } from 'html-to-image';
-import { SITE_CREATOR, SITE_NAME } from '@/lib/seo';
+import { SITE_CREATOR, SITE_ICON, SITE_NAME } from '@/lib/seo';
 import {
   LEDGER_CATEGORIES,
   LEDGER_CATEGORY_CONFIG,
@@ -106,8 +106,17 @@ export default function TransactionShareSheet({
   const title = isGave ? 'Payment to' : 'Payment from';
   const counterpart = contactName;
 
+  const ensureLogoLoaded = () =>
+    new Promise<void>((resolve) => {
+      const img = new window.Image();
+      img.onload = () => resolve();
+      img.onerror = () => resolve();
+      img.src = SITE_ICON;
+    });
+
   const capturePng = async () => {
     if (!cardRef.current) throw new Error('Card not ready');
+    await ensureLogoLoaded();
     return toPng(cardRef.current, {
       cacheBust: true,
       pixelRatio: 2,
@@ -254,22 +263,38 @@ export default function TransactionShareSheet({
                     marginBottom: 18,
                   }}
                 >
-                  <div>
-                    <p
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={SITE_ICON}
+                      alt=""
+                      width={40}
+                      height={40}
                       style={{
-                        margin: 0,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        letterSpacing: '0.12em',
-                        textTransform: 'uppercase',
-                        color: muted,
+                        width: 40,
+                        height: 40,
+                        borderRadius: 10,
+                        display: 'block',
+                        flexShrink: 0,
                       }}
-                    >
-                      {SITE_NAME}
-                    </p>
-                    <p style={{ margin: '4px 0 0', fontSize: 11, fontWeight: 600, color: muted }}>
-                      by {SITE_CREATOR}
-                    </p>
+                    />
+                    <div style={{ minWidth: 0 }}>
+                      <p
+                        style={{
+                          margin: 0,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          letterSpacing: '0.12em',
+                          textTransform: 'uppercase',
+                          color: muted,
+                        }}
+                      >
+                        {SITE_NAME}
+                      </p>
+                      <p style={{ margin: '4px 0 0', fontSize: 11, fontWeight: 600, color: muted }}>
+                        by {SITE_CREATOR}
+                      </p>
+                    </div>
                   </div>
                   <span
                     style={{

@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { ArrowLeft, ReceiptText } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
+import BrandMark from '@/app/components/BrandMark';
 import { Card, CardContent } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
 
@@ -30,15 +31,13 @@ export default function LegalPage({
             Back Home
           </Link>
 
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-white">
-              <ReceiptText className="h-5 w-5" aria-hidden="true" />
-            </div>
-            <div>
-              <p className="font-branding text-xl text-primary">Udharwale</p>
+          <BrandMark
+            size={40}
+            withName
+            subtitle={
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-primary">By Naeem Navjivan</p>
-            </div>
-          </div>
+            }
+          />
         </header>
 
         <Card className="border-primary/15 bg-card/85 backdrop-blur">

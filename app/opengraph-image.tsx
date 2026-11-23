@@ -1,10 +1,16 @@
+import { readFile } from 'fs/promises';
+import { join } from 'path';
 import { ImageResponse } from 'next/og';
+import { SITE_CREATOR, SITE_NAME } from '@/lib/seo';
 
-export const alt = 'Udharwale by Naeem Navjivan — Digital Khata';
+export const alt = `${SITE_NAME} by ${SITE_CREATOR} — Digital Khata`;
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
-export default function Image() {
+export default async function Image() {
+  const iconBytes = await readFile(join(process.cwd(), 'public/icons/udharwale-512.png'));
+  const iconSrc = `data:image/png;base64,${iconBytes.toString('base64')}`;
+
   return new ImageResponse(
     (
       <div
@@ -19,23 +25,19 @@ export default function Image() {
           padding: '72px',
         }}
       >
-        <div
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={iconSrc}
+          width={96}
+          height={96}
+          alt=""
           style={{
-            width: 88,
-            height: 88,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: '#0f766e',
+            width: 96,
+            height: 96,
             borderRadius: 24,
-            color: '#ffffff',
-            fontSize: 44,
-            fontWeight: 800,
             marginBottom: 36,
           }}
-        >
-          U
-        </div>
+        />
         <div
           style={{
             fontSize: 72,
@@ -46,7 +48,7 @@ export default function Image() {
             marginBottom: 18,
           }}
         >
-          Udharwale
+          {SITE_NAME}
         </div>
         <div
           style={{
@@ -69,7 +71,7 @@ export default function Image() {
             textTransform: 'uppercase',
           }}
         >
-          By Naeem Navjivan
+          By {SITE_CREATOR}
         </div>
       </div>
     ),

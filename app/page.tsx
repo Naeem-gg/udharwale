@@ -2,9 +2,10 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, BookOpen } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import BrandMark from '@/app/components/BrandMark';
 import CreatorCredit from '@/app/components/CreatorCredit';
 import { SITE_CREATOR, SITE_NAME } from '@/lib/seo';
 
@@ -29,15 +30,12 @@ export default function LandingPage() {
     <div className="min-h-dvh bg-[var(--bg-base)] text-foreground">
       <div className="app-shell flex min-h-dvh flex-col px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]">
         <header className="flex items-center justify-between py-3">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-              <BookOpen className="h-4.5 w-4.5" aria-hidden="true" />
-            </div>
-            <div>
-              <span className="font-branding text-lg text-[var(--text-primary)] block leading-none">Udharwale</span>
-              <span className="text-[10px] font-semibold text-primary">by {SITE_CREATOR}</span>
-            </div>
-          </div>
+          <BrandMark
+            size={36}
+            withName
+            priority
+            subtitle={<span className="text-[10px] font-semibold text-primary">by {SITE_CREATOR}</span>}
+          />
           {isLoggedIn === null ? (
             <div className="h-8 w-16 rounded-lg shimmer-bg" />
           ) : isLoggedIn ? (

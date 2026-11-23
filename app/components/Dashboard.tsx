@@ -14,6 +14,7 @@ import {
 import UpcomingFeatures from './UpcomingFeatures';
 import TripExpensesView from './TripExpensesView';
 import CreatorCredit from './CreatorCredit';
+import BrandMark from '@/app/components/BrandMark';
 import { SITE_CREATOR, SITE_CREDIT_LINE, SITE_NAME } from '@/lib/seo';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -3306,6 +3307,9 @@ export default function Dashboard() {
 
                 <Card className="border-primary/15 bg-card/80">
                   <CardContent className="p-5 space-y-2 text-center">
+                    <div className="flex justify-center pb-1">
+                      <BrandMark size={56} />
+                    </div>
                     <p className="font-branding text-lg" style={{ color: 'var(--primary)' }}>
                       {SITE_NAME}
                     </p>

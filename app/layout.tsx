@@ -84,8 +84,13 @@ export const metadata: Metadata = {
     },
   },
   icons: {
-    icon: [{ url: "/icon", type: "image/png" }],
-    apple: [{ url: "/icon", type: "image/png" }],
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icons/udharwale-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icons/udharwale-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon.png", type: "image/png", sizes: "512x512" },
+    ],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
   },
   appleWebApp: {
     capable: true,
@@ -110,6 +115,8 @@ export default function RootLayout({
     description: DEFAULT_DESCRIPTION,
     applicationCategory: "FinanceApplication",
     operatingSystem: "Web",
+    image: absoluteUrl("/icons/udharwale-512.png"),
+    logo: absoluteUrl("/icons/udharwale-512.png"),
     offers: {
       "@type": "Offer",
       price: "0",

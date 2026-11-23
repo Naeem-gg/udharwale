@@ -1,6 +1,13 @@
 /* Udharwale PWA service worker — static shell only (safe for Next App Router). */
-const CACHE_VERSION = 'udharwale-shell-v1';
-const PRECACHE = ['/', '/offline.html', '/manifest.webmanifest', '/icon'];
+const CACHE_VERSION = 'udharwale-shell-v2';
+const PRECACHE = [
+  '/',
+  '/offline.html',
+  '/manifest.webmanifest',
+  '/favicon.ico',
+  '/icons/udharwale-192.png',
+  '/icons/udharwale-512.png',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -27,6 +34,8 @@ function isStaticAsset(url) {
   return (
     url.pathname.startsWith('/_next/static/') ||
     url.pathname === '/icon' ||
+    url.pathname === '/icon.png' ||
+    url.pathname === '/favicon.ico' ||
     url.pathname === '/manifest.webmanifest' ||
     url.pathname.endsWith('.png') ||
     url.pathname.endsWith('.ico') ||

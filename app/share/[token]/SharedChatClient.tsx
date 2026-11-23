@@ -3,7 +3,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, CheckCircle2, Loader2, ReceiptText } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Loader2 } from 'lucide-react';
+import BrandMark from '@/app/components/BrandMark';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import CreatorCredit from '@/app/components/CreatorCredit';
@@ -201,23 +202,17 @@ export default function SharedChatClient({ token }: { token: string }) {
         }}
       >
         <div className="mx-auto max-w-lg flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div
-              className="flex h-9 w-9 items-center justify-center rounded-xl text-white shrink-0"
-              style={{ background: 'var(--primary)' }}
-            >
-              <ReceiptText className="h-4 w-4" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-branding text-lg leading-none" style={{ color: 'var(--primary)' }}>
-                Udharwale
-              </p>
+          <BrandMark
+            size={36}
+            withName
+            className="min-w-0"
+            subtitle={
               <p className="text-[10px] mt-0.5 font-semibold truncate" style={{ color: 'var(--text-muted)' }}>
                 by {SITE_CREATOR}
                 {data ? ` · ${data.ownerName} · ${data.contactName}` : ''}
               </p>
-            </div>
-          </div>
+            }
+          />
         </div>
       </header>
 
