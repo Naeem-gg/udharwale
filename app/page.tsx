@@ -1,30 +1,17 @@
-'use client';
-
-import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
+import { auth } from '@/auth';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import BrandMark from '@/app/components/BrandMark';
 import CreatorCredit from '@/app/components/CreatorCredit';
 import { SITE_CREATOR, SITE_NAME } from '@/lib/seo';
 
-export default function LandingPage() {
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
-  const [userName, setUserName] = useState<string>('');
-
-  useEffect(() => {
-    fetch('/api/auth/me')
-      .then((res) => {
-        if (res.ok) return res.json();
-        throw new Error('Not logged in');
-      })
-      .then((data) => {
-        setIsLoggedIn(true);
-        setUserName(data.user?.name || '');
-      })
-      .catch(() => setIsLoggedIn(false));
-  }, []);
+export default async function LandingPage() {
+  // JWT only — no MongoDB round-trip, so CTAs render on first paint
+  const session = await auth();
+  const isLoggedIn = Boolean(session?.user?.id);
+  const userName = session?.user?.name?.trim() || '';
 
   return (
     <div className="min-h-dvh bg-[var(--bg-base)] text-foreground">
@@ -36,9 +23,7 @@ export default function LandingPage() {
             priority
             subtitle={<span className="text-[10px] font-semibold text-primary">by {SITE_CREATOR}</span>}
           />
-          {isLoggedIn === null ? (
-            <div className="h-8 w-16 rounded-lg shimmer-bg" />
-          ) : isLoggedIn ? (
+          {isLoggedIn ? (
             <Link href="/dashboard" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
               Open
             </Link>
@@ -62,9 +47,7 @@ export default function LandingPage() {
           </p>
 
           <div className="mt-8 flex flex-col gap-3">
-            {isLoggedIn === null ? (
-              <div className="h-12 w-full rounded-xl shimmer-bg" />
-            ) : isLoggedIn ? (
+            {isLoggedIn ? (
               <Link
                 href="/dashboard"
                 className={cn(buttonVariants({ size: 'lg' }), 'w-full justify-between')}

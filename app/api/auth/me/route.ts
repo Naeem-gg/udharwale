@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/auth';
 import { connectToDatabase } from '@/lib/db';
 import User from '@/models/User';
 import { getAuthenticatedUserId } from '@/lib/session';
@@ -8,27 +9,42 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const userId = await getAuthenticatedUserId();
+    const session = await auth();
+    const userId = session?.user?.id;
 
     if (!userId) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    await connectToDatabase();
-    const user = await User.findById(userId).select('name email phone');
+    // Prefer DB profile (includes phone). If Mongo is cold/slow, fall back to JWT
+    // so the app shell isn't blocked for 5–10s.
+    try {
+      await connectToDatabase();
+      const user = await User.findById(userId).select('name email phone').maxTimeMS(2500);
 
-    if (!user) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+      if (user) {
+        return NextResponse.json({
+          authenticated: true,
+          user: {
+            id: user._id.toString(),
+            name: user.name,
+            email: user.email,
+            phone: user.phone,
+          },
+        });
+      }
+    } catch (dbError) {
+      console.warn('Profile DB lookup slow/failed — using session fallback', dbError);
     }
 
     return NextResponse.json({
       authenticated: true,
       user: {
-        id: user._id.toString(),
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-      }
+        id: userId,
+        name: session.user?.name || '',
+        email: session.user?.email || '',
+        phone: '',
+      },
     });
   } catch (error: any) {
     console.error('Session verify error:', error);
