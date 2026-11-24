@@ -22,10 +22,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { useTheme } from '@/app/theme-provider';
 import ConfirmDialog from './ConfirmDialog';
+import ChatShareSheet from './ChatShareSheet';
 import TransactionShareSheet, {
   type TransactionSharePayload,
 } from './TransactionShareSheet';
 import { buildBalanceReminders, formatReminderLabel } from '@/lib/reminders';
+import { useDoubleBackExit, useHistoryLayer } from '@/lib/useHistoryLayer';
 import {
   Clock3,
   History,
@@ -1658,6 +1660,24 @@ export default function Dashboard() {
     : null;
   const passwordScore = getPasswordScore(securityPrimaryValue);
   const isChatOpen = activeTab === 'ledgers' && mobileView === 'ledger' && !!selectedContactId;
+
+  // Phone/PWA back → close nested screens instead of leaving the app
+  useHistoryLayer(isChatOpen, () => setMobileView('list'));
+  useHistoryLayer(!!detailTx, () => setDetailTx(null));
+  useHistoryLayer(!!txSharePayload, () => setTxSharePayload(null));
+  useHistoryLayer(isAddTransactionOpen, () => {
+    setIsAddTransactionOpen(false);
+    setEditingTransaction(null);
+  });
+  useHistoryLayer(isAddContactOpen, () => setIsAddContactOpen(false));
+  useHistoryLayer(isEditContactOpen, () => setIsEditContactOpen(false));
+  useHistoryLayer(isShareModalOpen, () => setIsShareModalOpen(false));
+  useHistoryLayer(!!historyTx, () => setHistoryTx(null));
+  useHistoryLayer(!!securityModal, () => setSecurityModal(null));
+  useHistoryLayer(isEditProfileOpen, () => setIsEditProfileOpen(false));
+  useHistoryLayer(!!confirmDialog, () => closeConfirmDialog(false));
+  useHistoryLayer(isContactMenuOpen, () => setIsContactMenuOpen(false));
+  useDoubleBackExit(true, () => showToast('Press back again to exit', 'info'));
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden relative" style={{ background: 'var(--bg-raised)', fontFamily: "'Outfit', system-ui, sans-serif", color: 'var(--text-primary)' }}>
@@ -3739,84 +3759,15 @@ export default function Dashboard() {
         );
       })()}
 
-      {/* ══════════════════════════════════════════════════════
-          SHARE LEDGER MODAL
-      ══════════════════════════════════════════════════════ */}
-      {isShareModalOpen && selectedContact && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center">
-          <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
-            onClick={() => setIsShareModalOpen(false)} />
-          <div className="relative w-full max-w-md animate-slide-up rounded-t-3xl overflow-hidden"
-            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
-
-            <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--border-soft)' }}>
-              <div>
-                <h3 className="font-extrabold text-base" style={{ color: 'var(--text-primary)' }}>Share or copy</h3>
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Send this to {selectedContact.name}</p>
-              </div>
-              <button onClick={() => setIsShareModalOpen(false)} className="p-1.5 rounded-xl" style={{ color: 'var(--text-muted)' }}>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="p-5 space-y-3">
-              <button
-                type="button"
-                onClick={async () => {
-                  await handleCopyChatLink();
-                  setIsShareModalOpen(false);
-                }}
-                className="w-full flex items-center gap-3 p-4 rounded-2xl text-left transition-all"
-                style={{ background: 'rgba(15,118,110,0.08)', border: '1px solid rgba(15,118,110,0.25)' }}
-              >
-                <span className="text-2xl">🔗</span>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-sm" style={{ color: '#a78bfa' }}>Copy chat link only</p>
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                    Opens the live chat page for them — no login needed
-                  </p>
-                </div>
-              </button>
-
-              {([
-                { opt: 'all' as const, icon: '📋', label: 'Full record', desc: 'Everything + how much is left + chat link', color: 'var(--primary)', bg: 'rgba(15,118,110,0.08)', border: 'rgba(15,118,110,0.2)' },
-                { opt: 'gave' as const, icon: '↗️', label: 'What I paid', desc: 'Only money I gave them + chat link', color: '#6ee7b7', bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.2)' },
-                { opt: 'got' as const, icon: '↙️', label: 'What they paid', desc: 'Only money they gave me + chat link', color: '#fda4af', bg: 'rgba(244,63,94,0.08)', border: 'rgba(244,63,94,0.2)' },
-              ] as const).map(({ opt, icon, label, desc, color, bg, border }) => (
-                <div key={opt} className="rounded-2xl p-4" style={{ background: bg, border: `1px solid ${border}` }}>
-                  <div className="flex items-start gap-3 mb-3">
-                    <span className="text-2xl">{icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-sm" style={{ color }}>{label}</p>
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{desc}</p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleShareLedger(opt, 'copy')}
-                      className="py-2.5 rounded-xl text-xs font-bold transition-all active:scale-[0.98]"
-                      style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border-soft)' }}
-                    >
-                      📋 Copy
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleShareLedger(opt, 'share')}
-                      className="py-2.5 rounded-xl text-xs font-bold transition-all active:scale-[0.98]"
-                      style={{ background: color, color: '#0f172a' }}
-                    >
-                      📤 Share
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      <ChatShareSheet
+        open={isShareModalOpen && !!selectedContact}
+        contactName={selectedContact?.name || ''}
+        onClose={() => setIsShareModalOpen(false)}
+        onCopyLink={async () => {
+          await handleCopyChatLink();
+        }}
+        onShareLedger={handleShareLedger}
+      />
 
 
       {/* ── EDIT CONTACT MODAL ───────────────────────── */}

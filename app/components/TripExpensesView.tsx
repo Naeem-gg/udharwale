@@ -16,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useHistoryLayer } from '@/lib/useHistoryLayer';
 import {
   CATEGORY_CONFIG,
   ExpenseCategory,
@@ -160,6 +161,19 @@ export default function TripExpensesView({
   const backToList = () => {
     setShowDetail(false);
   };
+
+  // Phone/PWA back → trip list / close trip sheets
+  useHistoryLayer(showDetail, backToList);
+  useHistoryLayer(isNewTripModalOpen, () => setIsNewTripModalOpen(false));
+  useHistoryLayer(isExpenseModalOpen, () => {
+    setIsExpenseModalOpen(false);
+    setEditingExpense(null);
+  });
+  useHistoryLayer(isShareModalOpen, () => setIsShareModalOpen(false));
+  useHistoryLayer(isAcknowledgeModalOpen, () => {
+    setIsAcknowledgeModalOpen(false);
+    setAcknowledgingSettlement(null);
+  });
 
   // Current Trip Calculations
   const tripSummary = useMemo(() => {
