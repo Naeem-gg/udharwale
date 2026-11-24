@@ -242,6 +242,49 @@ h1, h2, h3, h4, h5, h6 {
   to { transform: rotate(360deg); }
 }
 
+/* Dual-door: installed PWA hides marketing shell before JS runs */
+.app-door-splash {
+  display: none;
+  min-height: 100dvh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  text-align: center;
+}
+
+.app-door-splash-title {
+  margin: 0;
+  font-family: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.app-door-splash-sub {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.app-door-web--hidden {
+  display: none !important;
+}
+
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  .app-door-splash {
+    display: flex;
+  }
+
+  .app-door-web {
+    display: none !important;
+  }
+}
+
 @layer utilities {
   .animate-fade-slide-up {
     animation: fadeSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;

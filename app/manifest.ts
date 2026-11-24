@@ -6,9 +6,11 @@ export default function manifest(): MetadataRoute.Manifest {
     name: `${SITE_NAME} by ${SITE_CREATOR}`,
     short_name: SITE_NAME,
     description: DEFAULT_DESCRIPTION,
+    // Installed app opens the khata directly; browser visits still hit `/` marketing.
     start_url: '/dashboard',
     scope: '/',
     display: 'standalone',
+    display_override: ['standalone', 'browser'],
     orientation: 'portrait-primary',
     background_color: '#f4f1ec',
     theme_color: '#0f766e',

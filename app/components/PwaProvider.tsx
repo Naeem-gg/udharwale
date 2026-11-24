@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Download, X } from 'lucide-react';
+import { isStandaloneDisplay } from '@/lib/pwa';
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -16,11 +17,7 @@ export default function PwaProvider() {
   const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
-    const standalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      // iOS Safari
-      Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
-    setIsStandalone(standalone);
+    setIsStandalone(isStandaloneDisplay());
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker

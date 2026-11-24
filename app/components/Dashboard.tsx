@@ -196,7 +196,7 @@ export default function Dashboard() {
       fetch('/api/auth/me')
         .then((res) => {
           if (res.status === 401) {
-            window.location.href = '/login';
+            window.location.href = '/login?next=/dashboard';
             return null;
           }
           if (!res.ok) throw new Error('API session load failed');
@@ -216,7 +216,7 @@ export default function Dashboard() {
         })
         .catch((err) => {
           console.error('Session authentication check failed:', err);
-          window.location.href = '/login';
+          window.location.href = '/login?next=/dashboard';
         });
 
     }
