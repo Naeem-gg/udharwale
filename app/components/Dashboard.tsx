@@ -27,7 +27,13 @@ import TransactionShareSheet, {
   type TransactionSharePayload,
 } from './TransactionShareSheet';
 import { buildBalanceReminders, formatReminderLabel } from '@/lib/reminders';
-import { useDoubleBackExit, useHistoryLayer } from '@/lib/useHistoryLayer';
+import {
+  pushDashboardNav,
+  readDashboardNav,
+  replaceDashboardNav,
+  type DashboardTab,
+} from '@/lib/dashboard-nav';
+import { useHistoryLayer } from '@/lib/useHistoryLayer';
 import {
   Clock3,
   History,
@@ -224,17 +230,56 @@ export default function Dashboard() {
     window.localStorage.setItem('udharwale-compact-ledger-view', String(compactLedgerView));
   }, [compactLedgerView]);
 
-  // Open a specific contact chat from /dashboard?contact=<id>
-  useEffect(() => {
-    if (typeof window === 'undefined' || contacts.length === 0) return;
-    const contactId = new URLSearchParams(window.location.search).get('contact');
-    if (!contactId) return;
-    if (!contacts.some((c) => c.id === contactId)) return;
+  /** Sync ledgers/tabs from the URL so phone back steps through real history. */
+  const applyDashboardNav = React.useCallback(() => {
+    const nav = readDashboardNav();
+    setActiveTab(nav.tab);
+    if (nav.contactId) {
+      setSelectedContactId(nav.contactId);
+      setMobileView('ledger');
+    } else {
+      setMobileView('list');
+    }
+  }, []);
 
+  useEffect(() => {
+    applyDashboardNav();
+    window.addEventListener('popstate', applyDashboardNav);
+    return () => window.removeEventListener('popstate', applyDashboardNav);
+  }, [applyDashboardNav]);
+
+  const openContactChat = React.useCallback((contactId: string) => {
     setActiveTab('ledgers');
     setSelectedContactId(contactId);
     setMobileView('ledger');
-  }, [contacts]);
+    const current = readDashboardNav();
+    if (current.contactId === contactId && current.tab === 'ledgers') {
+      replaceDashboardNav({ tab: 'ledgers', contactId, tripId: null });
+    } else {
+      pushDashboardNav({ tab: 'ledgers', contactId, tripId: null });
+    }
+  }, []);
+
+  const closeContactChat = React.useCallback(() => {
+    const { contactId } = readDashboardNav();
+    if (contactId && window.history.state && (window.history.state as { __uwNav?: boolean }).__uwNav) {
+      window.history.back();
+      return;
+    }
+    setMobileView('list');
+    replaceDashboardNav({ tab: 'ledgers', contactId: null, tripId: null });
+  }, []);
+
+  const goToTab = React.useCallback((tab: DashboardTab) => {
+    setActiveTab(tab);
+    setMobileView('list');
+    const current = readDashboardNav();
+    if (current.tab === tab && !current.contactId && !current.tripId) {
+      replaceDashboardNav({ tab, contactId: null, tripId: null });
+    } else {
+      pushDashboardNav({ tab, contactId: null, tripId: null });
+    }
+  }, []);
 
   // Reset chat search when switching contacts
   useEffect(() => {
@@ -346,6 +391,7 @@ export default function Dashboard() {
         await loadContacts();
         setSelectedContactId(null);
         setMobileView('list');
+        replaceDashboardNav({ tab: 'ledgers', contactId: null, tripId: null });
         showToast('Demo ledger loaded — ready to present', 'success');
       } else {
         showToast('Failed to load demo data.', 'error');
@@ -579,9 +625,6 @@ export default function Dashboard() {
 
       if (res.ok) {
         saveContactsState([newContact, ...contacts]);
-        setSelectedContactId(newContactId);
-        setMobileView('ledger');
-
         // Reset Form
         setContactName('');
         setContactPhone('');
@@ -589,6 +632,7 @@ export default function Dashboard() {
         setContactInitialBalance('');
         setContactInitialType('credit');
         setIsAddContactOpen(false);
+        openContactChat(newContactId);
       } else {
         const errorData = await res.json();
         showToast(`Failed to add contact: ${errorData.error || 'Server error'}`, 'error');
@@ -697,9 +741,8 @@ export default function Dashboard() {
         saveContactsState([...newContacts, ...contacts]);
         setImportStatus({ type: 'success', message: `Imported ${addedCount} contact(s) successfully!` });
         if (addedCount > 0 && !multiple) {
-          setSelectedContactId(newContacts[0].id);
           setIsAddContactOpen(false);
-          setMobileView('ledger');
+          openContactChat(newContacts[0].id);
         }
       } else {
         setImportStatus({ type: 'error', message: 'Selected contacts must have a name and phone number.' });
@@ -735,6 +778,7 @@ export default function Dashboard() {
         saveContactsState(remaining);
         setSelectedContactId(null);
         setMobileView('list');
+        replaceDashboardNav({ tab: 'ledgers', contactId: null, tripId: null });
         showToast('Contact deleted', 'success');
       } else {
         const errorData = await res.json();
@@ -1661,8 +1705,7 @@ export default function Dashboard() {
   const passwordScore = getPasswordScore(securityPrimaryValue);
   const isChatOpen = activeTab === 'ledgers' && mobileView === 'ledger' && !!selectedContactId;
 
-  // Phone/PWA back → close nested screens instead of leaving the app
-  useHistoryLayer(isChatOpen, () => setMobileView('list'));
+  // Phone/PWA back closes overlays; chat/trips use URL history (dashboard-nav)
   useHistoryLayer(!!detailTx, () => setDetailTx(null));
   useHistoryLayer(!!txSharePayload, () => setTxSharePayload(null));
   useHistoryLayer(isAddTransactionOpen, () => {
@@ -1677,7 +1720,6 @@ export default function Dashboard() {
   useHistoryLayer(isEditProfileOpen, () => setIsEditProfileOpen(false));
   useHistoryLayer(!!confirmDialog, () => closeConfirmDialog(false));
   useHistoryLayer(isContactMenuOpen, () => setIsContactMenuOpen(false));
-  useDoubleBackExit(true, () => showToast('Press back again to exit', 'info'));
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden relative" style={{ background: 'var(--bg-raised)', fontFamily: "'Outfit', system-ui, sans-serif", color: 'var(--text-primary)' }}>
@@ -2064,7 +2106,7 @@ export default function Dashboard() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <button onClick={() => { setActiveTab('trips'); setMobileView('list'); }}
+                      <button onClick={() => goToTab('trips')}
                         className="h-9 px-3 rounded-xl flex items-center gap-1.5 text-xs font-semibold transition-all text-primary"
                         style={{ background: 'var(--accent)', border: '1px solid transparent' }}
                         title="Trip expenses">
@@ -2183,7 +2225,7 @@ export default function Dashboard() {
                                 background: isSelected ? 'rgba(15,118,110,0.08)' : 'transparent',
                                 borderLeft: `3px solid ${isSelected ? 'var(--primary)' : borderColor}`,
                               }}
-                              onClick={() => { setSelectedContactId(contact.id); setMobileView('ledger'); }}>
+                              onClick={() => openContactChat(contact.id)}>
 
                               {/* Avatar */}
                               <div className={`w-11 h-11 rounded-full shrink-0 ${avatarTone} flex items-center justify-center font-bold text-sm text-white`}
@@ -2285,7 +2327,7 @@ export default function Dashboard() {
                   <div className="absolute top-0 inset-x-0 z-20 pointer-events-none">
                     <div className="pointer-events-auto px-3 pt-3 pb-2 flex items-center gap-2">
                       <button
-                        onClick={() => setMobileView('list')}
+                        onClick={closeContactChat}
                         className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 backdrop-blur-md"
                         style={{ background: 'color-mix(in srgb, var(--bg-surface) 88%, transparent)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }}
                         aria-label="Back to friends"
@@ -2757,7 +2799,7 @@ export default function Dashboard() {
 
                 {/* Trip Expenses Highlight Banner */}
                 <div
-                  onClick={() => { setActiveTab('trips'); setMobileView('list'); }}
+                  onClick={() => goToTab('trips')}
                   className="p-4 rounded-2xl flex items-center justify-between gap-3 cursor-pointer"
                   style={{
                     background: 'var(--bg-surface)',
@@ -2813,9 +2855,7 @@ export default function Dashboard() {
                             key={reminder.id}
                             type="button"
                             onClick={() => {
-                              setSelectedContactId(reminder.contactId);
-                              setActiveTab('ledgers');
-                              setMobileView('ledger');
+                              openContactChat(reminder.contactId);
                             }}
                             className="w-full text-left rounded-2xl p-3 transition-all hover:translate-x-0.5"
                             style={{
@@ -2969,7 +3009,7 @@ export default function Dashboard() {
                         .filter(({ bal }) => bal !== 0)
                         .sort((a, b) => Math.abs(b.bal) - Math.abs(a.bal))
                         .map(({ c, bal }) => (
-                          <button key={c.id} onClick={() => { setSelectedContactId(c.id); setActiveTab('ledgers'); setMobileView('ledger'); }}
+                          <button key={c.id} onClick={() => openContactChat(c.id)}
                             className="w-full flex items-center gap-3 p-4 rounded-2xl text-left transition-all hover:translate-x-1"
                             style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
                             <div className={`w-9 h-9 rounded-xl shrink-0 ${getAvatarTone(c.name)} flex items-center justify-center font-bold text-xs text-white`}>
@@ -3377,7 +3417,7 @@ export default function Dashboard() {
                   )
                 },
               ] as const).map(({ tab, label, icon }) => (
-                <button key={tab} onClick={() => { setActiveTab(tab); setMobileView('list'); }}
+                <button key={tab} onClick={() => goToTab(tab)}
                   className="flex-1 flex flex-col items-center justify-center gap-1 py-2.5 transition-colors relative"
                   style={{ color: activeTab === tab ? 'var(--primary)' : 'var(--text-muted)' }}>
                   {activeTab === tab && (

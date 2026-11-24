@@ -12,13 +12,6 @@ let listening = false;
 /** Skips the next N popstate events (used when UI close syncs history via history.back()). */
 let ignorePops = 0;
 
-type ExitGuard = {
-  /** Return true if the back press was consumed (stay in app). */
-  onBack: () => boolean;
-};
-
-let exitGuard: ExitGuard | null = null;
-
 function ensureListener() {
   if (listening || typeof window === 'undefined') return;
   listening = true;
@@ -28,27 +21,20 @@ function ensureListener() {
       return;
     }
     const top = layers.pop();
-    if (top) {
-      top.onDismiss();
-      return;
-    }
-    // No nested screens — optional double-back exit trap
-    if (exitGuard?.onBack()) {
-      window.history.pushState({ __uwRoot: true }, '');
-    }
+    if (top) top.onDismiss();
+    // If no overlay layer, leave the event alone — URL-based screens sync via their own popstate handlers.
   });
 }
 
 /**
- * Push a browser-history entry for an in-app screen/sheet.
- * Hardware/gesture back dismisses the top layer; UI close should let the
- * hook cleanup call history.back() so the stack stays in sync.
+ * Push a browser-history entry for a modal/sheet overlay.
+ * Hardware back dismisses the top overlay; URL screens use dashboard-nav instead.
  */
 export function pushHistoryLayer(onDismiss: () => void): () => void {
   ensureListener();
   const id = `uw-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   layers.push({ id, onDismiss });
-  window.history.pushState({ __uw: id }, '');
+  window.history.pushState({ __uwOverlay: id }, '');
 
   return () => {
     const idx = layers.findIndex((l) => l.id === id);
@@ -70,50 +56,6 @@ export function useHistoryLayer(active: boolean, onDismiss: () => void) {
   }, [active]);
 }
 
-/**
- * At the app root (no nested screens), first back shows a prompt and stays;
- * second back within `windowMs` leaves the page/PWA.
- */
-export function useDoubleBackExit(
-  enabled: boolean,
-  onPrompt: () => void,
-  windowMs = 2000
-) {
-  const lastPromptAt = useRef(0);
-  const onPromptRef = useRef(onPrompt);
-  onPromptRef.current = onPrompt;
-
-  useEffect(() => {
-    if (!enabled || typeof window === 'undefined') {
-      exitGuard = null;
-      return;
-    }
-
-    ensureListener();
-    window.history.pushState({ __uwRoot: true }, '');
-
-    exitGuard = {
-      onBack: () => {
-        const now = Date.now();
-        if (now - lastPromptAt.current < windowMs) {
-          // Second back — allow leaving (do not re-push)
-          return false;
-        }
-        lastPromptAt.current = now;
-        onPromptRef.current();
-        return true;
-      },
-    };
-
-    return () => {
-      exitGuard = null;
-      ignorePops += 1;
-      window.history.back();
-    };
-  }, [enabled, windowMs]);
-}
-
-/** How many in-app layers are currently trapping back. */
 export function getHistoryLayerCount() {
   return layers.length;
 }

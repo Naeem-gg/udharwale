@@ -16,6 +16,11 @@ import {
   X,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  pushDashboardNav,
+  readDashboardNav,
+  replaceDashboardNav,
+} from '@/lib/dashboard-nav';
 import { useHistoryLayer } from '@/lib/useHistoryLayer';
 import {
   CATEGORY_CONFIG,
@@ -156,14 +161,41 @@ export default function TripExpensesView({
     setSelectedTripId(id);
     setShowDetail(true);
     setTabReady(false);
+    const current = readDashboardNav();
+    if (current.tripId === id && current.tab === 'trips') {
+      replaceDashboardNav({ tab: 'trips', tripId: id, contactId: null });
+    } else {
+      pushDashboardNav({ tab: 'trips', tripId: id, contactId: null });
+    }
   };
 
   const backToList = () => {
+    const { tripId } = readDashboardNav();
+    if (tripId && window.history.state && (window.history.state as { __uwNav?: boolean }).__uwNav) {
+      window.history.back();
+      return;
+    }
     setShowDetail(false);
+    replaceDashboardNav({ tab: 'trips', tripId: null, contactId: null });
   };
 
-  // Phone/PWA back → trip list / close trip sheets
-  useHistoryLayer(showDetail, backToList);
+  // Keep trip detail in sync with URL (phone back / forward)
+  useEffect(() => {
+    const syncTripFromUrl = () => {
+      const { tab, tripId } = readDashboardNav();
+      if (tab === 'trips' && tripId) {
+        setSelectedTripId(tripId);
+        setShowDetail(true);
+      } else if (!tripId) {
+        setShowDetail(false);
+      }
+    };
+    syncTripFromUrl();
+    window.addEventListener('popstate', syncTripFromUrl);
+    return () => window.removeEventListener('popstate', syncTripFromUrl);
+  }, []);
+
+  // Overlays still use history layers so back closes the sheet first
   useHistoryLayer(isNewTripModalOpen, () => setIsNewTripModalOpen(false));
   useHistoryLayer(isExpenseModalOpen, () => {
     setIsExpenseModalOpen(false);
@@ -554,10 +586,8 @@ export default function TripExpensesView({
 
     const updated = [newTrip, ...trips];
     setTrips(updated);
-    setSelectedTripId(newTrip.id);
-    setShowDetail(true);
-    setTabReady(false);
     setIsNewTripModalOpen(false);
+    openTrip(newTrip.id);
 
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
@@ -576,9 +606,7 @@ export default function TripExpensesView({
     const demo = getDemoTrip(userName, contacts);
     const updated = [demo, ...trips.filter((t) => t.id !== demo.id)];
     await saveTripsState(updated);
-    setSelectedTripId(demo.id);
-    setShowDetail(true);
-    setTabReady(false);
+    openTrip(demo.id);
     showToast('Loaded sample Goa Trip', 'success');
   };
 
