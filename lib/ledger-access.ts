@@ -75,13 +75,31 @@ export function appendHistory(
   } as any);
 }
 
-export function serializeContactForUser(contact: IContactDoc, role: LedgerRole, ownerName?: string) {
+type SerializeExtras = {
+  ownerName?: string;
+  /** Linked user's chosen preset — preferred over local contact.avatarSeed */
+  linkedAvatarSeed?: string;
+};
+
+export function serializeContactForUser(
+  contact: IContactDoc,
+  role: LedgerRole,
+  ownerNameOrExtras?: string | SerializeExtras
+) {
+  const extras: SerializeExtras =
+    typeof ownerNameOrExtras === 'string'
+      ? { ownerName: ownerNameOrExtras }
+      : ownerNameOrExtras || {};
+
   const activeTx = (contact.transactions || []).filter((t: any) => !t.deletedAt);
   const allTx = contact.transactions || [];
+  const localSeed = (contact as any).avatarSeed as string | undefined;
+  const linkedSeed = extras.linkedAvatarSeed;
+  const avatarSeed = linkedSeed || localSeed || undefined;
 
   return {
     id: contact.id,
-    name: role === 'peer' ? (ownerName || 'Shared contact') : contact.name,
+    name: role === 'peer' ? (extras.ownerName || 'Shared contact') : contact.name,
     phone: contact.phone,
     email: contact.email,
     shareToken: contact.shareToken,
@@ -90,8 +108,11 @@ export function serializeContactForUser(contact: IContactDoc, role: LedgerRole, 
     role,
     peerLinked: Boolean(contact.peerUserId),
     peerUserId: contact.peerUserId?.toString(),
-    ownerName: role === 'peer' ? ownerName : undefined,
+    ownerName: role === 'peer' ? extras.ownerName : undefined,
     ownerUserId: contact.userId.toString(),
+    isSample: Boolean((contact as any).isSample),
+    avatarSeed,
+    avatarLocked: role === 'peer' ? true : Boolean(linkedSeed),
     transactions: activeTx.map((tx: any) => serializeTx(tx, role)),
     // Include soft-deleted + history for audit UI (client may hide deleted)
     allTransactions: allTx.map((tx: any) => serializeTx(tx, role, true)),
@@ -139,6 +160,7 @@ export async function claimMatchingContacts(userId: string) {
 
   const candidates = await Contact.find({
     userId: { $ne: userId },
+    isSample: { $ne: true },
     $or: [
       { peerUserId: { $exists: false } },
       { peerUserId: null },

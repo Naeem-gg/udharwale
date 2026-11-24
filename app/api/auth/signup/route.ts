@@ -3,11 +3,13 @@ import { connectToDatabase } from '@/lib/db';
 import User from '@/models/User';
 import { hashPassword } from '@/lib/auth';
 import { normalizePhone } from '@/lib/phone';
+import { seedSampleDataForUser } from '@/lib/seed-sample-data';
+import { normalizeAvatarSeed, randomAvatarPreset } from '@/lib/avatar-presets';
 
 export async function POST(req: NextRequest) {
   try {
     await connectToDatabase();
-    const { name, email, phone, password, recoveryPin, securityAnswer } = await req.json();
+    const { name, email, phone, password, recoveryPin, securityAnswer, avatarSeed } = await req.json();
 
     if (!name || !email || !phone || !password || !recoveryPin || !securityAnswer) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -39,10 +41,17 @@ export async function POST(req: NextRequest) {
       phone: normalizedPhone,
       password: hashedPassword,
       recoveryPin: hashedPin,
-      securityAnswer: hashedAnswer
+      securityAnswer: hashedAnswer,
+      avatarSeed: normalizeAvatarSeed(avatarSeed) || randomAvatarPreset(),
     });
 
     await user.save();
+
+    try {
+      await seedSampleDataForUser(String(user._id), name);
+    } catch (seedErr) {
+      console.error('Sample seed after signup failed:', seedErr);
+    }
 
     return NextResponse.json({ success: true, message: 'Registration successful' }, { status: 201 });
   } catch (error: any) {

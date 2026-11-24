@@ -5,6 +5,7 @@ import User from '@/models/User';
 import { getAuthenticatedUserId } from '@/lib/session';
 import { serializeContactForUser } from '@/lib/ledger-access';
 import { normalizePhone } from '@/lib/phone';
+import { normalizeAvatarSeed } from '@/lib/avatar-presets';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,17 +21,41 @@ export async function GET() {
     const owned = await Contact.find({ userId }).sort({ updatedAt: -1 });
     const peer = await Contact.find({ peerUserId: userId }).sort({ updatedAt: -1 });
 
+    // One batched user lookup for owner names + linked avatar presets (tiny strings only)
     const ownerIds = [...new Set(peer.map((c) => c.userId.toString()))];
-    const owners = ownerIds.length
-      ? await User.find({ _id: { $in: ownerIds } }).select('name')
+    const peerIds = [
+      ...new Set(
+        owned
+          .map((c) => c.peerUserId?.toString())
+          .filter((id): id is string => Boolean(id))
+      ),
+    ];
+    const lookupIds = [...new Set([...ownerIds, ...peerIds])];
+    const users = lookupIds.length
+      ? await User.find({ _id: { $in: lookupIds } }).select('name avatarSeed')
       : [];
-    const ownerNameById = new Map(owners.map((o) => [o._id.toString(), o.name as string]));
+    const userById = new Map(
+      users.map((u) => [
+        u._id.toString(),
+        { name: u.name as string, avatarSeed: (u as any).avatarSeed as string | undefined },
+      ])
+    );
 
     const payload = [
-      ...owned.map((c) => serializeContactForUser(c, 'owner')),
-      ...peer.map((c) =>
-        serializeContactForUser(c, 'peer', ownerNameById.get(c.userId.toString()) || 'Someone')
-      ),
+      ...owned.map((c) => {
+        const peerId = c.peerUserId?.toString();
+        const linked = peerId ? userById.get(peerId) : undefined;
+        return serializeContactForUser(c, 'owner', {
+          linkedAvatarSeed: linked?.avatarSeed,
+        });
+      }),
+      ...peer.map((c) => {
+        const owner = userById.get(c.userId.toString());
+        return serializeContactForUser(c, 'peer', {
+          ownerName: owner?.name || 'Someone',
+          linkedAvatarSeed: owner?.avatarSeed,
+        });
+      }),
     ];
 
     // Stable-ish sort: most recently updated first (mongoose docs have updatedAt)
@@ -62,7 +87,7 @@ export async function POST(req: NextRequest) {
     await connectToDatabase();
     const body = await req.json();
 
-    const { id, name, phone, email, transactions, createdAt } = body;
+    const { id, name, phone, email, transactions, createdAt, avatarSeed } = body;
 
     if (!id || !name || !phone) {
       return NextResponse.json(
@@ -85,6 +110,7 @@ export async function POST(req: NextRequest) {
       name,
       phone: normalizePhone(phone) || phone,
       email: email ? String(email).toLowerCase().trim() : undefined,
+      avatarSeed: normalizeAvatarSeed(avatarSeed),
       transactions: normalizedTransactions,
       createdAt: createdAt || loggedAt
     });

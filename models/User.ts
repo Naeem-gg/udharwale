@@ -6,7 +6,9 @@ const UserSchema = new Schema({
   phone: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   recoveryPin: { type: String, required: true },
-  securityAnswer: { type: String, required: true }
+  securityAnswer: { type: String, required: true },
+  /** Tiny preset id only — illustrated face is rendered client-side */
+  avatarSeed: { type: String, required: false, maxlength: 16 },
 }, {
   timestamps: true
 });
@@ -20,6 +22,7 @@ export interface IUserDoc extends Document {
   password: string;
   recoveryPin: string;
   securityAnswer: string;
+  avatarSeed?: string;
   createdAt?: string;
   updatedAt?: string;
 }

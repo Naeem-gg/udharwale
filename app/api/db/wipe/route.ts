@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
 import Contact from '@/models/Contact';
+import Trip from '@/models/Trip';
 import { getAuthenticatedUserId } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -13,9 +14,11 @@ export async function POST() {
     }
 
     await connectToDatabase();
-    // Wipe only contacts belonging to this user
-    await Contact.deleteMany({ userId });
-    
+    await Promise.all([
+      Contact.deleteMany({ userId }),
+      Trip.deleteMany({ userId }),
+    ]);
+
     return NextResponse.json({ success: true, message: 'Database wiped clean successfully' });
   } catch (error: any) {
     console.error('Error wiping database:', error);

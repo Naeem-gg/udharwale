@@ -4,6 +4,7 @@ import { connectToDatabase } from '@/lib/db';
 import User from '@/models/User';
 import { getAuthenticatedUserId } from '@/lib/session';
 import { normalizePhone } from '@/lib/phone';
+import { normalizeAvatarSeed } from '@/lib/avatar-presets';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,7 @@ export async function GET() {
     // so the app shell isn't blocked for 5–10s.
     try {
       await connectToDatabase();
-      const user = await User.findById(userId).select('name email phone').maxTimeMS(2500);
+      const user = await User.findById(userId).select('name email phone avatarSeed').maxTimeMS(2500);
 
       if (user) {
         return NextResponse.json({
@@ -30,6 +31,7 @@ export async function GET() {
             name: user.name,
             email: user.email,
             phone: user.phone,
+            avatarSeed: (user as any).avatarSeed || undefined,
           },
         });
       }
@@ -63,6 +65,7 @@ export async function PATCH(req: NextRequest) {
     const body = await req.json();
     const name = typeof body.name === 'string' ? body.name.trim() : undefined;
     const phoneRaw = typeof body.phone === 'string' ? body.phone : undefined;
+    const nextAvatar = body.avatarSeed !== undefined ? normalizeAvatarSeed(body.avatarSeed) : undefined;
 
     if (!name || name.length < 2) {
       return NextResponse.json({ error: 'Enter a valid name' }, { status: 400 });
@@ -81,12 +84,19 @@ export async function PATCH(req: NextRequest) {
         return NextResponse.json({ error: 'Enter a valid phone number' }, { status: 400 });
       }
       if (phone !== user.phone) {
-        const taken = await User.findOne({ phone, _id: { $ne: userId } });
+        const taken = await User.findOne({ phone, _id: { $ne: userId } }).select('_id');
         if (taken) {
           return NextResponse.json({ error: 'Phone number is already registered' }, { status: 409 });
         }
         user.phone = phone;
       }
+    }
+
+    if (body.avatarSeed !== undefined) {
+      if (!nextAvatar) {
+        return NextResponse.json({ error: 'Pick a valid avatar' }, { status: 400 });
+      }
+      (user as any).avatarSeed = nextAvatar;
     }
 
     await user.save();
@@ -98,6 +108,7 @@ export async function PATCH(req: NextRequest) {
         name: user.name,
         email: user.email,
         phone: user.phone,
+        avatarSeed: (user as any).avatarSeed || undefined,
       },
     });
   } catch (error: any) {

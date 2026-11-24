@@ -120,6 +120,8 @@ export interface Trip {
   settlements?: TripSettlement[];
   shareToken?: string;
   status: 'active' | 'settled' | 'archived';
+  /** Practice trip seeded for new accounts — not a real trip */
+  isSample?: boolean;
   createdAt: string;
   updatedAt?: string;
 }

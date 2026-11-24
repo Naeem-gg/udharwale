@@ -1,0 +1,363 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  Clock3,
+  MapPin,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Split,
+  Trash2,
+  UserPlus,
+  Wallet,
+} from 'lucide-react';
+import type { Contact } from './types';
+import type { Trip } from './trip-types';
+import {
+  buildActivityFeed,
+  filterActivityFeed,
+  formatActivityAmount,
+  formatActivityTime,
+  groupActivityByDay,
+  type ActivityFilter,
+  type ActivityItem,
+  type ActivityKind,
+} from '@/lib/activity-feed';
+
+type Props = {
+  contacts: Contact[];
+  netBalance: number;
+  totalCredit: number;
+  totalDebit: number;
+  showBalances: boolean;
+  onToggleBalances: () => void;
+  onOpenContact: (contactId: string) => void;
+  onOpenTrip: (tripId: string) => void;
+};
+
+const FILTERS: { id: ActivityFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'money', label: 'Money' },
+  { id: 'trips', label: 'Trips' },
+  { id: 'people', label: 'People' },
+];
+
+function kindMeta(kind: ActivityKind): {
+  icon: typeof Plus;
+  tone: string;
+  soft: string;
+} {
+  switch (kind) {
+    case 'tx_create':
+      return { icon: ArrowUpRight, tone: '#0f766e', soft: 'rgba(15,118,110,0.12)' };
+    case 'tx_update':
+      return { icon: Pencil, tone: '#0e7490', soft: 'rgba(14,116,144,0.12)' };
+    case 'tx_delete':
+      return { icon: Trash2, tone: '#c23b4a', soft: 'rgba(194,59,74,0.12)' };
+    case 'tx_restore':
+      return { icon: RotateCcw, tone: '#047857', soft: 'rgba(4,120,87,0.12)' };
+    case 'contact_created':
+      return { icon: UserPlus, tone: '#0f766e', soft: 'rgba(15,118,110,0.12)' };
+    case 'trip_created':
+      return { icon: MapPin, tone: '#0e7490', soft: 'rgba(14,116,144,0.12)' };
+    case 'expense_added':
+      return { icon: Wallet, tone: '#b45309', soft: 'rgba(180,83,9,0.12)' };
+    case 'settlement_paid':
+      return { icon: Split, tone: '#047857', soft: 'rgba(4,120,87,0.12)' };
+    default:
+      return { icon: Clock3, tone: '#5f6f68', soft: 'rgba(95,111,104,0.12)' };
+  }
+}
+
+function amountColor(item: ActivityItem) {
+  if (item.amountTone === 'credit') return 'var(--emerald)';
+  if (item.amountTone === 'debit') return 'var(--rose)';
+  return 'var(--text-secondary)';
+}
+
+export default function ActivityFeed({
+  contacts,
+  netBalance,
+  totalCredit,
+  totalDebit,
+  showBalances,
+  onToggleBalances,
+  onOpenContact,
+  onOpenTrip,
+}: Props) {
+  const [filter, setFilter] = useState<ActivityFilter>('all');
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [loadingTrips, setLoadingTrips] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = (showSpinner = true) => {
+      if (showSpinner) setLoadingTrips(true);
+      fetch('/api/trips')
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data) => {
+          if (!cancelled && Array.isArray(data)) setTrips(data);
+        })
+        .catch(() => {
+          if (!cancelled) setTrips([]);
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingTrips(false);
+        });
+    };
+    load();
+    const onSampleCleared = () => load(false);
+    window.addEventListener('udharwale:sample-cleared', onSampleCleared);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('udharwale:sample-cleared', onSampleCleared);
+    };
+  }, []);
+
+  const feed = useMemo(() => buildActivityFeed(contacts, trips), [contacts, trips]);
+  const filtered = useMemo(() => filterActivityFeed(feed, filter), [feed, filter]);
+  const groups = useMemo(() => groupActivityByDay(filtered), [filtered]);
+  const hasSampleActivity = useMemo(
+    () => feed.some((item) => item.isSample) || contacts.some((c) => c.isSample) || trips.some((t) => t.isSample),
+    [feed, contacts, trips]
+  );
+
+  const handleOpen = (item: ActivityItem) => {
+    if (item.contactId) onOpenContact(item.contactId);
+    else if (item.tripId) onOpenTrip(item.tripId);
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto scrollbar-thin">
+      <div className="px-4 pt-4 pb-2 space-y-4">
+        <div className="px-1">
+          <h1 className="text-xl font-bold leading-none" style={{ color: 'var(--text-primary)' }}>
+            Activity
+          </h1>
+          <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>
+            Balances and recent account actions
+          </p>
+        </div>
+
+        <div
+          className="rounded-3xl p-4"
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--text-muted)' }}>
+                Net balance
+              </p>
+              <p
+                className="text-3xl font-extrabold tabular-nums mt-1 tracking-tight"
+                style={{
+                  color: showBalances
+                    ? netBalance >= 0
+                      ? 'var(--emerald)'
+                      : 'var(--rose)'
+                    : 'var(--text-primary)',
+                }}
+              >
+                {showBalances
+                  ? `${netBalance >= 0 ? '+' : '−'}₹${Math.abs(netBalance).toLocaleString('en-IN')}`
+                  : '••••'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onToggleBalances}
+              className="h-9 px-3 rounded-full text-xs font-bold"
+              style={{
+                background: 'var(--bg-raised)',
+                color: 'var(--text-secondary)',
+                border: '1px solid var(--border-soft)',
+              }}
+            >
+              {showBalances ? 'Hide' : 'Show'}
+            </button>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="rounded-2xl px-3 py-2.5" style={{ background: 'rgba(4,120,87,0.08)' }}>
+              <p className="text-[10px] font-bold uppercase" style={{ color: 'var(--emerald)' }}>
+                You&apos;ll get
+              </p>
+              <p className="text-base font-bold tabular-nums mt-0.5" style={{ color: 'var(--emerald)' }}>
+                {showBalances ? `₹${totalCredit.toLocaleString('en-IN')}` : '••••'}
+              </p>
+            </div>
+            <div className="rounded-2xl px-3 py-2.5" style={{ background: 'rgba(194,59,74,0.08)' }}>
+              <p className="text-[10px] font-bold uppercase" style={{ color: 'var(--rose)' }}>
+                You owe
+              </p>
+              <p className="text-base font-bold tabular-nums mt-0.5" style={{ color: 'var(--rose)' }}>
+                {showBalances ? `₹${totalDebit.toLocaleString('en-IN')}` : '••••'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {hasSampleActivity ? (
+          <div
+            className="rounded-xl px-3 py-2.5"
+            style={{
+              background: 'rgba(180,83,9,0.1)',
+              border: '1px dashed rgba(180,83,9,0.35)',
+            }}
+          >
+            <p className="text-[11px] font-bold" style={{ color: '#b45309' }}>
+              Includes practice examples
+            </p>
+            <p className="text-[10px] mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>
+              Rows marked Sample are fake data so you can learn the app — not real balances.
+            </p>
+          </div>
+        ) : null}
+
+        <div
+          className="flex gap-1.5 p-1 rounded-2xl overflow-x-auto"
+          style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}
+        >
+          {FILTERS.map((f) => {
+            const active = filter === f.id;
+            return (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setFilter(f.id)}
+                className="flex-1 min-w-[4.5rem] h-9 rounded-xl text-xs font-bold transition-colors"
+                style={{
+                  background: active ? 'var(--bg-surface)' : 'transparent',
+                  color: active ? 'var(--primary)' : 'var(--text-muted)',
+                  boxShadow: active ? '0 1px 2px rgba(20,32,28,0.06)' : 'none',
+                }}
+              >
+                {f.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {loadingTrips && feed.length === 0 ? (
+          <div className="space-y-3 pt-2">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="h-16 rounded-2xl shimmer-bg" />
+            ))}
+          </div>
+        ) : groups.length === 0 ? (
+          <div
+            className="rounded-3xl px-5 py-10 text-center"
+            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+          >
+            <div
+              className="mx-auto mb-3 h-12 w-12 rounded-2xl inline-flex items-center justify-center"
+              style={{ background: 'var(--accent)', color: 'var(--primary)' }}
+            >
+              <Clock3 className="w-5 h-5" />
+            </div>
+            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+              No activity yet
+            </p>
+            <p className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+              Payments, friends, and trip updates will show up here as you use Udharwale.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-5 pb-6">
+            {groups.map((group) => (
+              <section key={group.label}>
+                <p
+                  className="text-[10px] font-bold uppercase tracking-[0.14em] px-1 mb-2"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  {group.label}
+                </p>
+                <div
+                  className="rounded-2xl overflow-hidden"
+                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+                >
+                  {group.items.map((item, index) => {
+                    const meta = kindMeta(item.kind);
+                    const Icon = meta.icon;
+                    const amount = formatActivityAmount(item);
+                    const isLast = index === group.items.length - 1;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleOpen(item)}
+                        className="w-full flex items-center gap-3 px-3.5 py-3 text-left transition-colors"
+                        style={{
+                          borderBottom: isLast ? 'none' : '1px solid var(--border-soft)',
+                        }}
+                      >
+                        <div
+                          className="h-10 w-10 rounded-xl shrink-0 inline-flex items-center justify-center"
+                          style={{ background: meta.soft, color: meta.tone }}
+                        >
+                          {item.kind === 'tx_create' && item.amountTone === 'debit' ? (
+                            <ArrowDownLeft className="w-4 h-4" />
+                          ) : (
+                            <Icon className="w-4 h-4" />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <p
+                                className="text-sm font-bold leading-snug truncate"
+                                style={{ color: 'var(--text-primary)' }}
+                              >
+                                {item.title}
+                              </p>
+                              {item.isSample ? (
+                                <span
+                                  className="shrink-0 text-[8px] font-bold uppercase px-1.5 py-0.5 rounded"
+                                  style={{
+                                    background: 'rgba(180,83,9,0.14)',
+                                    color: '#b45309',
+                                    border: '1px dashed rgba(180,83,9,0.4)',
+                                  }}
+                                >
+                                  Sample
+                                </span>
+                              ) : null}
+                            </div>
+                            <span
+                              className="text-[10px] font-semibold shrink-0 pt-0.5"
+                              style={{ color: 'var(--text-faint)' }}
+                            >
+                              {formatActivityTime(item.at)}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2 mt-0.5">
+                            <p
+                              className="text-xs truncate"
+                              style={{ color: 'var(--text-muted)' }}
+                            >
+                              {item.subtitle}
+                            </p>
+                            {amount ? (
+                              <span
+                                className="text-xs font-bold tabular-nums shrink-0"
+                                style={{ color: amountColor(item) }}
+                              >
+                                {amount}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

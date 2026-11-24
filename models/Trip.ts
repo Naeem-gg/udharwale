@@ -102,6 +102,8 @@ const TripSchema = new Schema(
       enum: ['active', 'settled', 'archived'],
       default: 'active',
     },
+    /** Practice trip seeded for new accounts — not a real trip */
+    isSample: { type: Boolean, default: false },
   },
   {
     timestamps: true,
@@ -110,6 +112,7 @@ const TripSchema = new Schema(
 
 TripSchema.index({ userId: 1 });
 TripSchema.index({ shareToken: 1 });
+TripSchema.index({ userId: 1, isSample: 1 });
 
 export interface ITripDoc extends Document {
   id: string;
@@ -125,6 +128,7 @@ export interface ITripDoc extends Document {
   settlements?: any[];
   shareToken?: string;
   status: string;
+  isSample?: boolean;
   createdAt: string;
   updatedAt: string;
 }

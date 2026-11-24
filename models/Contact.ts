@@ -50,6 +50,10 @@ const ContactSchema = new Schema({
   email: { type: String },
   shareToken: { type: String, required: false, unique: true, sparse: true }, // Public read-only chat link
   dueDate: { type: String, required: false, default: null }, // Balance-level reminder (YYYY-MM-DD)
+  /** Practice examples seeded for new accounts — not real people */
+  isSample: { type: Boolean, default: false },
+  /** Local avatar preset for friends not on Udharwale (owner-only, ~16 chars) */
+  avatarSeed: { type: String, required: false, maxlength: 16 },
   transactions: [TransactionSchema],
   createdAt: { type: String, required: true }
 }, {
@@ -59,6 +63,7 @@ const ContactSchema = new Schema({
 ContactSchema.index({ peerUserId: 1 });
 ContactSchema.index({ phone: 1 });
 ContactSchema.index({ email: 1 });
+ContactSchema.index({ userId: 1, isSample: 1 });
 
 // Define interface for types
 export interface ITxHistoryEntry {
@@ -97,6 +102,8 @@ export interface IContactDoc extends Document {
   email?: string;
   shareToken?: string;
   dueDate?: string | null;
+  isSample?: boolean;
+  avatarSeed?: string;
   transactions: ITransactionSub[];
   createdAt: string;
 }

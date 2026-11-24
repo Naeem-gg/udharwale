@@ -4,6 +4,7 @@ import Contact from '@/models/Contact';
 import { getAuthenticatedUserId } from '@/lib/session';
 import { normalizePhone } from '@/lib/phone';
 import { serializeContactForUser } from '@/lib/ledger-access';
+import { normalizeAvatarSeed } from '@/lib/avatar-presets';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,7 @@ export async function PUT(
     await connectToDatabase();
     const { id } = await params;
     const body = await req.json();
-    const { name, phone, email, dueDate } = body;
+    const { name, phone, email, dueDate, avatarSeed } = body;
 
     const contact = await Contact.findOne({ id, userId });
 
@@ -34,6 +35,10 @@ export async function PUT(
     if (dueDate !== undefined) {
       contact.dueDate =
         typeof dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? dueDate : null;
+    }
+    if (avatarSeed !== undefined) {
+      // Linked friends keep their account avatar in the UI; local seed is a tiny preset id only.
+      (contact as any).avatarSeed = normalizeAvatarSeed(avatarSeed);
     }
 
     await contact.save();

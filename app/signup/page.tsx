@@ -6,12 +6,15 @@ import { useSearchParams } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { CheckCircle2, Eye, EyeOff, Loader2, Mail, Phone, ShieldCheck, TriangleAlert, User } from 'lucide-react';
 import BrandMark from '@/app/components/BrandMark';
+import AvatarPicker from '@/app/components/AvatarPicker';
+import PersonAvatar from '@/app/components/PersonAvatar';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import CreatorCredit from '@/app/components/CreatorCredit';
+import { randomAvatarPreset, type AvatarPresetId } from '@/lib/avatar-presets';
 
 function PasswordToggle({
   show,
@@ -46,6 +49,7 @@ function SignupForm() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [recoveryPin, setRecoveryPin] = useState('');
   const [securityAnswer, setSecurityAnswer] = useState('');
+  const [avatarSeed, setAvatarSeed] = useState<AvatarPresetId>(() => randomAvatarPreset());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -67,7 +71,7 @@ function SignupForm() {
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, phone, password, recoveryPin, securityAnswer }),
+        body: JSON.stringify({ name, email, phone, password, recoveryPin, securityAnswer, avatarSeed }),
       });
 
       const data = await res.json();
@@ -127,6 +131,23 @@ function SignupForm() {
                   <p className="font-medium">Account created. Logging you in...</p>
                 </Alert>
               )}
+
+              <div className="flex items-center gap-3 rounded-xl border border-[var(--border-soft)] bg-[var(--bg-raised)] p-3">
+                <PersonAvatar name={name || 'You'} seed={avatarSeed} size="lg" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-[var(--text-primary)]">Your avatar</p>
+                  <p className="text-[11px] text-muted-foreground">Pick a face — you can change it later in Account.</p>
+                </div>
+              </div>
+
+              <AvatarPicker
+                name={name || 'You'}
+                value={avatarSeed}
+                onChange={setAvatarSeed}
+                columns={4}
+                size="sm"
+                label="Choose avatar"
+              />
 
               <div className="space-y-1.5">
                 <Label htmlFor="name">Your Name</Label>

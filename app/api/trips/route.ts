@@ -28,6 +28,7 @@ export async function GET() {
       settlements: t.settlements || [],
       shareToken: t.shareToken || undefined,
       status: t.status || 'active',
+      isSample: Boolean(t.isSample),
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
     }));

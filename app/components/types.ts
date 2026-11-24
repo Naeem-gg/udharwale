@@ -73,6 +73,15 @@ export interface Contact {
   peerUserId?: string;
   ownerName?: string;
   ownerUserId?: string;
+  /** Practice example seeded for new accounts — not a real person */
+  isSample?: boolean;
+  /**
+   * Display avatar preset. For linked peers this is their account avatar;
+   * for unsigned-up friends it's a local pick (only on your ledger).
+   */
+  avatarSeed?: string;
+  /** True when avatar comes from a linked Udharwale user (not editable locally) */
+  avatarLocked?: boolean;
 }
 
 export type ReminderUrgency = 'overdue' | 'today' | 'upcoming';
@@ -90,4 +99,4 @@ export interface BalanceReminder {
   daysUntil: number;
 }
 
-export type ActiveTab = 'ledgers' | 'trips' | 'insights' | 'settings';
+export type ActiveTab = 'ledgers' | 'trips' | 'activity' | 'insights' | 'settings';

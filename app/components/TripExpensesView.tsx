@@ -33,25 +33,14 @@ import {
   TripSettlement,
   calculateTripSummary,
   formatWhatsAppSummary,
-  getDemoTrip,
 } from './trip-types';
 import { Contact } from './types';
+import PersonAvatar, { avatarToneClass } from './PersonAvatar';
 
 const STORAGE_KEY = 'udharwale-trips-v1';
 
-/* ─── Avatar color generator ─── */
-const AVATAR_TONES = [
-  'bg-[#0f766e]',
-  'bg-[#115e59]',
-  'bg-[#134e4a]',
-  'bg-[#1e3a36]',
-  'bg-[#0e7490]',
-  'bg-[#3d4f47]',
-];
 function avatarGradient(name: string) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
-  return AVATAR_TONES[Math.abs(hash) % AVATAR_TONES.length];
+  return avatarToneClass(name);
 }
 
 interface TripExpensesViewProps {
@@ -112,44 +101,47 @@ export default function TripExpensesView({
   const [splitMode, setSplitMode] = useState<'all' | 'custom'>('all');
   const [selectedBeneficiaries, setSelectedBeneficiaries] = useState<string[]>([]);
 
-  // Load Trips on mount (from API with localStorage fallback)
+  // Load Trips on mount (API first; cache is only a warm start)
   useEffect(() => {
+    let cancelled = false;
     let loadedTrips: Trip[] = [];
     try {
       const cached = localStorage.getItem(STORAGE_KEY);
       if (cached) {
-        loadedTrips = JSON.parse(cached);
+        loadedTrips = JSON.parse(cached).filter((t: Trip) => !String(t.id || '').startsWith('trip_demo_'));
       }
     } catch (e) {
       console.warn('Failed to parse cached trips', e);
     }
 
-    if (loadedTrips.length === 0) {
-      const demo = getDemoTrip(userName, contacts);
-      loadedTrips = [demo];
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(loadedTrips));
-      } catch {}
-    }
+    if (loadedTrips.length > 0) setTrips(loadedTrips);
 
-    setTrips(loadedTrips);
+    const refresh = () => {
+      fetch('/api/trips')
+        .then((res) => {
+          if (res.ok) return res.json();
+          throw new Error('Trips API failed');
+        })
+        .then((remoteTrips: Trip[]) => {
+          if (cancelled) return;
+          if (Array.isArray(remoteTrips)) {
+            setTrips(remoteTrips);
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteTrips));
+            } catch {}
+          }
+        })
+        .catch(() => {});
+    };
 
-    // Try fetching from server
-    fetch('/api/trips')
-      .then((res) => {
-        if (res.ok) return res.json();
-        throw new Error('Trips API failed');
-      })
-      .then((remoteTrips: Trip[]) => {
-        if (Array.isArray(remoteTrips) && remoteTrips.length > 0) {
-          setTrips(remoteTrips);
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteTrips));
-          } catch {}
-        }
-      })
-      .catch(() => {});
-  }, [userName, contacts]);
+    refresh();
+    const onSampleCleared = () => refresh();
+    window.addEventListener('udharwale:sample-cleared', onSampleCleared);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('udharwale:sample-cleared', onSampleCleared);
+    };
+  }, []);
 
   // Selected Trip — null on list view
   const currentTrip = useMemo(() => {
@@ -601,15 +593,6 @@ export default function TripExpensesView({
     showToast('New trip created! Start adding expenses.', 'success');
   };
 
-  // Reset to Demo Trip
-  const handleLoadDemoTrip = async () => {
-    const demo = getDemoTrip(userName, contacts);
-    const updated = [demo, ...trips.filter((t) => t.id !== demo.id)];
-    await saveTripsState(updated);
-    openTrip(demo.id);
-    showToast('Loaded sample Goa Trip', 'success');
-  };
-
   // Generate / Open Public Share Link
   const handleGenerateShareLink = async () => {
     if (!currentTrip) return;
@@ -785,6 +768,22 @@ export default function TripExpensesView({
           </div>
 
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 pb-8">
+            {trips.some((t) => t.isSample) ? (
+              <div
+                className="rounded-xl px-3 py-2.5 mb-1"
+                style={{
+                  background: 'rgba(180,83,9,0.1)',
+                  border: '1px dashed rgba(180,83,9,0.35)',
+                }}
+              >
+                <p className="text-[11px] font-bold" style={{ color: '#b45309' }}>
+                  Practice trip — not a real vacation
+                </p>
+                <p className="text-[10px] mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>
+                  Explore splits and settlements. Remove from Account when you&apos;re done.
+                </p>
+              </div>
+            ) : null}
             {tripListRows.length === 0 ? (
               <div
                 className="rounded-2xl p-8 text-center space-y-3"
@@ -794,24 +793,14 @@ export default function TripExpensesView({
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                   Split bills with friends, then settle who pays whom.
                 </p>
-                <div className="flex flex-col gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsNewTripModalOpen(true)}
-                    className="h-11 rounded-xl text-sm font-semibold text-white"
-                    style={{ background: 'var(--primary)' }}
-                  >
-                    Create trip
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleLoadDemoTrip}
-                    className="h-11 rounded-xl text-sm font-semibold"
-                    style={{ background: 'var(--bg-raised)', color: 'var(--text-secondary)', border: '1px solid var(--border-soft)' }}
-                  >
-                    Load sample trip
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsNewTripModalOpen(true)}
+                  className="h-11 rounded-xl text-sm font-semibold text-white w-full"
+                  style={{ background: 'var(--primary)' }}
+                >
+                  Create trip
+                </button>
               </div>
             ) : (
               tripListRows.map(({ trip, pending, pendingCount, totalSpend }) => (
@@ -831,7 +820,21 @@ export default function TripExpensesView({
                     {trip.name.trim()[0]?.toUpperCase() || 'T'}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold truncate">{trip.name}</p>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <p className="text-sm font-bold truncate">{trip.name}</p>
+                      {trip.isSample ? (
+                        <span
+                          className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
+                          style={{
+                            background: 'rgba(180,83,9,0.14)',
+                            color: '#b45309',
+                            border: '1px dashed rgba(180,83,9,0.4)',
+                          }}
+                        >
+                          Sample
+                        </span>
+                      ) : null}
+                    </div>
                     <p className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
                       {[trip.destination || null, `${trip.participants.length} people`, `spent ${trip.currency || '₹'}${totalSpend.toLocaleString('en-IN')}`]
                         .filter(Boolean)
@@ -878,7 +881,21 @@ export default function TripExpensesView({
                   <ArrowLeft className="w-4 h-4" />
                 </button>
                 <div className="min-w-0">
-                  <p className="text-sm font-bold truncate">{currentTrip.name}</p>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <p className="text-sm font-bold truncate">{currentTrip.name}</p>
+                    {currentTrip.isSample ? (
+                      <span
+                        className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
+                        style={{
+                          background: 'rgba(180,83,9,0.14)',
+                          color: '#b45309',
+                          border: '1px dashed rgba(180,83,9,0.4)',
+                        }}
+                      >
+                        Sample
+                      </span>
+                    ) : null}
+                  </div>
                   <p className="text-[11px] truncate" style={{ color: 'var(--text-muted)' }}>
                     {[currentTrip.destination || null, `${currentTrip.participants.length} people`].filter(Boolean).join(' · ')}
                   </p>
@@ -904,6 +921,20 @@ export default function TripExpensesView({
                 </button>
               </div>
             </div>
+
+            {currentTrip.isSample ? (
+              <div
+                className="rounded-xl px-3 py-2"
+                style={{
+                  background: 'rgba(180,83,9,0.1)',
+                  border: '1px dashed rgba(180,83,9,0.35)',
+                }}
+              >
+                <p className="text-[11px] font-semibold" style={{ color: '#b45309' }}>
+                  This is a practice trip with made-up expenses — not real money.
+                </p>
+              </div>
+            ) : null}
 
             {tripSummary && (
               <div
@@ -1012,14 +1043,7 @@ export default function TripExpensesView({
                             }}
                           >
                             <div className="flex items-center gap-3">
-                              <div
-                                className={cn(
-                                  'w-10 h-10 rounded-full flex items-center justify-center font-semibold text-xs text-white shrink-0',
-                                  avatarGradient(st.fromName)
-                                )}
-                              >
-                                {st.fromName[0]}
-                              </div>
+                              <PersonAvatar name={st.fromName} seed={st.fromId || st.fromName} size="md" />
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-semibold leading-snug">
                                   <span style={{ color: 'var(--rose)' }}>{st.fromName}</span>
@@ -1159,14 +1183,11 @@ export default function TripExpensesView({
                           className="rounded-2xl px-3.5 py-3 flex items-center gap-3"
                           style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
                         >
-                          <div
-                            className={cn(
-                              'w-8 h-8 rounded-full flex items-center justify-center font-semibold text-[10px] text-white shrink-0',
-                              avatarGradient(s.participant.name)
-                            )}
-                          >
-                            {s.participant.name[0]}
-                          </div>
+                          <PersonAvatar
+                            name={s.participant.name}
+                            seed={s.participant.id || s.participant.name}
+                            size="sm"
+                          />
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold truncate">
                               {s.participant.name}

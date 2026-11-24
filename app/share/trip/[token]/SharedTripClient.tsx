@@ -14,9 +14,9 @@ import {
   X,
 } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
 import BrandMark from '@/app/components/BrandMark';
 import CreatorCredit from '@/app/components/CreatorCredit';
+import PersonAvatar from '@/app/components/PersonAvatar';
 import { SITE_CREATOR } from '@/lib/seo';
 import {
   Trip,
@@ -26,34 +26,8 @@ import {
   formatWhatsAppSummary,
 } from '@/app/components/trip-types';
 
-const AVATAR_TONES = [
-  'bg-[#0f766e]',
-  'bg-[#115e59]',
-  'bg-[#134e4a]',
-  'bg-[#1e3a36]',
-  'bg-[#0e7490]',
-  'bg-[#3d4f47]',
-];
-
-function avatarTone(name: string) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
-  return AVATAR_TONES[Math.abs(hash) % AVATAR_TONES.length];
-}
-
 function Avatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'md' }) {
-  const dim = size === 'sm' ? 'w-8 h-8 text-[10px]' : 'w-10 h-10 text-xs';
-  return (
-    <div
-      className={cn(
-        'rounded-full flex items-center justify-center font-semibold text-white shrink-0',
-        dim,
-        avatarTone(name)
-      )}
-    >
-      {name.trim()[0]?.toUpperCase() || '?'}
-    </div>
-  );
+  return <PersonAvatar name={name} seed={name} size={size === 'sm' ? 'sm' : 'md'} />;
 }
 
 function formatWhen(iso?: string) {

@@ -11,17 +11,17 @@ import {
   LEDGER_CATEGORIES,
   LEDGER_CATEGORY_CONFIG,
 } from './types';
-import UpcomingFeatures from './UpcomingFeatures';
 import TripExpensesView from './TripExpensesView';
-import CreatorCredit from './CreatorCredit';
-import BrandMark from '@/app/components/BrandMark';
-import { SITE_CREATOR, SITE_CREDIT_LINE, SITE_NAME } from '@/lib/seo';
-import { Badge } from '@/components/ui/badge';
+import { SITE_CREDIT_LINE } from '@/lib/seo';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Switch } from '@/components/ui/switch';
 import { useTheme } from '@/app/theme-provider';
 import ConfirmDialog from './ConfirmDialog';
+import AccountPanel from './AccountPanel';
+import ActivityFeed from './ActivityFeed';
+import ContactProfilePanel from './ContactProfilePanel';
+import AvatarPicker from './AvatarPicker';
+import PersonAvatar from './PersonAvatar';
+import { presetFromFallback, randomAvatarPreset, type AvatarPresetId } from '@/lib/avatar-presets';
 import ChatShareSheet from './ChatShareSheet';
 import TransactionShareSheet, {
   type TransactionSharePayload,
@@ -74,11 +74,13 @@ export default function Dashboard() {
   const [userName, setUserName] = useState<string>('');
   const [userEmail, setUserEmail] = useState<string>('');
   const [userPhone, setUserPhone] = useState<string>('');
+  const [userAvatarSeed, setUserAvatarSeed] = useState<string>('');
   const [historyTx, setHistoryTx] = useState<Transaction | null>(null);
   const [claimedOnce, setClaimedOnce] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [profileName, setProfileName] = useState('');
   const [profilePhone, setProfilePhone] = useState('');
+  const [profileAvatarSeed, setProfileAvatarSeed] = useState<AvatarPresetId>(() => randomAvatarPreset());
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   // Database connection status: connecting, connected, or error
@@ -102,6 +104,7 @@ export default function Dashboard() {
   const [isAddTransactionOpen, setIsAddTransactionOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [isContactMenuOpen, setIsContactMenuOpen] = useState(false);
+  const [profileContactId, setProfileContactId] = useState<string | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [txSharePayload, setTxSharePayload] = useState<TransactionSharePayload | null>(null);
   const [detailTx, setDetailTx] = useState<Transaction | null>(null);
@@ -124,6 +127,7 @@ export default function Dashboard() {
   const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [contactDueDate, setContactDueDate] = useState('');
+  const [contactAvatarSeed, setContactAvatarSeed] = useState<AvatarPresetId>(() => randomAvatarPreset());
   const [contactInitialBalance, setContactInitialBalance] = useState('');
   const [contactInitialType, setContactInitialType] = useState<'credit' | 'debit'>('credit');
   const [isImportingContacts, setIsImportingContacts] = useState(false);
@@ -207,6 +211,7 @@ export default function Dashboard() {
             setUserName(data.user.name);
             setUserEmail(data.user.email);
             setUserPhone(data.user.phone || '');
+            setUserAvatarSeed(data.user.avatarSeed || '');
             await loadContacts();
             if (!claimedOnce) {
               setClaimedOnce(true);
@@ -249,6 +254,7 @@ export default function Dashboard() {
   }, [applyDashboardNav]);
 
   const openContactChat = React.useCallback((contactId: string) => {
+    setProfileContactId(null);
     setActiveTab('ledgers');
     setSelectedContactId(contactId);
     setMobileView('ledger');
@@ -258,6 +264,15 @@ export default function Dashboard() {
     } else {
       pushDashboardNav({ tab: 'ledgers', contactId, tripId: null });
     }
+  }, []);
+
+  const openContactProfile = React.useCallback((contactId: string) => {
+    setIsContactMenuOpen(false);
+    setProfileContactId(contactId);
+  }, []);
+
+  const closeContactProfile = React.useCallback(() => {
+    setProfileContactId(null);
   }, []);
 
   const closeContactChat = React.useCallback(() => {
@@ -287,10 +302,22 @@ export default function Dashboard() {
     setIsLedgerSearchOpen(false);
   }, [selectedContactId]);
 
+  // Drop profile if the contact was deleted
+  useEffect(() => {
+    if (!profileContactId) return;
+    if (!contacts.some((c) => c.id === profileContactId)) {
+      setProfileContactId(null);
+    }
+  }, [contacts, profileContactId]);
+
 
   const openEditProfile = () => {
     setProfileName(userName);
     setProfilePhone(userPhone);
+    setProfileAvatarSeed(
+      (userAvatarSeed as AvatarPresetId) ||
+        presetFromFallback(userEmail || userPhone || userName || 'you')
+    );
     setIsEditProfileOpen(true);
   };
 
@@ -301,12 +328,17 @@ export default function Dashboard() {
       const res = await fetch('/api/auth/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: profileName, phone: profilePhone }),
+        body: JSON.stringify({
+          name: profileName,
+          phone: profilePhone,
+          avatarSeed: profileAvatarSeed,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not update profile');
       setUserName(data.user.name);
       setUserPhone(data.user.phone || '');
+      setUserAvatarSeed(data.user.avatarSeed || profileAvatarSeed);
       setIsEditProfileOpen(false);
       showToast('Profile updated', 'success');
       // Re-claim matches if phone changed
@@ -383,22 +415,30 @@ export default function Dashboard() {
     }, 16);
   };
 
-  // --- Load Demo / Sample Data ---
-  const handleLoadDemoData = async () => {
+  // --- Clear practice sample friends / trips ---
+  const handleClearSampleData = async () => {
     try {
-      const res = await fetch('/api/db/reset', { method: 'POST' });
+      const clearingSelected = contacts.find((c) => c.id === selectedContactId)?.isSample;
+      const res = await fetch('/api/sample/clear', { method: 'POST' });
       if (res.ok) {
         await loadContacts();
-        setSelectedContactId(null);
-        setMobileView('list');
-        replaceDashboardNav({ tab: 'ledgers', contactId: null, tripId: null });
-        showToast('Demo ledger loaded — ready to present', 'success');
+        setProfileContactId(null);
+        if (clearingSelected) {
+          setSelectedContactId(null);
+          setMobileView('list');
+          replaceDashboardNav({ tab: 'ledgers', contactId: null, tripId: null });
+        }
+        try {
+          localStorage.removeItem('udharwale-trips-v1');
+        } catch {}
+        window.dispatchEvent(new Event('udharwale:sample-cleared'));
+        showToast('Sample examples removed', 'success');
       } else {
-        showToast('Failed to load demo data.', 'error');
+        showToast('Failed to remove sample data.', 'error');
       }
     } catch (err) {
-      console.error('Error loading demo data:', err);
-      showToast('Failed to load demo data.', 'error');
+      console.error('Error clearing sample data:', err);
+      showToast('Failed to remove sample data.', 'error');
     }
   };
 
@@ -424,6 +464,10 @@ export default function Dashboard() {
   const selectedContact = useMemo(() => {
     return contacts.find((c) => c.id === selectedContactId) || null;
   }, [contacts, selectedContactId]);
+
+  const profileContact = useMemo(() => {
+    return contacts.find((c) => c.id === profileContactId) || null;
+  }, [contacts, profileContactId]);
 
   // Calculate stats for all contacts
   const stats = useMemo(() => {
@@ -612,6 +656,7 @@ export default function Dashboard() {
       name: contactName.trim(),
       phone: contactPhone.trim(),
       email: contactEmail.trim() || undefined,
+      avatarSeed: contactAvatarSeed,
       transactions: newTransactions,
       createdAt: new Date().toISOString(),
     };
@@ -624,11 +669,13 @@ export default function Dashboard() {
       });
 
       if (res.ok) {
-        saveContactsState([newContact, ...contacts]);
+        const saved = await res.json().catch(() => newContact);
+        saveContactsState([{ ...newContact, ...saved }, ...contacts]);
         // Reset Form
         setContactName('');
         setContactPhone('');
         setContactEmail('');
+        setContactAvatarSeed(randomAvatarPreset());
         setContactInitialBalance('');
         setContactInitialType('credit');
         setIsAddContactOpen(false);
@@ -656,6 +703,7 @@ export default function Dashboard() {
           phone: contactPhone.trim(),
           email: contactEmail.trim() || undefined,
           dueDate: contactDueDate || null,
+          avatarSeed: contactAvatarSeed,
         }),
       });
 
@@ -668,6 +716,8 @@ export default function Dashboard() {
                 name: updatedContact.name,
                 phone: updatedContact.phone,
                 email: updatedContact.email,
+                avatarSeed: updatedContact.avatarSeed || contactAvatarSeed,
+                avatarLocked: updatedContact.avatarLocked,
                 dueDate: updatedContact.dueDate || null,
               }
             : c
@@ -1245,21 +1295,6 @@ export default function Dashboard() {
     }
   };
 
-  const getAvatarTone = (name: string) => {
-    const tones = [
-      'bg-[#0f766e]',
-      'bg-[#115e59]',
-      'bg-[#134e4a]',
-      'bg-[#1e3a36]',
-      'bg-[#0e7490]',
-      'bg-[#155e75]',
-      'bg-[#3d4f47]',
-    ];
-    let sum = 0;
-    for (let i = 0; i < name.length; i++) sum += name.charCodeAt(i);
-    return tones[sum % tones.length];
-  };
-
   const formatChatDateLabel = (dateStr: string) => {
     const date = new Date(`${dateStr}T00:00:00`);
     const today = new Date();
@@ -1296,14 +1331,6 @@ export default function Dashboard() {
       hour: 'numeric',
       minute: '2-digit',
     });
-  };
-
-  const getInitials = (name: string) => {
-    const words = name.trim().split(' ');
-    if (words.length >= 2) {
-      return (words[0][0] + words[1][0]).toUpperCase();
-    }
-    return name.slice(0, 2).toUpperCase();
   };
 
   // ─── Toast System ───────────────────────────────────────────────────────
@@ -1720,6 +1747,7 @@ export default function Dashboard() {
   useHistoryLayer(isEditProfileOpen, () => setIsEditProfileOpen(false));
   useHistoryLayer(!!confirmDialog, () => closeConfirmDialog(false));
   useHistoryLayer(isContactMenuOpen, () => setIsContactMenuOpen(false));
+  useHistoryLayer(!!profileContactId, () => setProfileContactId(null));
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden relative" style={{ background: 'var(--bg-raised)', fontFamily: "'Outfit', system-ui, sans-serif", color: 'var(--text-primary)' }}>
@@ -1735,6 +1763,160 @@ export default function Dashboard() {
           </div>
         ))}
       </div>
+
+      {profileContact && (
+        <ContactProfilePanel
+          contact={profileContact}
+          balance={getContactBalance(profileContact)}
+          showBalances={showBalances}
+          onClose={closeContactProfile}
+          onMessage={() => {
+            const id = profileContact.id;
+            closeContactProfile();
+            openContactChat(id);
+          }}
+          onEdit={
+            profileContact.role === 'peer'
+              ? undefined
+              : () => {
+                  setContactName(profileContact.name);
+                  setContactPhone(profileContact.phone);
+                  setContactEmail(profileContact.email || '');
+                  setContactDueDate(profileContact.dueDate || '');
+                  setContactAvatarSeed(
+                    (profileContact.avatarSeed as AvatarPresetId) ||
+                      presetFromFallback(profileContact.id)
+                  );
+                  if (selectedContactId !== profileContact.id) {
+                    setSelectedContactId(profileContact.id);
+                  }
+                  closeContactProfile();
+                  setIsEditContactOpen(true);
+                }
+          }
+          onCopyPhone={
+            profileContact.phone
+              ? async () => {
+                  try {
+                    await navigator.clipboard.writeText(profileContact.phone);
+                    showToast('Phone copied', 'success');
+                  } catch {
+                    showToast('Could not copy phone', 'error');
+                  }
+                }
+              : undefined
+          }
+          onCall={
+            profileContact.phone && !profileContact.isSample
+              ? () => {
+                  window.location.href = `tel:${profileContact.phone.replace(/[^\d+]/g, '')}`;
+                }
+              : undefined
+          }
+          onShareChat={
+            profileContact.role === 'peer'
+              ? undefined
+              : () => {
+                  if (selectedContactId !== profileContact.id) {
+                    openContactChat(profileContact.id);
+                  }
+                  closeContactProfile();
+                  setIsShareModalOpen(true);
+                }
+          }
+          onCopyChatLink={
+            profileContact.role === 'peer'
+              ? undefined
+              : async () => {
+                  try {
+                    const shareUrl = await getOrCreateShareUrl(profileContact.id);
+                    await copyTextToClipboard(shareUrl, 'Chat link copied');
+                    closeContactProfile();
+                  } catch {
+                    showToast('Could not create chat link', 'error');
+                  }
+                }
+          }
+          onSettleFull={
+            getContactBalance(profileContact) !== 0
+              ? () => {
+                  const id = profileContact.id;
+                  const balance = getContactBalance(profileContact);
+                  closeContactProfile();
+                  openContactChat(id);
+                  const settleAmount = Math.abs(balance);
+                  setTxAmount(settleAmount.toString());
+                  setTxType(balance > 0 ? 'got' : 'gave');
+                  setTxRemark('🤝 Full Settlement');
+                  setTxMode('Cash');
+                  setTxCategory('personal');
+                  setTxDate(new Date().toISOString().split('T')[0]);
+                  setTxDueDate('');
+                  setEditingTransaction(null);
+                  setIsAddTransactionOpen(true);
+                }
+              : undefined
+          }
+          onSettlePartial={
+            getContactBalance(profileContact) !== 0
+              ? () => {
+                  const id = profileContact.id;
+                  const balance = getContactBalance(profileContact);
+                  closeContactProfile();
+                  openContactChat(id);
+                  setTxAmount('');
+                  setTxType(balance > 0 ? 'got' : 'gave');
+                  setTxRemark('🤝 Partial Settlement');
+                  setTxMode('Cash');
+                  setTxCategory('personal');
+                  setTxDate(new Date().toISOString().split('T')[0]);
+                  setTxDueDate('');
+                  setEditingTransaction(null);
+                  setIsAddTransactionOpen(true);
+                }
+              : undefined
+          }
+          onUnlink={
+            (profileContact.role === 'owner' || !profileContact.role) && profileContact.peerLinked
+              ? async () => {
+                  const id = profileContact.id;
+                  closeContactProfile();
+                  setSelectedContactId(id);
+                  // handleUnlinkPeer reads selectedContactId; open after state flush
+                  await Promise.resolve();
+                  setSelectedContactId(id);
+                  const confirmed = await confirmAction({
+                    title: 'Unlink shared access?',
+                    message: 'They will lose edit access until they claim this chat again with a matching phone/email.',
+                    confirmLabel: 'Unlink',
+                    tone: 'danger',
+                  });
+                  if (!confirmed) return;
+                  try {
+                    const res = await fetch(`/api/contacts/${id}/unlink`, { method: 'POST' });
+                    if (!res.ok) {
+                      const body = await res.json().catch(() => ({}));
+                      throw new Error(body.error || 'Failed to unlink');
+                    }
+                    await loadContacts();
+                    showToast('Shared access unlinked', 'success');
+                  } catch (err) {
+                    showToast(err instanceof Error ? err.message : 'Failed to unlink', 'error');
+                  }
+                }
+              : undefined
+          }
+          onDelete={
+            profileContact.role === 'peer'
+              ? undefined
+              : async () => {
+                  const id = profileContact.id;
+                  closeContactProfile();
+                  await handleDeleteContact(id);
+                }
+          }
+        />
+      )}
 
       {confirmDialog && (
         <ConfirmDialog
@@ -2120,7 +2302,11 @@ export default function Dashboard() {
                           ? <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                           : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" /></svg>}
                       </button>
-                      <button onClick={() => { setIsAddContactOpen(true); setImportStatus(null); }}
+                      <button onClick={() => {
+                        setIsAddContactOpen(true);
+                        setImportStatus(null);
+                        setContactAvatarSeed(randomAvatarPreset());
+                      }}
                         className="w-9 h-9 rounded-full flex items-center justify-center text-white"
                         style={{ background: 'linear-gradient(135deg,var(--primary),var(--primary))' }}
                         aria-label="Add contact">
@@ -2143,6 +2329,23 @@ export default function Dashboard() {
                       style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: 'var(--text-primary)' }} />
                   </div>
                 </div>
+
+                {contacts.some((c) => c.isSample) ? (
+                  <div
+                    className="mx-4 mb-1 rounded-xl px-3 py-2.5"
+                    style={{
+                      background: 'rgba(180,83,9,0.1)',
+                      border: '1px dashed rgba(180,83,9,0.35)',
+                    }}
+                  >
+                    <p className="text-[11px] font-bold" style={{ color: '#b45309' }}>
+                      Practice examples — not real people
+                    </p>
+                    <p className="text-[10px] mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>
+                      Tap around to learn the app. Remove them anytime from Account.
+                    </p>
+                  </div>
+                ) : null}
 
                 {/* Filter chips */}
                 <div className="px-4 py-2 shrink-0 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
@@ -2181,7 +2384,7 @@ export default function Dashboard() {
                         <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>No contacts yet</p>
                         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Add a friend to start tracking shared balances</p>
                       </div>
-                      <button onClick={() => setIsAddContactOpen(true)} className="btn-primary text-sm px-6 animate-fade-slide-up" style={{ animationDelay: '0.2s' }}>
+                      <button onClick={() => { setContactAvatarSeed(randomAvatarPreset()); setIsAddContactOpen(true); }} className="btn-primary text-sm px-6 animate-fade-slide-up" style={{ animationDelay: '0.2s' }}>
                         ➕ Add First Contact
                       </button>
                     </div>
@@ -2213,7 +2416,6 @@ export default function Dashboard() {
                           const isSelected = selectedContactId === contact.id;
                           const isPeekingThis = peekingContactId === contact.id;
                           const revealed = showBalances || isPeekingThis;
-                          const avatarTone = getAvatarTone(contact.name);
                           const balanceColor = balance > 0 ? '#10b981' : balance < 0 ? '#f43f5e' : 'var(--text-muted)';
                           const borderColor = balance > 0 ? '#10b981' : balance < 0 ? '#f43f5e' : 'transparent';
                           const dueReminder = balanceReminders.find((r) => r.contactId === contact.id);
@@ -2227,16 +2429,39 @@ export default function Dashboard() {
                               }}
                               onClick={() => openContactChat(contact.id)}>
 
-                              {/* Avatar */}
-                              <div className={`w-11 h-11 rounded-full shrink-0 ${avatarTone} flex items-center justify-center font-bold text-sm text-white`}
-                                style={{ boxShadow: isSelected ? `0 0 0 2px var(--primary)` : 'none' }}>
-                                {getInitials(contact.name)}
-                              </div>
+                              <button
+                                type="button"
+                                className="shrink-0 rounded-full"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openContactProfile(contact.id);
+                                }}
+                                aria-label={`${contact.name} profile`}
+                              >
+                                <PersonAvatar
+                                  name={contact.name}
+                                  seed={contact.avatarSeed || contact.id}
+                                  size="md"
+                                  ring={isSelected}
+                                />
+                              </button>
 
                               {/* Info */}
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-1.5 min-w-0">
                                   <p className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{contact.name}</p>
+                                  {contact.isSample && (
+                                    <span
+                                      className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
+                                      style={{
+                                        background: 'rgba(180,83,9,0.14)',
+                                        color: '#b45309',
+                                        border: '1px dashed rgba(180,83,9,0.4)',
+                                      }}
+                                    >
+                                      Sample
+                                    </span>
+                                  )}
                                   {(contact.role === 'peer' || contact.peerLinked) && (
                                     <span
                                       className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full"
@@ -2337,19 +2562,36 @@ export default function Dashboard() {
                         </svg>
                       </button>
 
-                      <div
-                        className="min-w-0 flex-1 rounded-full px-3 py-1.5 backdrop-blur-md"
+                      <button
+                        type="button"
+                        onClick={() => openContactProfile(selectedContact.id)}
+                        className="min-w-0 flex-1 rounded-full px-3 py-1.5 backdrop-blur-md text-left"
                         style={{ background: 'color-mix(in srgb, var(--bg-surface) 88%, transparent)', border: '1px solid var(--border-soft)' }}
+                        aria-label={`${selectedContact.name} profile`}
                       >
                         <div className="flex items-center gap-2 min-w-0">
-                          <div className={`w-7 h-7 rounded-full shrink-0 ${getAvatarTone(selectedContact.name)} flex items-center justify-center font-bold text-[10px] text-white`}>
-                            {getInitials(selectedContact.name)}
-                          </div>
+                          <PersonAvatar
+                            name={selectedContact.name}
+                            seed={selectedContact.avatarSeed || selectedContact.id}
+                            size="xs"
+                          />
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5 min-w-0">
                               <p className="font-bold text-xs truncate leading-tight" style={{ color: 'var(--text-primary)' }}>
                                 {selectedContact.name}
                               </p>
+                              {selectedContact.isSample && (
+                                <span
+                                  className="shrink-0 text-[8px] font-bold uppercase px-1.5 py-0.5 rounded"
+                                  style={{
+                                    background: 'rgba(180,83,9,0.14)',
+                                    color: '#b45309',
+                                    border: '1px dashed rgba(180,83,9,0.4)',
+                                  }}
+                                >
+                                  Sample
+                                </span>
+                              )}
                               {(selectedContact.role === 'peer' || selectedContact.peerLinked) && (
                                 <span className="shrink-0 text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-full"
                                   style={{ background: 'rgba(6,182,212,0.18)', color: '#22d3ee' }}>
@@ -2372,7 +2614,7 @@ export default function Dashboard() {
                             </p>
                           </div>
                         </div>
-                      </div>
+                      </button>
 
                       <button
                         onClick={() => setIsLedgerSearchOpen((open) => !open)}
@@ -2489,6 +2731,18 @@ export default function Dashboard() {
                                 </button>
                               )}
 
+                              <button
+                                onClick={() => {
+                                  setIsContactMenuOpen(false);
+                                  openContactProfile(selectedContact.id);
+                                }}
+                                className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
+                                style={{ color: 'var(--text-primary)' }}
+                                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-raised)'}
+                                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
+                                View profile
+                              </button>
+
                               {selectedContact.role !== 'peer' && (
                                 <button onClick={() => {
                                   setIsContactMenuOpen(false);
@@ -2496,6 +2750,10 @@ export default function Dashboard() {
                                   setContactPhone(selectedContact.phone);
                                   setContactEmail(selectedContact.email || '');
                                   setContactDueDate(selectedContact.dueDate || '');
+                                  setContactAvatarSeed(
+                                    (selectedContact.avatarSeed as AvatarPresetId) ||
+                                      presetFromFallback(selectedContact.id)
+                                  );
                                   setIsEditContactOpen(true);
                                 }}
                                   className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
@@ -2598,6 +2856,22 @@ export default function Dashboard() {
                       backgroundSize: '18px 18px',
                     }}
                   >
+                    {selectedContact.isSample ? (
+                      <div
+                        className="mb-3 rounded-xl px-3 py-2.5"
+                        style={{
+                          background: 'rgba(180,83,9,0.1)',
+                          border: '1px dashed rgba(180,83,9,0.35)',
+                        }}
+                      >
+                        <p className="text-[11px] font-bold" style={{ color: '#b45309' }}>
+                          Sample friend — practice only
+                        </p>
+                        <p className="text-[10px] mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>
+                          These payments are examples so you can learn the chat ledger. Not real money.
+                        </p>
+                      </div>
+                    ) : null}
                     {filteredTransactions.length === 0 ? (
                       <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
                         <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>💬</div>
@@ -2744,649 +3018,79 @@ export default function Dashboard() {
               />
             )}
 
-            {/* ── OVERVIEW TAB ──────────────────────────────── */}
-            {dbStatus === 'connected' && activeTab === 'insights' && (
-              <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-5">
-                <div className="px-1 pt-1">
-                  <h1 className="text-xl font-bold leading-none" style={{ color: 'var(--text-primary)' }}>Overview</h1>
-                  <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>Balances at a glance</p>
-                </div>
-
-                {/* Main wallet card */}
-                <div className="relative p-6 rounded-3xl overflow-hidden"
-                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
-                  <div className="relative z-10">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Net balance</p>
-                        <div className="flex items-baseline gap-2 mt-2">
-                          <h2 className="text-4xl font-bold tabular-nums"
-                            style={{ color: showBalances ? (stats.netBalance >= 0 ? '#6ee7b7' : '#fda4af') : 'var(--text-primary)' }}>
-                            {showBalances
-                              ? `${stats.netBalance >= 0 ? '+' : '-'}₹${Math.abs(stats.netBalance).toLocaleString('en-IN')}`
-                              : '****'}
-                          </h2>
-                        </div>
-                        <p className="text-xs mt-1" style={{ color: 'rgba(165,180,252,0.6)' }}>
-                          {stats.netBalance > 0 ? 'You are owed more than you owe' : stats.netBalance < 0 ? 'You owe more than you are owed' : 'Everything balanced'}
-                        </p>
-                      </div>
-                      <button onClick={() => setShowBalances(!showBalances)}
-                        className="p-2 rounded-xl transition-all"
-                        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--primary)' }}>
-                        {showBalances
-                          ? <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                          : <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.29 3.29m0 0a10.05 10.05 0 015.71-1.581c4.478 0 8.268 2.943 9.543 7a9.97 9.97 0 01-1.563 3.029m-5.858-.908a3 3 0 00-4.243-4.243M9.878 9.878l-3.29-3.29" /></svg>
-                        }
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4 mt-6">
-                      {[
-                        { label: 'You\'ll Receive', value: stats.totalCredit, color: '#10b981', glow: 'rgba(16,185,129,0.1)' },
-                        { label: 'You Owe', value: stats.totalDebit, color: '#f43f5e', glow: 'rgba(244,63,94,0.1)' },
-                      ].map(({ label, value, color, glow }) => (
-                        <div key={label} className="p-3 rounded-2xl" style={{ background: glow, border: `1px solid ${color}20` }}>
-                          <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: `${color}99` }}>{label}</p>
-                          <p className="text-xl font-bold tabular-nums mt-1" style={{ color }}>
-                            {showBalances ? `₹${value.toLocaleString('en-IN')}` : '****'}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Trip Expenses Highlight Banner */}
-                <div
-                  onClick={() => goToTab('trips')}
-                  className="p-4 rounded-2xl flex items-center justify-between gap-3 cursor-pointer"
-                  style={{
-                    background: 'var(--bg-surface)',
-                    border: '1px solid var(--border-soft)',
-                  }}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-primary text-primary-foreground flex items-center justify-center shrink-0 text-xs font-bold">
-                      Trip
-                    </div>
-                    <div className="min-w-0">
-                      <h4 className="font-semibold text-sm truncate" style={{ color: 'var(--text-primary)' }}>Trip expenses</h4>
-                      <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>Split bills and settle with the group</p>
-                    </div>
-                  </div>
-                  <span className="text-xs font-semibold text-primary shrink-0">Open</span>
-                </div>
-
-                {/* Due reminders */}
-                <div
-                  className="rounded-3xl p-4 space-y-3"
-                  style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                        Due reminders
-                      </h3>
-                      <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                        Overdue and upcoming balances in the next 14 days
-                      </p>
-                    </div>
-                    {balanceReminders.length > 0 && (
-                      <Badge variant="secondary">{balanceReminders.length}</Badge>
-                    )}
-                  </div>
-
-                  {balanceReminders.length === 0 ? (
-                    <p className="text-xs py-2" style={{ color: 'var(--text-muted)' }}>
-                      No due dates yet. Set one on a transaction or contact to see reminders here.
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {balanceReminders.slice(0, 8).map((reminder) => {
-                        const tone =
-                          reminder.urgency === 'overdue'
-                            ? '#f43f5e'
-                            : reminder.urgency === 'today'
-                              ? '#f59e0b'
-                              : '#38bdf8';
-                        return (
-                          <button
-                            key={reminder.id}
-                            type="button"
-                            onClick={() => {
-                              openContactChat(reminder.contactId);
-                            }}
-                            className="w-full text-left rounded-2xl p-3 transition-all hover:translate-x-0.5"
-                            style={{
-                              background: `color-mix(in srgb, ${tone} 10%, var(--bg-raised))`,
-                              border: `1px solid color-mix(in srgb, ${tone} 30%, transparent)`,
-                            }}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="text-sm font-extrabold truncate" style={{ color: 'var(--text-primary)' }}>
-                                  {reminder.contactName}
-                                </p>
-                                <p className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
-                                  {reminder.remark || 'Open balance'}
-                                  {' · '}
-                                  {reminder.source === 'contact' ? 'Balance due' : 'Entry due'}
-                                </p>
-                                <p className="text-[11px] font-bold mt-1" style={{ color: tone }}>
-                                  {formatReminderLabel(reminder)}
-                                  {' · '}
-                                  {new Date(`${reminder.dueDate}T00:00:00`).toLocaleDateString('en-IN', {
-                                    day: 'numeric',
-                                    month: 'short',
-                                  })}
-                                </p>
-                              </div>
-                              <div className="text-right shrink-0">
-                                <p className="text-sm font-bold tabular-nums" style={{ color: tone }}>
-                                  {showBalances ? `₹${reminder.amount.toLocaleString('en-IN')}` : '****'}
-                                </p>
-                                <p className="text-[10px] font-bold mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                                  {reminder.direction === 'receive' ? 'To receive' : 'To pay'}
-                                </p>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Cash vs Online + category insights */}
-                {categoryDistribution.grandTotal > 0 && (
-                  <div className="space-y-3">
-                    <div
-                      className="rounded-3xl p-4 space-y-3"
-                      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
-                    >
-                      <div>
-                        <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                          Cash vs Online
-                        </h3>
-                        <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                          How money moved across your ledgers
-                        </p>
-                      </div>
-                      {([
-                        { key: 'Cash' as const, label: 'Cash', icon: 'Cash', color: 'var(--amber)' },
-                        { key: 'Online Transfer' as const, label: 'Online', icon: 'UPI', color: 'var(--cyan)' },
-                      ]).map(({ key, label, icon, color }) => {
-                        const value = categoryDistribution.distribution[key];
-                        const pct =
-                          categoryDistribution.grandTotal > 0
-                            ? Math.round((value / categoryDistribution.grandTotal) * 100)
-                            : 0;
-                        return (
-                          <div key={key} className="space-y-1.5">
-                            <div className="flex items-center justify-between gap-2 text-xs">
-                              <span className="font-bold" style={{ color: 'var(--text-secondary)' }}>
-                                {icon} {label}
-                              </span>
-                              <span className="font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>
-                                {showBalances ? `₹${value.toLocaleString('en-IN')}` : '****'}
-                                <span className="text-[10px] font-bold ml-1.5" style={{ color: 'var(--text-muted)' }}>
-                                  {pct}%
-                                </span>
-                              </span>
-                            </div>
-                            <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--bg-raised)' }}>
-                              <div
-                                className="h-full rounded-full transition-all"
-                                style={{ width: `${pct}%`, background: color }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    <div
-                      className="rounded-3xl p-4 space-y-3"
-                      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
-                    >
-                      <div>
-                        <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                          By category
-                        </h3>
-                        <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                          Food, travel, rent, and more
-                        </p>
-                      </div>
-                      <div className="space-y-2.5">
-                        {LEDGER_CATEGORIES
-                          .map((cat) => ({
-                            cat,
-                            value: categoryDistribution.ledgerCategories[cat],
-                            cfg: LEDGER_CATEGORY_CONFIG[cat],
-                          }))
-                          .filter(({ value }) => value > 0)
-                          .sort((a, b) => b.value - a.value)
-                          .map(({ cat, value, cfg }) => {
-                            const pct =
-                              categoryDistribution.grandTotal > 0
-                                ? Math.round((value / categoryDistribution.grandTotal) * 100)
-                                : 0;
-                            return (
-                              <div key={cat} className="space-y-1.5">
-                                <div className="flex items-center justify-between gap-2 text-xs">
-                                  <span className="font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                                    {cfg.label}
-                                  </span>
-                                  <span className="font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>
-                                    {showBalances ? `₹${value.toLocaleString('en-IN')}` : '****'}
-                                    <span className="text-[10px] font-bold ml-1.5" style={{ color: 'var(--text-muted)' }}>
-                                      {pct}%
-                                    </span>
-                                  </span>
-                                </div>
-                                <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--bg-raised)' }}>
-                                  <div
-                                    className="h-full rounded-full transition-all"
-                                    style={{ width: `${pct}%`, background: cfg.tone }}
-                                  />
-                                </div>
-                              </div>
-                            );
-                          })}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Contact breakdown */}
-                {contacts.length > 0 && (
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Contact Breakdown</h3>
-                    <div className="space-y-2">
-                      {contacts
-                        .map(c => ({ c, bal: getContactBalance(c) }))
-                        .filter(({ bal }) => bal !== 0)
-                        .sort((a, b) => Math.abs(b.bal) - Math.abs(a.bal))
-                        .map(({ c, bal }) => (
-                          <button key={c.id} onClick={() => openContactChat(c.id)}
-                            className="w-full flex items-center gap-3 p-4 rounded-2xl text-left transition-all hover:translate-x-1"
-                            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
-                            <div className={`w-9 h-9 rounded-xl shrink-0 ${getAvatarTone(c.name)} flex items-center justify-center font-bold text-xs text-white`}>
-                              {getInitials(c.name)}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{c.name}</p>
-                              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                                {c.transactions.length} transaction{c.transactions.length !== 1 ? 's' : ''}
-                              </p>
-                            </div>
-                            <p className="font-bold text-sm tabular-nums shrink-0" style={{ color: bal > 0 ? '#10b981' : '#f43f5e' }}>
-                              {bal > 0 ? '+' : '-'}₹{Math.abs(bal).toLocaleString('en-IN')}
-                            </p>
-                            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--text-muted)' }}>
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                          </button>
-                        ))}
-                    </div>
-                  </div>
-                )}
-
-                {contacts.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
-                    <p className="font-semibold" style={{ color: 'var(--text-secondary)' }}>No data yet — add your first contact to see insights</p>
-                  </div>
-                )}
-              </div>
+            {/* ── ACTIVITY TAB ─────────────────────────────── */}
+            {dbStatus === 'connected' && (activeTab === 'activity' || activeTab === 'insights') && (
+              <ActivityFeed
+                contacts={contacts}
+                netBalance={stats.netBalance}
+                totalCredit={stats.totalCredit}
+                totalDebit={stats.totalDebit}
+                showBalances={showBalances}
+                onToggleBalances={() => setShowBalances((v) => !v)}
+                onOpenContact={(id) => openContactChat(id)}
+                onOpenTrip={(tripId) => {
+                  pushDashboardNav({ tab: 'trips', tripId, contactId: null });
+                  setActiveTab('trips');
+                  setMobileView('list');
+                }}
+              />
             )}
 
-            {/* ── ACCOUNT / PROFILE TAB ─────────────────────── */}
+            {/* ── ACCOUNT TAB ──────────────────────────────── */}
             {dbStatus === 'connected' && activeTab === 'settings' && (
-              <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-5">
-                {/* Profile hero */}
-                <div
-                  className="relative overflow-hidden rounded-2xl p-5"
-                  style={{
-                    background: 'var(--bg-surface)',
-                    border: '1px solid var(--border-soft)',
-                  }}
-                >
-                  <div className="flex items-start gap-4">
-                    <div
-                      className={`w-16 h-16 rounded-2xl shrink-0 ${getAvatarTone(userName || 'U')} flex items-center justify-center font-bold text-xl text-white`}
-                    >
-                      {getInitials(userName || 'U')}
-                    </div>
-                    <div className="min-w-0 flex-1 pt-0.5">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Your account</p>
-                      <h1 className="text-xl font-bold leading-tight mt-1 truncate" style={{ color: 'var(--text-primary)' }}>
-                        {userName || 'Your name'}
-                      </h1>
-                      <p className="text-xs mt-1 truncate" style={{ color: 'var(--text-secondary)' }}>{userEmail || '—'}</p>
-                      <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
-                        {userPhone ? `Phone · ${userPhone}` : 'No phone on file'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-3 gap-2">
-                    {[
-                      { label: 'Friends', value: ledgerSummary.contactCount.toLocaleString('en-IN') },
-                      { label: 'Entries', value: ledgerSummary.transactionCount.toLocaleString('en-IN') },
-                      {
-                        label: 'Active',
-                        value: ledgerSummary.lastActivity
-                          ? ledgerSummary.lastActivity.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
-                          : '—',
-                      },
-                    ].map(({ label, value }) => (
-                      <div key={label} className="rounded-2xl px-2.5 py-2 text-center" style={{ background: 'color-mix(in srgb, var(--bg-base) 55%, transparent)', border: '1px solid var(--border-soft)' }}>
-                        <p className="text-sm font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>{value}</p>
-                        <p className="text-[10px] font-bold mt-0.5" style={{ color: 'var(--text-muted)' }}>{label}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-4 flex gap-2">
-                    <Button type="button" className="flex-1" onClick={openEditProfile}>
-                      Edit profile
-                    </Button>
-                    <Button type="button" variant="outline" onClick={handleLogout}>
-                      Sign out
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Preferences */}
-                <Card className="border-primary/15 bg-card/80">
-                  <CardContent className="p-5 space-y-5">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-[11px] font-bold text-primary" style={{ background: 'var(--accent)' }}>Prefs</div>
-                        <div>
-                          <h3 className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Ledger Preferences</h3>
-                          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Small defaults that make daily entry faster</p>
-                        </div>
-                      </div>
-                      <Badge variant="secondary">Saved locally</Badge>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4">
-                      <div className="space-y-2">
-                        <p className="text-xs font-bold uppercase" style={{ color: 'var(--text-secondary)' }}>Default Transaction Mode</p>
-                        <div className="grid grid-cols-2 gap-2 p-1 rounded-xl" style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>
-                          {(['Cash', 'Online Transfer'] as const).map(mode => (
-                            <Button
-                              key={mode}
-                              type="button"
-                              variant={defaultTxMode === mode ? 'default' : 'ghost'}
-                              size="sm"
-                              onClick={() => setDefaultTxMode(mode)}
-                              className="h-10"
-                            >
-                              {mode === 'Cash' ? 'Cash' : 'Online'}
-                            </Button>
-                          ))}
-                        </div>
-                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>New transactions will open with this payment mode selected.</p>
-                      </div>
-
-                      <div className="space-y-3">
-                        {[
-                          {
-                            label: 'Dark mode',
-                            desc: 'Use the richer high-contrast dashboard theme.',
-                            active: theme === 'dark',
-                            onToggle: toggleTheme,
-                          },
-                          {
-                            label: 'Reveal balances by default',
-                            desc: 'Show amounts across overview and contact lists without holding peek.',
-                            active: showBalances,
-                            onToggle: () => setShowBalances((current) => !current),
-                          },
-                          {
-                            label: 'Compact transaction rows',
-                            desc: 'Reduce spacing in the ledger timeline for quicker scanning.',
-                            active: compactLedgerView,
-                            onToggle: () => setCompactLedgerView((current) => !current),
-                          },
-                        ].map(({ label, desc, active, onToggle }) => (
-                          <div key={label} onClick={onToggle}
-                            className="w-full flex cursor-pointer items-center justify-between gap-4 p-3 rounded-xl text-left transition-all"
-                            style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}
-                            role="group"
-                            aria-label={label}>
-                            <span>
-                              <span className="flex items-center gap-2 text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                                {label}
-                                {label === 'Dark mode' && (
-                                  <Badge variant="secondary">{theme === 'dark' ? 'Dark' : 'Light'}</Badge>
-                                )}
-                              </span>
-                              <span className="block text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{desc}</span>
-                            </span>
-                            <Switch
-                              checked={active}
-                              onCheckedChange={onToggle}
-                              aria-label={label}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Data tools */}
-                <Card className="border-primary/15 bg-card/80">
-                  <CardContent className="p-5 space-y-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style={{ background: 'rgba(6,182,212,0.1)' }}>📦</div>
-                      <div>
-                        <h3 className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Data Tools</h3>
-                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Export, copy, and review your ledger outside the app</p>
-                      </div>
-                    </div>
-
-                    <input
-                      ref={restoreInputRef}
-                      type="file"
-                      accept="application/json,.json"
-                      className="hidden"
-                      onChange={handleRestoreBackupFile}
-                    />
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                      <Button type="button" variant="secondary" onClick={handleExportBackup} disabled={contacts.length === 0}>
-                        JSON Backup
-                      </Button>
-                      <Button type="button" variant="secondary" onClick={handleExportCsv}>
-                        CSV Export
-                      </Button>
-                      <Button type="button" variant="secondary" onClick={handlePrintLedgerPdf}>
-                        PDF / Print
-                      </Button>
-                      <Button type="button" variant="secondary" onClick={() => restoreInputRef.current?.click()}>
-                        Restore JSON
-                      </Button>
-                      <Button type="button" variant="secondary" onClick={handleCopyLedgerSummary}>
-                        Copy Summary
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Account security */}
-                <Card className="border-primary/15 bg-card/80">
-                  <CardContent className="p-5 space-y-5">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style={{ background: 'rgba(16,185,129,0.1)' }}>🔐</div>
-                        <div>
-                          <h3 className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Account Security</h3>
-                          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Professional account recovery controls with password-confirmed changes.</p>
-                        </div>
-                      </div>
-                      <Badge variant="secondary" className="w-fit">Current password required</Badge>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      {([
-                        {
-                          type: 'password' as const,
-                          title: 'Change Password',
-                          desc: 'Replace your login password with a stronger one.',
-                          meta: 'Minimum 8 characters',
-                          icon: '🔑',
-                        },
-                        {
-                          type: 'pin' as const,
-                          title: 'Recovery PIN',
-                          desc: 'Update the 4-digit PIN used for account recovery.',
-                          meta: 'Digits only',
-                          icon: '🔢',
-                        },
-                        {
-                          type: 'answer' as const,
-                          title: 'Recovery Answer',
-                          desc: 'Refresh the private answer for identity checks.',
-                          meta: 'Stored securely',
-                          icon: '🛡️',
-                        },
-                      ]).map((item) => (
-                        <button
-                          key={item.type}
-                          type="button"
-                          onClick={() => openSecurityModal(item.type)}
-                          className="group rounded-2xl p-4 text-left transition-all hover:-translate-y-0.5"
-                          style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <span className="text-xl">{item.icon}</span>
-                            <svg className="h-4 w-4 transition-transform group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--text-muted)' }}>
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                          </div>
-                          <h4 className="mt-3 text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{item.title}</h4>
-                          <p className="mt-1 min-h-[2.5rem] text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>{item.desc}</p>
-                          <p className="mt-3 text-[10px] font-bold uppercase tracking-widest" style={{ color: '#34d399' }}>{item.meta}</p>
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="rounded-2xl p-3 text-xs leading-relaxed" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.18)', color: 'var(--text-secondary)' }}>
-                      Udharwale never reveals your existing password, PIN, or recovery answer. Sensitive values can only be replaced after you confirm the current password.
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Demo data (for presentations) */}
-                <Card className="border-primary/15 bg-card/80">
-                  <CardContent className="p-5 space-y-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ background: 'rgba(15,118,110,0.1)' }}>🎬</div>
-                      <div>
-                        <h3 className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Demo Dataset</h3>
-                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Replace current ledgers with sample contacts for presentations</p>
-                      </div>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={async () => {
-                        const confirmed = await confirmAction({
-                          title: 'Load demo ledger?',
-                          message: 'This replaces your current contacts and transactions with the sample demo dataset.',
-                          confirmLabel: 'Load Demo Data',
-                        });
-                        if (confirmed) await handleLoadDemoData();
-                      }}
-                      className="w-full"
-                    >
-                      Load Demo Data
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                {/* Danger zone */}
-                <Card className="bg-card/80" style={{ border: '1px solid rgba(244,63,94,0.18)' }}>
-                  <CardContent className="p-5 space-y-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-[11px] font-bold" style={{ background: 'rgba(194,59,74,0.1)', color: 'var(--rose)' }}>Care</div>
-                      <div>
-                        <h3 className="font-bold text-sm" style={{ color: '#f43f5e' }}>Danger Zone</h3>
-                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Irreversible actions — proceed carefully</p>
-                      </div>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      onClick={async () => {
-                        const confirmed = await confirmAction({
-                          title: 'Wipe all data?',
-                          message: 'This will permanently delete ALL your contacts and transactions. This cannot be undone.',
-                          confirmLabel: 'Wipe All Data',
-                          tone: 'danger',
-                        });
-                        if (confirmed) await handleWipeData();
-                      }}
-                      className="w-full"
-                    >
-                      Wipe All Data
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-primary/15 bg-card/80">
-                  <CardContent className="p-5 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-10 h-10 rounded-xl flex items-center justify-center text-lg"
-                        style={{ background: 'rgba(15,118,110,0.12)' }}
-                      >
-                        App
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>
-                          Install as app
-                        </h3>
-                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                          Home-screen install with an offline shell when the network drops
-                        </p>
-                      </div>
-                    </div>
-                    <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                      On supported browsers, use the install banner or your browser&apos;s
-                      &quot;Add to Home Screen / Install app&quot; option. The service worker caches the app
-                      shell and static assets; live ledgers still need a connection to sync.
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-primary/15 bg-card/80">
-                  <CardContent className="p-5 space-y-2 text-center">
-                    <div className="flex justify-center pb-1">
-                      <BrandMark size={56} />
-                    </div>
-                    <p className="font-branding text-lg" style={{ color: 'var(--primary)' }}>
-                      {SITE_NAME}
-                    </p>
-                    <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                      Built by {SITE_CREATOR}
-                    </p>
-                    <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-                      Personal khata for friends, loans, and shared trips — designed and maintained by{' '}
-                      {SITE_CREATOR}.
-                    </p>
-                    <CreatorCredit withProduct className="pt-1" />
-                  </CardContent>
-                </Card>
-
-                <UpcomingFeatures />
-              </div>
+              <AccountPanel
+                userName={userName}
+                userEmail={userEmail}
+                userPhone={userPhone}
+                userId={userEmail || userPhone || userName}
+                avatarSeed={userAvatarSeed || undefined}
+                contactCount={ledgerSummary.contactCount}
+                transactionCount={ledgerSummary.transactionCount}
+                lastActivityLabel={
+                  ledgerSummary.lastActivity
+                    ? ledgerSummary.lastActivity.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+                    : '—'
+                }
+                theme={theme}
+                defaultTxMode={defaultTxMode}
+                showBalances={showBalances}
+                compactLedgerView={compactLedgerView}
+                hasContacts={contacts.length > 0}
+                restoreInputRef={restoreInputRef}
+                onEditProfile={openEditProfile}
+                onLogout={handleLogout}
+                onToggleTheme={toggleTheme}
+                onSetDefaultTxMode={setDefaultTxMode}
+                onToggleShowBalances={() => setShowBalances((current) => !current)}
+                onToggleCompactLedger={() => setCompactLedgerView((current) => !current)}
+                onExportBackup={handleExportBackup}
+                onExportCsv={handleExportCsv}
+                onPrintPdf={handlePrintLedgerPdf}
+                onRestoreClick={() => restoreInputRef.current?.click()}
+                onRestoreFile={handleRestoreBackupFile}
+                onCopySummary={handleCopyLedgerSummary}
+                onOpenSecurity={openSecurityModal}
+                hasSampleData={contacts.some((c) => c.isSample)}
+                onClearSample={async () => {
+                  const confirmed = await confirmAction({
+                    title: 'Remove sample examples?',
+                    message: 'This deletes only the practice friends and sample trip. Your real data stays.',
+                    confirmLabel: 'Remove samples',
+                  });
+                  if (confirmed) await handleClearSampleData();
+                }}
+                onWipeData={async () => {
+                  const confirmed = await confirmAction({
+                    title: 'Wipe all data?',
+                    message: 'This will permanently delete ALL your contacts and transactions. This cannot be undone.',
+                    confirmLabel: 'Wipe All Data',
+                    tone: 'danger',
+                  });
+                  if (confirmed) await handleWipeData();
+                }}
+              />
             )}
+
           </main>
 
           {/* App bottom nav — in-flow so nothing sits below it */}
@@ -3407,8 +3111,8 @@ export default function Dashboard() {
                   )
                 },
                 {
-                  tab: 'insights' as const, label: 'Overview', icon: (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'insights' ? 2.5 : 2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  tab: 'activity' as const, label: 'Activity', icon: (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'activity' ? 2.5 : 2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   )
                 },
                 {
@@ -3515,6 +3219,16 @@ export default function Dashboard() {
                 <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>or add manually</span>
                 <div className="h-px flex-1" style={{ background: 'var(--border-soft)' }} />
               </div>
+
+              <AvatarPicker
+                name={contactName || 'Friend'}
+                value={contactAvatarSeed}
+                onChange={setContactAvatarSeed}
+                columns={4}
+                size="sm"
+                label="Avatar"
+                hint="Only you see this — they can pick their own if they join Udharwale."
+              />
 
               <div className="space-y-1.5">
                 <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Friend&apos;s Name *</label>
@@ -3831,6 +3545,28 @@ export default function Dashboard() {
 
             <div className="p-5 overflow-y-auto scrollbar-thin">
               <form id="edit-contact-form" onSubmit={handleEditContactSubmit} className="space-y-4">
+                {selectedContact?.avatarLocked ? (
+                  <div className="flex items-center gap-3 rounded-xl px-3 py-2.5" style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}>
+                    <PersonAvatar
+                      name={contactName || selectedContact.name}
+                      seed={selectedContact.avatarSeed || selectedContact.id}
+                      size="md"
+                    />
+                    <p className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
+                      This friend is on Udharwale — their account avatar is shown. You can&apos;t change it for them.
+                    </p>
+                  </div>
+                ) : (
+                  <AvatarPicker
+                    name={contactName || 'Friend'}
+                    value={contactAvatarSeed}
+                    onChange={setContactAvatarSeed}
+                    columns={4}
+                    size="sm"
+                    label="Avatar"
+                    hint="Local look for this friend — only on your ledger."
+                  />
+                )}
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Name <span className="text-rose-500">*</span></label>
                   <input type="text" required value={contactName} onChange={e => setContactName(e.target.value)}
@@ -3904,10 +3640,21 @@ export default function Dashboard() {
             </div>
             <form onSubmit={handleSaveProfile} className="p-5 space-y-4">
               <div className="flex justify-center">
-                <div className={`w-20 h-20 rounded-full ${getAvatarTone(profileName || userName || 'U')} flex items-center justify-center font-bold text-2xl text-white`}>
-                  {getInitials(profileName || userName || 'U')}
-                </div>
+                <PersonAvatar
+                  name={profileName || userName || 'You'}
+                  seed={profileAvatarSeed}
+                  size="xl"
+                />
               </div>
+              <AvatarPicker
+                name={profileName || userName || 'You'}
+                value={profileAvatarSeed}
+                onChange={setProfileAvatarSeed}
+                columns={4}
+                size="sm"
+                label="Your avatar"
+                hint="Friends who link with you will see this face."
+              />
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Display name</label>
                 <input type="text" required value={profileName} onChange={(e) => setProfileName(e.target.value)}

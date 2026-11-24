@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db';
 import Contact from '@/models/Contact';
-import { INITIAL_CONTACTS } from '@/app/components/mockData';
+import Trip from '@/models/Trip';
+import User from '@/models/User';
 import { getAuthenticatedUserId } from '@/lib/session';
+import { clearSampleDataForUser, seedSampleDataForUser } from '@/lib/seed-sample-data';
 
 export const dynamic = 'force-dynamic';
 
+/** Re-seeds practice sample friends + trip (marked isSample). Does not wipe real data. */
 export async function POST() {
   try {
     const userId = await getAuthenticatedUserId();
@@ -14,28 +17,28 @@ export async function POST() {
     }
 
     await connectToDatabase();
-    // Delete existing documents belonging to this user only
-    await Contact.deleteMany({ userId });
+    await clearSampleDataForUser(userId);
 
-    // Unique contact/tx ids per user so multi-user demos never collide
-    const stamp = String(userId).slice(-8);
-    const contactsWithUser = INITIAL_CONTACTS.map((contact) => ({
-      ...contact,
-      id: `${contact.id}-${stamp}`,
-      userId,
-      transactions: contact.transactions.map((tx) => ({
-        ...tx,
-        id: `${tx.id}-${stamp}`,
-      })),
-    }));
+    // Remove any leftover non-sample demo ids from older reset flows that used INITIAL_CONTACTS
+    // only when the user has zero real contacts — otherwise leave their ledger alone.
+    const realCount = await Contact.countDocuments({ userId, isSample: { $ne: true } });
+    if (realCount === 0) {
+      await Contact.deleteMany({ userId });
+      await Trip.deleteMany({ userId, isSample: true });
+    }
 
-    await Contact.insertMany(contactsWithUser);
-    
-    return NextResponse.json({ success: true, message: 'Database reset to mock dataset successfully' });
+    const user = await User.findById(userId).select('name');
+    const seeded = await seedSampleDataForUser(userId, user?.name || 'You');
+
+    return NextResponse.json({
+      success: true,
+      message: 'Sample examples ready',
+      ...seeded,
+    });
   } catch (error: any) {
-    console.error('Error resetting database:', error);
+    console.error('Error resetting sample data:', error);
     return NextResponse.json(
-      { error: 'Failed to reset database' },
+      { error: 'Failed to reset sample data' },
       { status: 500 }
     );
   }
