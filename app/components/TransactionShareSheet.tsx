@@ -58,8 +58,8 @@ export function buildTransactionShareMessage({
   const isGave = transaction.type === 'gave';
 
   let text = isGave
-    ? `Hey! I paid you ${amount} and logged it in Udharwale`
-    : `Hey! I got ${amount} from you and logged it in Udharwale`;
+    ? `Hey! I paid you ${amount} ${via} and logged it in Udharwale`
+    : `Hey! I got ${amount} from you ${via} and logged it in Udharwale`;
 
   if (remarks) text += ` for ${remarks}`;
   text += '.';
@@ -100,11 +100,10 @@ export default function TransactionShareSheet({
   const paper = '#fffcf7';
   const line = 'rgba(20,32,28,0.1)';
   const accent = isGave ? '#0f766e' : '#9f1239';
+  const accentSoft = isGave ? 'rgba(15,118,110,0.12)' : 'rgba(159,18,57,0.1)';
   const fromName = isGave ? userName || 'You' : contactName;
   const toName = isGave ? contactName : userName || 'You';
   const statusLabel = isGave ? 'You gave' : 'You got';
-  const title = isGave ? 'Payment to' : 'Payment from';
-  const counterpart = contactName;
 
   const ensureLogoLoaded = () =>
     new Promise<void>((resolve) => {
@@ -161,7 +160,6 @@ export default function TransactionShareSheet({
     }
   };
 
-  /** System share sheet: pick who gets it. Sends receipt image + caption (with chat link). */
   const handleShare = async () => {
     setBusy('share');
     try {
@@ -195,46 +193,68 @@ export default function TransactionShareSheet({
     }
   };
 
-  const detailRows = [
+  const metaBits = [
     { label: 'Date', value: formatLongDate(transaction.date) },
     { label: 'Mode', value: mode },
     { label: 'Category', value: category },
-    { label: 'Reference', value: ref },
+    { label: 'Ref', value: ref },
   ];
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.45)' }} onClick={onClose} />
+      <div
+        className="absolute inset-0"
+        style={{ background: 'rgba(10,16,14,0.5)', backdropFilter: 'blur(6px)' }}
+        onClick={onClose}
+      />
 
       <div
-        className="relative w-full max-w-md rounded-t-[20px] sm:rounded-[20px] overflow-hidden flex flex-col"
+        className="relative w-full max-w-md overflow-hidden flex flex-col"
         style={{
           background: 'var(--bg-surface)',
           border: '1px solid var(--border-soft)',
+          borderRadius: '24px 24px 0 0',
           maxHeight: '94vh',
+          boxShadow: '0 -16px 48px rgba(20,32,28,0.14)',
         }}
       >
         <div
-          className="flex items-center justify-between px-5 pt-4 pb-3 shrink-0"
-          style={{ borderBottom: '1px solid var(--border-soft)' }}
+          className="shrink-0 px-5 pt-4 pb-3"
+          style={{
+            background:
+              'linear-gradient(165deg, rgba(15,118,110,0.12) 0%, rgba(15,118,110,0.03) 55%, transparent 100%)',
+            borderBottom: '1px solid var(--border-soft)',
+          }}
         >
-          <div>
-            <h3 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
-              Share payment
-            </h3>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-              Pick who to send — receipt image + note + chat link
-            </p>
+          <div
+            className="mx-auto mb-3 h-1 w-10 rounded-full sm:hidden"
+            style={{ background: 'var(--border-soft)' }}
+          />
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p
+                className="text-[10px] font-bold uppercase tracking-[0.14em]"
+                style={{ color: 'var(--primary)' }}
+              >
+                Payment receipt
+              </p>
+              <h3 className="text-lg font-extrabold leading-tight" style={{ color: 'var(--text-primary)' }}>
+                Share this entry
+              </h3>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                Image + note + chat link — pick who gets it
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-9 w-9 rounded-xl inline-flex items-center justify-center shrink-0"
+              style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}
+              aria-label="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-9 w-9 rounded-xl inline-flex items-center justify-center"
-            style={{ background: 'var(--bg-raised)', color: 'var(--text-muted)' }}
-            aria-label="Close"
-          >
-            <X className="w-4 h-4" />
-          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
@@ -244,23 +264,28 @@ export default function TransactionShareSheet({
               style={{
                 width: 340,
                 background: paper,
-                borderRadius: '0 0 18px 18px',
+                borderRadius: 22,
                 overflow: 'hidden',
                 fontFamily: 'Manrope, ui-sans-serif, system-ui, sans-serif',
                 color: ink,
                 border: `1px solid ${line}`,
-                borderTop: `3px solid ${accent}`,
-                boxShadow: '0 10px 28px rgba(20,32,28,0.08)',
+                boxShadow: '0 18px 40px rgba(20,32,28,0.12)',
               }}
             >
-              <div style={{ padding: '22px 22px 8px' }}>
+              {/* Brand band */}
+              <div
+                style={{
+                  background: `linear-gradient(135deg, ${accent} 0%, ${isGave ? '#0d9488' : '#be123c'} 100%)`,
+                  padding: '18px 20px 16px',
+                  color: '#fff',
+                }}
+              >
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     gap: 12,
-                    marginBottom: 18,
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
@@ -268,84 +293,103 @@ export default function TransactionShareSheet({
                     <img
                       src={SITE_ICON}
                       alt=""
-                      width={40}
-                      height={40}
+                      width={36}
+                      height={36}
                       style={{
-                        width: 40,
-                        height: 40,
+                        width: 36,
+                        height: 36,
                         borderRadius: 10,
                         display: 'block',
                         flexShrink: 0,
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
                       }}
                     />
                     <div style={{ minWidth: 0 }}>
                       <p
                         style={{
                           margin: 0,
-                          fontSize: 11,
-                          fontWeight: 700,
-                          letterSpacing: '0.12em',
-                          textTransform: 'uppercase',
-                          color: muted,
+                          fontSize: 13,
+                          fontWeight: 800,
+                          letterSpacing: '-0.02em',
                         }}
                       >
                         {SITE_NAME}
                       </p>
-                      <p style={{ margin: '4px 0 0', fontSize: 11, fontWeight: 600, color: muted }}>
+                      <p style={{ margin: '2px 0 0', fontSize: 10, fontWeight: 600, opacity: 0.85 }}>
                         by {SITE_CREATOR}
                       </p>
                     </div>
                   </div>
                   <span
                     style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      padding: '5px 10px',
+                      fontSize: 10,
+                      fontWeight: 800,
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      padding: '6px 10px',
                       borderRadius: 999,
-                      background: 'rgba(20,32,28,0.05)',
-                      color: ink,
+                      background: 'rgba(255,255,255,0.2)',
                       whiteSpace: 'nowrap',
                     }}
                   >
                     {statusLabel}
                   </span>
                 </div>
+              </div>
 
-                <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: muted }}>{title}</p>
+              {/* Amount hero */}
+              <div style={{ padding: '22px 22px 8px', textAlign: 'center' }}>
                 <p
                   style={{
-                    margin: '4px 0 0',
-                    fontSize: 18,
+                    margin: 0,
+                    fontSize: 11,
                     fontWeight: 700,
-                    lineHeight: 1.25,
-                    wordBreak: 'break-word',
+                    letterSpacing: '0.12em',
+                    textTransform: 'uppercase',
+                    color: muted,
                   }}
                 >
-                  {counterpart}
+                  Amount
                 </p>
                 <p
                   style={{
-                    margin: '14px 0 0',
-                    fontSize: 36,
+                    margin: '8px 0 0',
+                    fontSize: 42,
                     fontWeight: 800,
-                    letterSpacing: '-0.03em',
+                    letterSpacing: '-0.04em',
                     lineHeight: 1,
+                    color: accent,
                     fontVariantNumeric: 'tabular-nums',
                   }}
                 >
                   {amountLabel}
                 </p>
+                {transaction.remark?.trim() ? (
+                  <p
+                    style={{
+                      margin: '12px auto 0',
+                      maxWidth: 280,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      lineHeight: 1.4,
+                      color: ink,
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {transaction.remark.trim()}
+                  </p>
+                ) : null}
               </div>
 
-              <div style={{ padding: '16px 22px 12px' }}>
+              {/* From → To */}
+              <div style={{ padding: '16px 22px 6px' }}>
                 <div
                   style={{
-                    borderTop: `1px solid ${line}`,
-                    borderBottom: `1px solid ${line}`,
-                    padding: '14px 0',
-                    marginBottom: 14,
+                    borderRadius: 16,
+                    background: accentSoft,
+                    padding: '14px 16px',
                     display: 'grid',
-                    gap: 12,
+                    gap: 10,
                   }}
                 >
                   <div>
@@ -365,12 +409,32 @@ export default function TransactionShareSheet({
                       style={{
                         margin: '4px 0 0',
                         fontSize: 15,
-                        fontWeight: 700,
+                        fontWeight: 800,
                         lineHeight: 1.3,
+                        wordBreak: 'break-word',
                       }}
                     >
                       {fromName}
                     </p>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                    <div
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 999,
+                        background: accent,
+                        color: '#fff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 14,
+                        fontWeight: 800,
+                        lineHeight: 1,
+                      }}
+                    >
+                      ↓
+                    </div>
                   </div>
                   <div>
                     <p
@@ -389,86 +453,83 @@ export default function TransactionShareSheet({
                       style={{
                         margin: '4px 0 0',
                         fontSize: 15,
-                        fontWeight: 700,
+                        fontWeight: 800,
                         lineHeight: 1.3,
+                        wordBreak: 'break-word',
                       }}
                     >
                       {toName}
                     </p>
                   </div>
                 </div>
+              </div>
 
-                {transaction.remark?.trim() ? (
-                  <div style={{ marginBottom: 14 }}>
-                    <p
-                      style={{
-                        margin: 0,
-                        fontSize: 10,
-                        fontWeight: 700,
-                        letterSpacing: '0.1em',
-                        textTransform: 'uppercase',
-                        color: muted,
-                      }}
-                    >
-                      Remarks
-                    </p>
-                    <p
-                      style={{
-                        margin: '6px 0 0',
-                        fontSize: 14,
-                        fontWeight: 600,
-                        lineHeight: 1.4,
-                        wordBreak: 'break-word',
-                      }}
-                    >
-                      {transaction.remark.trim()}
-                    </p>
-                  </div>
-                ) : null}
-
-                <div style={{ display: 'grid', gap: 9 }}>
-                  {detailRows.map((row) => (
+              {/* Meta grid */}
+              <div style={{ padding: '14px 22px 20px' }}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: 10,
+                  }}
+                >
+                  {metaBits.map((row) => (
                     <div
                       key={row.label}
                       style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        gap: 16,
-                        fontSize: 13,
-                        alignItems: 'flex-start',
+                        borderRadius: 12,
+                        border: `1px solid ${line}`,
+                        padding: '10px 12px',
+                        background: 'rgba(20,32,28,0.02)',
                       }}
                     >
-                      <span style={{ color: muted, fontWeight: 600, flexShrink: 0 }}>{row.label}</span>
-                      <span
+                      <p
                         style={{
-                          color: ink,
+                          margin: 0,
+                          fontSize: 10,
                           fontWeight: 700,
-                          textAlign: 'right',
+                          letterSpacing: '0.08em',
+                          textTransform: 'uppercase',
+                          color: muted,
+                        }}
+                      >
+                        {row.label}
+                      </p>
+                      <p
+                        style={{
+                          margin: '4px 0 0',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          lineHeight: 1.35,
                           wordBreak: 'break-word',
                         }}
                       >
                         {row.value}
-                      </span>
+                      </p>
                     </div>
                   ))}
                 </div>
               </div>
-
-              <div style={{ height: 16 }} />
             </div>
           </div>
 
           <div
             className="rounded-2xl px-3.5 py-3"
-            style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}
+            style={{
+              background: 'var(--bg-raised)',
+              border: '1px solid var(--border-soft)',
+            }}
           >
             <p
-              className="text-[10px] font-semibold uppercase tracking-wider mb-1.5"
+              className="text-[10px] font-bold uppercase tracking-[0.12em] mb-1.5"
               style={{ color: 'var(--text-muted)' }}
             >
-              Goes with the image
+              Message caption
             </p>
-            <p className="text-xs leading-relaxed m-0 whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>
+            <p
+              className="text-xs leading-relaxed m-0 whitespace-pre-wrap"
+              style={{ color: 'var(--text-secondary)' }}
+            >
               {caption}
             </p>
           </div>
@@ -478,18 +539,22 @@ export default function TransactionShareSheet({
           className="shrink-0 px-4 pt-3 space-y-2"
           style={{
             borderTop: '1px solid var(--border-soft)',
-            paddingBottom: 'max(0.85rem, env(safe-area-inset-bottom))',
+            background: 'var(--bg-surface)',
+            paddingBottom: 'max(0.9rem, env(safe-area-inset-bottom))',
           }}
         >
           <button
             type="button"
             onClick={handleShare}
             disabled={!!busy}
-            className="w-full h-12 rounded-xl text-sm font-semibold text-white inline-flex items-center justify-center gap-2 disabled:opacity-60"
-            style={{ background: 'var(--primary)' }}
+            className="w-full h-12 rounded-2xl text-sm font-bold text-white inline-flex items-center justify-center gap-2 disabled:opacity-60"
+            style={{
+              background: 'linear-gradient(135deg, #0f766e 0%, #0d9488 100%)',
+              boxShadow: '0 10px 24px rgba(15,118,110,0.28)',
+            }}
           >
             {busy === 'share' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
-            Share
+            Share receipt
           </button>
           <div className="grid grid-cols-2 gap-2">
             <button
@@ -504,7 +569,7 @@ export default function TransactionShareSheet({
               }}
             >
               {busy === 'download' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              Save image
+              Save
             </button>
             <button
               type="button"
@@ -524,7 +589,7 @@ export default function TransactionShareSheet({
               ) : (
                 <Copy className="w-4 h-4" />
               )}
-              {copied ? 'Copied' : 'Copy caption'}
+              {copied ? 'Copied' : 'Copy note'}
             </button>
           </div>
         </div>
