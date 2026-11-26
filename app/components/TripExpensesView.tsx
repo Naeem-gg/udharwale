@@ -43,6 +43,13 @@ import {
   TRIPS_CACHE_KEY,
   writeTripsCache,
 } from '@/lib/client-cache';
+import {
+  buildTripLedgerRemark,
+  ledgerAmountFor,
+  resolveLedgerTarget,
+  settlementAlreadyInLedger,
+  settlementInvolvesMe,
+} from '@/lib/trip-ledger';
 
 function avatarGradient(name: string) {
   return avatarToneClass(name);
@@ -67,8 +74,20 @@ interface TripExpensesViewProps {
   userName?: string;
   userAvatarSeed?: string;
   onOpenAccount?: () => void;
-  onRecordToLedger?: (contactId: string, amount: number, type: 'gave' | 'got', remark: string) => Promise<void>;
-  showToast?: (message: string, type: 'success' | 'error' | 'info') => void;
+  onRecordToLedger?: (
+    contactId: string,
+    amount: number,
+    type: 'gave' | 'got',
+    remark: string
+  ) => Promise<{ ok: boolean; txId?: string; error?: string }>;
+  onEnsureContact?: (name: string, phone?: string) => Promise<Contact | null>;
+  onConfirmAction?: (options: {
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    tone?: 'danger' | 'default';
+  }) => Promise<boolean>;
+  showToast?: (message: string, type: 'success' | 'error' | 'info' | 'warn') => void;
 }
 
 export default function TripExpensesView({
@@ -77,6 +96,8 @@ export default function TripExpensesView({
   userAvatarSeed,
   onOpenAccount,
   onRecordToLedger,
+  onEnsureContact,
+  onConfirmAction,
   showToast = () => {},
 }: TripExpensesViewProps) {
   // Trips State (SSR-safe; hydrate cache after mount)
@@ -105,6 +126,7 @@ export default function TripExpensesView({
   const [isGeneratingShare, setIsGeneratingShare] = useState(false);
   const [copiedShareLink, setCopiedShareLink] = useState(false);
   const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
+  const [recordingSettlementId, setRecordingSettlementId] = useState<string | null>(null);
 
   // New Trip Form State
   const [newTripName, setNewTripName] = useState('');
@@ -500,6 +522,9 @@ export default function TripExpensesView({
       settledBy: undefined,
       paymentMethod: undefined,
       note: undefined,
+      // Keep ledger link so we don't double-post if recorded earlier
+      ledgerTxId: st.ledgerTxId,
+      recordedToLedgerAt: st.recordedToLedgerAt,
     };
 
     if (index >= 0) {
@@ -667,43 +692,99 @@ export default function TripExpensesView({
     }
   };
 
+  const markSettlementRecorded = async (settlement: TripSettlement, txId: string) => {
+    if (!currentTrip) return;
+    const existingSettlements = currentTrip.settlements ? [...currentTrip.settlements] : [];
+    const index = existingSettlements.findIndex((s) => s.id === settlement.id);
+    const record: TripSettlement = {
+      ...settlement,
+      ledgerTxId: txId,
+      recordedToLedgerAt: new Date().toISOString(),
+    };
+    if (index >= 0) existingSettlements[index] = record;
+    else existingSettlements.push(record);
+
+    const updatedTrip: Trip = {
+      ...currentTrip,
+      settlements: existingSettlements,
+      updatedAt: new Date().toISOString(),
+    };
+    await saveTripsState(trips.map((t) => (t.id === updatedTrip.id ? updatedTrip : t)));
+  };
+
   // Record settlement to Udharwale contact ledger
   const handleRecordSettlement = async (settlement: TripSettlement) => {
-    if (!currentTrip) return;
-    const isFromMe = settlement.fromName.toLowerCase().includes('you') || settlement.fromName === userName;
-    const isToMe = settlement.toName.toLowerCase().includes('you') || settlement.toName === userName;
+    if (!currentTrip || !onRecordToLedger) return;
 
-    let targetContactId = isFromMe ? settlement.toContactId : settlement.fromContactId;
-    const otherPersonName = isFromMe ? settlement.toName : settlement.fromName;
-
-    if (!targetContactId) {
-      const match = contacts.find(
-        (c) => c.name.toLowerCase() === otherPersonName.toLowerCase()
-      );
-      if (match) targetContactId = match.id;
-    }
-
-    if (!targetContactId || !onRecordToLedger) {
-      showToast(
-        `Please add "${otherPersonName}" as a contact first to record transactions directly in your ledger.`,
-        'info'
-      );
+    const target = resolveLedgerTarget(settlement, currentTrip, contacts, userName);
+    if (!target) {
+      showToast('This settlement isn’t between you and a friend — nothing to record.', 'info');
       return;
     }
 
-    const type = isToMe ? 'gave' : 'got';
-    const remark = `Trip: ${currentTrip.name} settlement`;
-    const ledgerAmount =
-      settlement.remainingAmount > 0.01 ? settlement.remainingAmount : settlement.amount;
+    if (settlementAlreadyInLedger(contacts, target.contactId, settlement)) {
+      showToast('Already on your ledger for this settlement', 'info');
+      return;
+    }
 
+    const amount = ledgerAmountFor(settlement);
+    if (amount <= 0.01) {
+      showToast('Nothing left to record for this settlement', 'info');
+      return;
+    }
+
+    let contactId = target.contactId;
+    let contactName = target.otherName;
+
+    if (!contactId) {
+      if (!onEnsureContact) {
+        showToast(`Add "${target.otherName}" as a friend first, then record.`, 'warn');
+        return;
+      }
+      const createOk = onConfirmAction
+        ? await onConfirmAction({
+            title: 'Add friend & record?',
+            message: `"${target.otherName}" isn’t in your friends yet. Create them and add ₹${amount.toLocaleString('en-IN')} to their khata?`,
+            confirmLabel: 'Add & record',
+          })
+        : true;
+      if (!createOk) return;
+
+      const created = await onEnsureContact(target.otherName, target.otherPhone);
+      if (!created) return;
+      contactId = created.id;
+      contactName = created.name;
+    } else {
+      const direction = target.youReceive
+        ? `${contactName} owes you`
+        : `you owe ${contactName}`;
+      const confirmed = onConfirmAction
+        ? await onConfirmAction({
+            title: 'Record on ledger?',
+            message: `Add ₹${amount.toLocaleString('en-IN')} to ${contactName}'s khata (${direction}) from “${currentTrip.name}”?`,
+            confirmLabel: 'Record',
+          })
+        : true;
+      if (!confirmed) return;
+    }
+
+    const remark = buildTripLedgerRemark(currentTrip.name, settlement.id);
+    setRecordingSettlementId(settlement.id);
     try {
-      await onRecordToLedger(targetContactId, ledgerAmount, type, remark);
+      const result = await onRecordToLedger(contactId, amount, target.type, remark);
+      if (!result?.ok) {
+        showToast(result?.error || 'Could not record to ledger', 'error');
+        return;
+      }
+      await markSettlementRecorded(settlement, result.txId || `tx_${Date.now()}`);
       showToast(
-        `Recorded ₹${ledgerAmount.toLocaleString('en-IN')} settlement in ${otherPersonName}'s ledger`,
+        `₹${amount.toLocaleString('en-IN')} added to ${contactName}'s khata`,
         'success'
       );
     } catch {
       showToast('Could not record to ledger. Please check connection.', 'error');
+    } finally {
+      setRecordingSettlementId(null);
     }
   };
 
@@ -1146,20 +1227,63 @@ export default function TripExpensesView({
                                 <Send className="w-3.5 h-3.5" />
                                 Remind
                               </button>
-                              {(st.fromContactId || st.toContactId || contacts.length > 0) && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleRecordSettlement(st)}
-                                  className="h-11 px-3 rounded-xl text-sm font-semibold"
-                                  style={{
-                                    background: 'var(--bg-raised)',
-                                    color: 'var(--text-secondary)',
-                                    border: '1px solid var(--border-soft)',
-                                  }}
-                                >
-                                  To ledger
-                                </button>
-                              )}
+                              {currentTrip &&
+                              onRecordToLedger &&
+                              settlementInvolvesMe(st, currentTrip, userName) ? (
+                                (() => {
+                                  const target = resolveLedgerTarget(
+                                    st,
+                                    currentTrip,
+                                    contacts,
+                                    userName
+                                  );
+                                  const amount = ledgerAmountFor(st);
+                                  const recorded = settlementAlreadyInLedger(
+                                    contacts,
+                                    target?.contactId,
+                                    st
+                                  );
+                                  const busy = recordingSettlementId === st.id;
+                                  if (recorded) {
+                                    return (
+                                      <button
+                                        type="button"
+                                        disabled
+                                        className="h-11 px-3 rounded-xl text-sm font-semibold inline-flex items-center gap-1"
+                                        style={{
+                                          background: 'rgba(4,120,87,0.1)',
+                                          color: 'var(--emerald)',
+                                          border: '1px solid rgba(4,120,87,0.2)',
+                                        }}
+                                      >
+                                        <Check className="w-3.5 h-3.5" />
+                                        In ledger
+                                      </button>
+                                    );
+                                  }
+                                  const label = !target?.contactId
+                                    ? `Add & record ₹${amount.toLocaleString('en-IN')}`
+                                    : `Record ₹${amount.toLocaleString('en-IN')}`;
+                                  return (
+                                    <button
+                                      type="button"
+                                      disabled={busy || amount <= 0.01}
+                                      onClick={() => void handleRecordSettlement(st)}
+                                      className="h-11 px-3 rounded-xl text-sm font-semibold"
+                                      style={{
+                                        background:
+                                          'color-mix(in srgb, var(--primary) 12%, var(--bg-surface))',
+                                        color: 'var(--primary)',
+                                        border:
+                                          '1px solid color-mix(in srgb, var(--primary) 28%, transparent)',
+                                        opacity: busy ? 0.7 : 1,
+                                      }}
+                                    >
+                                      {busy ? 'Recording…' : label}
+                                    </button>
+                                  );
+                                })()
+                              ) : null}
                             </div>
                           </div>
                         );
@@ -1195,17 +1319,51 @@ export default function TripExpensesView({
                                   {st.settledBy ? ` · confirmed by ${st.settledBy}` : ''}
                                   {st.settledAt ? ` · ${formatWhen(st.settledAt)}` : ''}
                                   {st.paymentMethod ? ` · ${st.paymentMethod}` : ''}
+                                  {st.ledgerTxId ||
+                                  settlementAlreadyInLedger(
+                                    contacts,
+                                    resolveLedgerTarget(st, currentTrip!, contacts, userName)
+                                      ?.contactId,
+                                    st
+                                  )
+                                    ? ' · in ledger'
+                                    : ''}
                                 </p>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => handleReopenSettlement(st)}
-                                className="h-8 px-2.5 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1"
-                                style={{ color: 'var(--text-muted)', background: 'var(--bg-raised)' }}
-                              >
-                                <RotateCcw className="w-3 h-3" />
-                                Undo
-                              </button>
+                              <div className="shrink-0 flex items-center gap-1.5">
+                                {currentTrip &&
+                                onRecordToLedger &&
+                                settlementInvolvesMe(st, currentTrip, userName) &&
+                                !settlementAlreadyInLedger(
+                                  contacts,
+                                  resolveLedgerTarget(st, currentTrip, contacts, userName)
+                                    ?.contactId,
+                                  st
+                                ) ? (
+                                  <button
+                                    type="button"
+                                    disabled={recordingSettlementId === st.id}
+                                    onClick={() => void handleRecordSettlement(st)}
+                                    className="h-8 px-2.5 rounded-lg text-[11px] font-semibold"
+                                    style={{
+                                      color: 'var(--primary)',
+                                      background:
+                                        'color-mix(in srgb, var(--primary) 10%, var(--bg-raised))',
+                                    }}
+                                  >
+                                    {recordingSettlementId === st.id ? '…' : 'To ledger'}
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => handleReopenSettlement(st)}
+                                  className="h-8 px-2.5 rounded-lg text-[11px] font-semibold inline-flex items-center gap-1"
+                                  style={{ color: 'var(--text-muted)', background: 'var(--bg-raised)' }}
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                  Undo
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>

@@ -5,7 +5,9 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Clock3,
+  Copy,
   MapPin,
+  MessageCircle,
   Pencil,
   Plus,
   RotateCcw,
@@ -14,7 +16,7 @@ import {
   UserPlus,
   Wallet,
 } from 'lucide-react';
-import type { Contact } from './types';
+import type { BalanceReminder, Contact } from './types';
 import type { Trip } from './trip-types';
 import {
   buildActivityFeed,
@@ -26,12 +28,14 @@ import {
   type ActivityItem,
   type ActivityKind,
 } from '@/lib/activity-feed';
+import { formatReminderLabel, primaryRemindersByContact } from '@/lib/reminders';
 import { readSessionCache, readTripsCache } from '@/lib/client-cache';
 import { ActivityFeedSkeleton } from './Skeleton';
 import PersonAvatar from './PersonAvatar';
 
 type Props = {
   contacts: Contact[];
+  reminders?: BalanceReminder[];
   netBalance: number;
   totalCredit: number;
   totalDebit: number;
@@ -41,6 +45,9 @@ type Props = {
   onToggleBalances: () => void;
   onOpenAccount?: () => void;
   onOpenContact: (contactId: string) => void;
+  onRemindWhatsApp?: (contactId: string, dueLabel: string) => void;
+  onCopyReminder?: (contactId: string, dueLabel: string) => void;
+  onPayUpi?: (contactId: string) => void;
   onOpenTrip: (tripId: string) => void;
 };
 
@@ -84,8 +91,19 @@ function amountColor(item: ActivityItem) {
   return 'var(--text-secondary)';
 }
 
+function urgencyTone(urgency: BalanceReminder['urgency']) {
+  if (urgency === 'overdue') {
+    return { bg: 'rgba(244,63,94,0.12)', color: '#e11d48', border: 'rgba(244,63,94,0.28)' };
+  }
+  if (urgency === 'today') {
+    return { bg: 'rgba(245,158,11,0.14)', color: '#d97706', border: 'rgba(245,158,11,0.32)' };
+  }
+  return { bg: 'rgba(15,118,110,0.1)', color: 'var(--primary)', border: 'rgba(15,118,110,0.22)' };
+}
+
 export default function ActivityFeed({
   contacts,
+  reminders = [],
   netBalance,
   totalCredit,
   totalDebit,
@@ -95,6 +113,9 @@ export default function ActivityFeed({
   onToggleBalances,
   onOpenAccount,
   onOpenContact,
+  onRemindWhatsApp,
+  onCopyReminder,
+  onPayUpi,
   onOpenTrip,
 }: Props) {
   const [filter, setFilter] = useState<ActivityFilter>('all');
@@ -141,6 +162,17 @@ export default function ActivityFeed({
     [feed, contacts, trips]
   );
 
+  const dueRows = useMemo(() => primaryRemindersByContact(reminders), [reminders]);
+  const overdueCount = useMemo(
+    () => dueRows.filter((r) => r.urgency === 'overdue' || r.urgency === 'today').length,
+    [dueRows]
+  );
+  const contactsById = useMemo(() => {
+    const map = new Map<string, Contact>();
+    for (const contact of contacts) map.set(contact.id, contact);
+    return map;
+  }, [contacts]);
+
   const handleOpen = (item: ActivityItem) => {
     if (item.contactId) onOpenContact(item.contactId);
     else if (item.tripId) onOpenTrip(item.tripId);
@@ -170,7 +202,7 @@ export default function ActivityFeed({
               Activity
             </h1>
             <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>
-              Balances and recent account actions
+              Due balances and recent account actions
             </p>
           </div>
         </div>
@@ -231,6 +263,152 @@ export default function ActivityFeed({
             </div>
           </div>
         </div>
+
+        {dueRows.length > 0 ? (
+          <section className="space-y-2">
+            <div className="px-1 flex items-end justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                  Due
+                </h2>
+                <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                  {overdueCount > 0
+                    ? `${overdueCount} need attention now`
+                    : 'Upcoming repayments in the next 2 weeks'}
+                </p>
+              </div>
+            </div>
+            <div
+              className="rounded-2xl overflow-hidden"
+              style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+            >
+              {dueRows.map((reminder, index) => {
+                const contact = contactsById.get(reminder.contactId);
+                const tone = urgencyTone(reminder.urgency);
+                const label = formatReminderLabel(reminder);
+                const isLast = index === dueRows.length - 1;
+                const amountPrefix = reminder.direction === 'receive' ? '+' : '−';
+                const amountColor =
+                  reminder.direction === 'receive' ? 'var(--emerald)' : 'var(--rose)';
+
+                return (
+                  <div
+                    key={reminder.id}
+                    className="flex items-center gap-3 px-3.5 py-3"
+                    style={{
+                      borderBottom: isLast ? 'none' : '1px solid var(--border-soft)',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onOpenContact(reminder.contactId)}
+                      className="shrink-0 rounded-full"
+                      aria-label={`Open ${reminder.contactName}`}
+                    >
+                      <PersonAvatar
+                        name={reminder.contactName}
+                        seed={contact?.avatarSeed || reminder.contactId}
+                        size="md"
+                      />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onOpenContact(reminder.contactId)}
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <p
+                          className="text-sm font-bold truncate"
+                          style={{ color: 'var(--text-primary)' }}
+                        >
+                          {reminder.contactName}
+                        </p>
+                        <span
+                          className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full"
+                          style={{
+                            background: tone.bg,
+                            color: tone.color,
+                            border: `1px solid ${tone.border}`,
+                          }}
+                        >
+                          {reminder.urgency === 'overdue'
+                            ? 'Overdue'
+                            : reminder.urgency === 'today'
+                              ? 'Today'
+                              : 'Upcoming'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
+                        {label}
+                        {reminder.direction === 'receive' ? ' · they owe you' : ' · you owe them'}
+                      </p>
+                    </button>
+
+                    <div className="shrink-0 flex items-center gap-1.5">
+                      <div className="text-right mr-0.5">
+                        <p
+                          className="text-sm font-bold tabular-nums"
+                          style={{ color: showBalances ? amountColor : 'var(--text-primary)' }}
+                        >
+                          {showBalances
+                            ? `${amountPrefix}₹${reminder.amount.toLocaleString('en-IN')}`
+                            : '••••'}
+                        </p>
+                      </div>
+                      {onRemindWhatsApp && reminder.direction === 'receive' ? (
+                        <button
+                          type="button"
+                          onClick={() => onRemindWhatsApp(reminder.contactId, label)}
+                          className="h-9 w-9 rounded-xl inline-flex items-center justify-center"
+                          style={{
+                            background: 'rgba(15,118,110,0.12)',
+                            color: 'var(--primary)',
+                          }}
+                          aria-label={`Remind ${reminder.contactName} on WhatsApp`}
+                          title="Remind on WhatsApp"
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                        </button>
+                      ) : null}
+                      {onPayUpi && reminder.direction === 'pay' ? (
+                        <button
+                          type="button"
+                          onClick={() => onPayUpi(reminder.contactId)}
+                          className="h-9 w-9 rounded-xl inline-flex items-center justify-center"
+                          style={{
+                            background: 'rgba(15,118,110,0.12)',
+                            color: 'var(--primary)',
+                          }}
+                          aria-label={`Pay ${reminder.contactName} via UPI`}
+                          title="Pay via UPI"
+                        >
+                          <Wallet className="w-4 h-4" />
+                        </button>
+                      ) : null}
+                      {onCopyReminder ? (
+                        <button
+                          type="button"
+                          onClick={() => onCopyReminder(reminder.contactId, label)}
+                          className="h-9 w-9 rounded-xl inline-flex items-center justify-center"
+                          style={{
+                            background: 'var(--bg-raised)',
+                            color: 'var(--text-secondary)',
+                            border: '1px solid var(--border-soft)',
+                          }}
+                          aria-label={`Copy reminder for ${reminder.contactName}`}
+                          title="Copy reminder"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
 
         {hasSampleActivity ? (
           <div

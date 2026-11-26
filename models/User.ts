@@ -9,6 +9,8 @@ const UserSchema = new Schema({
   securityAnswer: { type: String, required: true },
   /** Tiny preset id only — illustrated face is rendered client-side */
   avatarSeed: { type: String, required: false, maxlength: 16 },
+  /** Your UPI VPA — shared in reminders so friends can pay you */
+  upiId: { type: String, required: false, maxlength: 120 },
 }, {
   timestamps: true
 });
@@ -23,6 +25,7 @@ export interface IUserDoc extends Document {
   recoveryPin: string;
   securityAnswer: string;
   avatarSeed?: string;
+  upiId?: string;
   createdAt?: string;
   updatedAt?: string;
 }

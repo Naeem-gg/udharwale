@@ -5,6 +5,7 @@ import User from '@/models/User';
 import { getAuthenticatedUserId } from '@/lib/session';
 import { normalizePhone } from '@/lib/phone';
 import { normalizeAvatarSeed } from '@/lib/avatar-presets';
+import { isValidUpiId, normalizeUpiId } from '@/lib/upi';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,7 @@ export async function GET() {
     // so the app shell isn't blocked for 5–10s.
     try {
       await connectToDatabase();
-      const user = await User.findById(userId).select('name email phone avatarSeed').maxTimeMS(2500);
+      const user = await User.findById(userId).select('name email phone avatarSeed upiId').maxTimeMS(2500);
 
       if (user) {
         return NextResponse.json({
@@ -32,6 +33,7 @@ export async function GET() {
             email: user.email,
             phone: user.phone,
             avatarSeed: (user as any).avatarSeed || undefined,
+            upiId: (user as any).upiId || undefined,
           },
         });
       }
@@ -99,6 +101,18 @@ export async function PATCH(req: NextRequest) {
       (user as any).avatarSeed = nextAvatar;
     }
 
+    if (body.upiId !== undefined) {
+      if (body.upiId === null || String(body.upiId).trim() === '') {
+        (user as any).upiId = undefined;
+      } else {
+        const next = normalizeUpiId(String(body.upiId));
+        if (!isValidUpiId(next)) {
+          return NextResponse.json({ error: 'Enter a valid UPI ID (e.g. name@oksbi)' }, { status: 400 });
+        }
+        (user as any).upiId = next;
+      }
+    }
+
     await user.save();
 
     return NextResponse.json({
@@ -109,6 +123,7 @@ export async function PATCH(req: NextRequest) {
         email: user.email,
         phone: user.phone,
         avatarSeed: (user as any).avatarSeed || undefined,
+        upiId: (user as any).upiId || undefined,
       },
     });
   } catch (error: any) {

@@ -111,3 +111,15 @@ export function formatReminderLabel(reminder: BalanceReminder) {
   if (reminder.daysUntil === 1) return 'Due tomorrow';
   return `Due in ${reminder.daysUntil} days`;
 }
+
+/** One row per contact — keeps the most urgent reminder (list must already be sorted). */
+export function primaryRemindersByContact(reminders: BalanceReminder[]): BalanceReminder[] {
+  const seen = new Set<string>();
+  const primary: BalanceReminder[] = [];
+  for (const reminder of reminders) {
+    if (seen.has(reminder.contactId)) continue;
+    seen.add(reminder.contactId);
+    primary.push(reminder);
+  }
+  return primary;
+}

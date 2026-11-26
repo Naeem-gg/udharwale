@@ -6,6 +6,7 @@ import { getAuthenticatedUserId } from '@/lib/session';
 import { serializeContactForUser } from '@/lib/ledger-access';
 import { normalizePhone } from '@/lib/phone';
 import { normalizeAvatarSeed } from '@/lib/avatar-presets';
+import { isValidUpiId, normalizeUpiId } from '@/lib/upi';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,12 +33,16 @@ export async function GET() {
     ];
     const lookupIds = [...new Set([...ownerIds, ...peerIds])];
     const users = lookupIds.length
-      ? await User.find({ _id: { $in: lookupIds } }).select('name avatarSeed')
+      ? await User.find({ _id: { $in: lookupIds } }).select('name avatarSeed upiId')
       : [];
     const userById = new Map(
       users.map((u) => [
         u._id.toString(),
-        { name: u.name as string, avatarSeed: (u as any).avatarSeed as string | undefined },
+        {
+          name: u.name as string,
+          avatarSeed: (u as any).avatarSeed as string | undefined,
+          upiId: (u as any).upiId as string | undefined,
+        },
       ])
     );
 
@@ -47,6 +52,7 @@ export async function GET() {
         const linked = peerId ? userById.get(peerId) : undefined;
         return serializeContactForUser(c, 'owner', {
           linkedAvatarSeed: linked?.avatarSeed,
+          linkedUpiId: linked?.upiId,
         });
       }),
       ...peer.map((c) => {
@@ -54,6 +60,7 @@ export async function GET() {
         return serializeContactForUser(c, 'peer', {
           ownerName: owner?.name || 'Someone',
           linkedAvatarSeed: owner?.avatarSeed,
+          linkedUpiId: owner?.upiId,
         });
       }),
     ];
@@ -87,13 +94,22 @@ export async function POST(req: NextRequest) {
     await connectToDatabase();
     const body = await req.json();
 
-    const { id, name, phone, email, transactions, createdAt, avatarSeed } = body;
+    const { id, name, phone, email, upiId, transactions, createdAt, avatarSeed } = body;
 
     if (!id || !name || !phone) {
       return NextResponse.json(
         { error: 'Missing required parameters: id, name, phone' },
         { status: 400 }
       );
+    }
+
+    let normalizedUpi: string | undefined;
+    if (upiId !== undefined && upiId !== null && String(upiId).trim()) {
+      const next = normalizeUpiId(String(upiId));
+      if (!isValidUpiId(next)) {
+        return NextResponse.json({ error: 'Enter a valid UPI ID (e.g. name@oksbi)' }, { status: 400 });
+      }
+      normalizedUpi = next;
     }
 
     const loggedAt = new Date().toISOString();
@@ -110,6 +126,7 @@ export async function POST(req: NextRequest) {
       name,
       phone: normalizePhone(phone) || phone,
       email: email ? String(email).toLowerCase().trim() : undefined,
+      upiId: normalizedUpi,
       avatarSeed: normalizeAvatarSeed(avatarSeed),
       transactions: normalizedTransactions,
       createdAt: createdAt || loggedAt

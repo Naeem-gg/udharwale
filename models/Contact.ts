@@ -48,6 +48,8 @@ const ContactSchema = new Schema({
   name: { type: String, required: true },
   phone: { type: String, required: true },
   email: { type: String },
+  /** Friend's UPI VPA for one-tap pay when you owe them */
+  upiId: { type: String, required: false, maxlength: 120 },
   shareToken: { type: String, required: false, unique: true, sparse: true }, // Public read-only chat link
   dueDate: { type: String, required: false, default: null }, // Balance-level reminder (YYYY-MM-DD)
   /** Practice examples seeded for new accounts — not real people */
@@ -100,6 +102,7 @@ export interface IContactDoc extends Document {
   name: string;
   phone: string;
   email?: string;
+  upiId?: string;
   shareToken?: string;
   dueDate?: string | null;
   isSample?: boolean;

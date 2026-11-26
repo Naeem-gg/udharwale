@@ -15,6 +15,7 @@ export type CachedSession = {
   email: string;
   phone: string;
   avatarSeed?: string;
+  upiId?: string;
 };
 
 function canUseStorage() {

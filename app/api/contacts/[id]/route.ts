@@ -5,6 +5,7 @@ import { getAuthenticatedUserId } from '@/lib/session';
 import { normalizePhone } from '@/lib/phone';
 import { serializeContactForUser } from '@/lib/ledger-access';
 import { normalizeAvatarSeed } from '@/lib/avatar-presets';
+import { isValidUpiId, normalizeUpiId } from '@/lib/upi';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,7 @@ export async function PUT(
     await connectToDatabase();
     const { id } = await params;
     const body = await req.json();
-    const { name, phone, email, dueDate, avatarSeed } = body;
+    const { name, phone, email, dueDate, avatarSeed, upiId } = body;
 
     const contact = await Contact.findOne({ id, userId });
 
@@ -35,6 +36,17 @@ export async function PUT(
     if (dueDate !== undefined) {
       contact.dueDate =
         typeof dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? dueDate : null;
+    }
+    if (upiId !== undefined) {
+      if (upiId === null || String(upiId).trim() === '') {
+        (contact as any).upiId = undefined;
+      } else {
+        const next = normalizeUpiId(String(upiId));
+        if (!isValidUpiId(next)) {
+          return NextResponse.json({ error: 'Enter a valid UPI ID (e.g. name@oksbi)' }, { status: 400 });
+        }
+        (contact as any).upiId = next;
+      }
     }
     if (avatarSeed !== undefined) {
       // Linked friends keep their account avatar in the UI; local seed is a tiny preset id only.

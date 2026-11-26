@@ -79,6 +79,8 @@ type SerializeExtras = {
   ownerName?: string;
   /** Linked user's chosen preset — preferred over local contact.avatarSeed */
   linkedAvatarSeed?: string;
+  /** Linked user's account UPI — preferred over local contact.upiId */
+  linkedUpiId?: string;
 };
 
 export function serializeContactForUser(
@@ -96,12 +98,17 @@ export function serializeContactForUser(
   const localSeed = (contact as any).avatarSeed as string | undefined;
   const linkedSeed = extras.linkedAvatarSeed;
   const avatarSeed = linkedSeed || localSeed || undefined;
+  const localUpi = (contact as any).upiId as string | undefined;
+  const linkedUpi = extras.linkedUpiId;
+  const upiId = linkedUpi || localUpi || undefined;
 
   return {
     id: contact.id,
     name: role === 'peer' ? (extras.ownerName || 'Shared contact') : contact.name,
     phone: contact.phone,
     email: contact.email,
+    upiId,
+    upiLocked: role === 'peer' ? Boolean(linkedUpi) : Boolean(linkedUpi),
     shareToken: contact.shareToken,
     dueDate: contact.dueDate || null,
     createdAt: contact.createdAt,

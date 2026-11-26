@@ -61,6 +61,10 @@ export interface Contact {
   name: string;
   phone: string;
   email?: string;
+  /** Friend's UPI VPA (or linked peer's account UPI) for one-tap pay */
+  upiId?: string;
+  /** True when upiId comes from a linked Udharwale account */
+  upiLocked?: boolean;
   shareToken?: string;
   /** Optional deadline for clearing the open balance (YYYY-MM-DD) */
   dueDate?: string | null;

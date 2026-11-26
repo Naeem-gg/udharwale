@@ -79,6 +79,8 @@ const TripSettlementSchema = new Schema(
     settledBy: { type: String, required: false },
     paymentMethod: { type: String, required: false },
     note: { type: String, required: false },
+    ledgerTxId: { type: String, required: false },
+    recordedToLedgerAt: { type: String, required: false },
   },
   { _id: false }
 );

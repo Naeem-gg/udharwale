@@ -13,6 +13,7 @@ import {
   Share2,
   Trash2,
   Unlink,
+  Wallet,
 } from 'lucide-react';
 import PersonAvatar, { getAvatarAccent } from '@/app/components/PersonAvatar';
 import type { Contact } from './types';
@@ -31,6 +32,7 @@ type Props = {
   onCopyChatLink?: () => void;
   onSettleFull?: () => void;
   onSettlePartial?: () => void;
+  onPayUpi?: () => void;
   onUnlink?: () => void;
   onDelete?: () => void;
 };
@@ -139,6 +141,7 @@ export default function ContactProfilePanel({
   onCopyChatLink,
   onSettleFull,
   onSettlePartial,
+  onPayUpi,
   onUnlink,
   onDelete,
 }: Props) {
@@ -180,6 +183,9 @@ export default function ContactProfilePanel({
   if (onShareChat && !isPeer) {
     actions.push({ key: 'share', label: 'Share', icon: Share2, onClick: onShareChat });
   }
+  if (onPayUpi) {
+    actions.push({ key: 'upi', label: 'Pay UPI', icon: Wallet, onClick: onPayUpi, tone: 'accent' });
+  }
 
   const detailRows: Array<{
     key: string;
@@ -210,6 +216,15 @@ export default function ContactProfilePanel({
     });
   }
 
+  if (contact.upiId) {
+    detailRows.push({
+      key: 'upi',
+      label: 'UPI ID',
+      value: contact.upiId,
+      hint: contact.upiLocked ? 'From their Udharwale account' : 'Saved for Pay via UPI',
+    });
+  }
+
   if (contact.dueDate) {
     detailRows.push({
       key: 'due',
@@ -231,7 +246,8 @@ export default function ContactProfilePanel({
     });
   }
 
-  const hasEmptyDetails = !contact.phone && !contact.email && !contact.dueDate && !isPeer;
+  const hasEmptyDetails =
+    !contact.phone && !contact.email && !contact.upiId && !contact.dueDate && !isPeer;
 
   return (
     <div
@@ -420,13 +436,27 @@ export default function ContactProfilePanel({
           </div>
         </div>
 
-        {balance !== 0 && (onSettleFull || onSettlePartial) ? (
+        {balance !== 0 && (onSettleFull || onSettlePartial || onPayUpi) ? (
           <div className="px-4 pb-3">
             <SectionLabel>Settle</SectionLabel>
             <div
               className="rounded-2xl overflow-hidden"
               style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
             >
+              {onPayUpi ? (
+                <button
+                  type="button"
+                  onClick={onPayUpi}
+                  className="w-full text-left px-4 py-3.5 text-[15px] font-semibold"
+                  style={{
+                    color: 'var(--primary)',
+                    borderBottom:
+                      onSettleFull || onSettlePartial ? '1px solid var(--border-soft)' : undefined,
+                  }}
+                >
+                  {contact.upiId ? 'Pay via UPI' : 'Add UPI to pay'}
+                </button>
+              ) : null}
               {onSettleFull ? (
                 <button
                   type="button"

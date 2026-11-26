@@ -68,6 +68,9 @@ export interface TripSettlement {
   settledBy?: string;
   paymentMethod?: string;
   note?: string;
+  /** Personal-ledger transaction created from this settlement */
+  ledgerTxId?: string;
+  recordedToLedgerAt?: string;
 }
 
 // Backwards-compatible alias
@@ -260,6 +263,8 @@ export function calculateTripSummary(trip: Trip): TripSummary {
         settledBy: existing?.settledBy,
         paymentMethod: existing?.paymentMethod,
         note: existing?.note,
+        ledgerTxId: existing?.ledgerTxId,
+        recordedToLedgerAt: existing?.recordedToLedgerAt,
       });
     }
 

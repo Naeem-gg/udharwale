@@ -27,6 +27,8 @@ import TransactionShareSheet, {
   type TransactionSharePayload,
 } from './TransactionShareSheet';
 import { buildBalanceReminders, formatReminderLabel } from '@/lib/reminders';
+import { toWhatsAppPhone } from '@/lib/phone';
+import { buildUpiPayUrl, isValidUpiId, normalizeUpiId } from '@/lib/upi';
 import {
   pushDashboardNav,
   readDashboardNav,
@@ -87,11 +89,13 @@ export default function Dashboard() {
   const [userEmail, setUserEmail] = useState('');
   const [userPhone, setUserPhone] = useState('');
   const [userAvatarSeed, setUserAvatarSeed] = useState('');
+  const [userUpiId, setUserUpiId] = useState('');
   const [historyTx, setHistoryTx] = useState<Transaction | null>(null);
   const [claimedOnce, setClaimedOnce] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [profileName, setProfileName] = useState('');
   const [profilePhone, setProfilePhone] = useState('');
+  const [profileUpiId, setProfileUpiId] = useState('');
   const [profileAvatarSeed, setProfileAvatarSeed] = useState<AvatarPresetId>('uw-a01');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const userKeyRef = useRef('');
@@ -142,6 +146,7 @@ export default function Dashboard() {
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
+  const [contactUpiId, setContactUpiId] = useState('');
   const [contactDueDate, setContactDueDate] = useState('');
   const [contactAvatarSeed, setContactAvatarSeed] = useState<AvatarPresetId>('uw-a01');
   const [contactInitialBalance, setContactInitialBalance] = useState('');
@@ -241,6 +246,7 @@ export default function Dashboard() {
       setUserEmail(session.email);
       setUserPhone(session.phone || '');
       setUserAvatarSeed(session.avatarSeed || '');
+      setUserUpiId(session.upiId || '');
       const cached = readContactsCache<Contact>(session.userKey);
       if (cached?.length) {
         setContacts(cached);
@@ -270,11 +276,13 @@ export default function Dashboard() {
         setUserEmail(data.user.email);
         setUserPhone(data.user.phone || '');
         setUserAvatarSeed(data.user.avatarSeed || '');
+        setUserUpiId(data.user.upiId || '');
         writeSessionCache(key, {
           name: data.user.name,
           email: data.user.email,
           phone: data.user.phone || '',
           avatarSeed: data.user.avatarSeed || undefined,
+          upiId: data.user.upiId || undefined,
         });
 
         if (previousKey && previousKey !== key) {
@@ -392,6 +400,7 @@ export default function Dashboard() {
   const openEditProfile = () => {
     setProfileName(userName);
     setProfilePhone(userPhone);
+    setProfileUpiId(userUpiId);
     setProfileAvatarSeed(
       (userAvatarSeed as AvatarPresetId) ||
         presetFromFallback(userEmail || userPhone || userName || 'you')
@@ -401,6 +410,11 @@ export default function Dashboard() {
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmedUpi = normalizeUpiId(profileUpiId);
+    if (trimmedUpi && !isValidUpiId(trimmedUpi)) {
+      showToast('Enter a valid UPI ID (e.g. name@oksbi)', 'warn');
+      return;
+    }
     setIsSavingProfile(true);
     try {
       const res = await fetch('/api/auth/me', {
@@ -410,6 +424,7 @@ export default function Dashboard() {
           name: profileName,
           phone: profilePhone,
           avatarSeed: profileAvatarSeed,
+          upiId: trimmedUpi || null,
         }),
       });
       const data = await res.json();
@@ -417,6 +432,7 @@ export default function Dashboard() {
       setUserName(data.user.name);
       setUserPhone(data.user.phone || '');
       setUserAvatarSeed(data.user.avatarSeed || profileAvatarSeed);
+      setUserUpiId(data.user.upiId || '');
       const key = sessionUserKey(data.user.email || userEmail, data.user.phone, data.user.name);
       userKeyRef.current = key;
       writeSessionCache(key, {
@@ -424,6 +440,7 @@ export default function Dashboard() {
         email: data.user.email || userEmail,
         phone: data.user.phone || '',
         avatarSeed: data.user.avatarSeed || profileAvatarSeed,
+        upiId: data.user.upiId || undefined,
       });
       setIsEditProfileOpen(false);
       showToast('Profile updated', 'success');
@@ -546,6 +563,7 @@ export default function Dashboard() {
             email: userEmail,
             phone: userPhone,
             avatarSeed: userAvatarSeed || undefined,
+            upiId: userUpiId || undefined,
           });
         }
         showToast('All ledger data wiped', 'success');
@@ -736,6 +754,12 @@ export default function Dashboard() {
     e.preventDefault();
     if (!contactName.trim() || !contactPhone.trim()) return;
 
+    const trimmedUpi = normalizeUpiId(contactUpiId);
+    if (trimmedUpi && !isValidUpiId(trimmedUpi)) {
+      showToast('Enter a valid UPI ID (e.g. name@oksbi)', 'warn');
+      return;
+    }
+
     const newContactId = 'c_' + Date.now();
     const newTransactions: Transaction[] = [];
 
@@ -759,6 +783,7 @@ export default function Dashboard() {
       name: contactName.trim(),
       phone: contactPhone.trim(),
       email: contactEmail.trim() || undefined,
+      upiId: trimmedUpi || undefined,
       avatarSeed: contactAvatarSeed,
       transactions: newTransactions,
       createdAt: new Date().toISOString(),
@@ -778,6 +803,7 @@ export default function Dashboard() {
         setContactName('');
         setContactPhone('');
         setContactEmail('');
+        setContactUpiId('');
         setContactAvatarSeed(randomAvatarPreset());
         setContactInitialBalance('');
         setContactInitialType('credit');
@@ -797,17 +823,30 @@ export default function Dashboard() {
     e.preventDefault();
     if (!selectedContactId || !contactName.trim() || !contactPhone.trim()) return;
 
+    const editing = contacts.find((c) => c.id === selectedContactId);
+    const trimmedUpi = normalizeUpiId(contactUpiId);
+    if (trimmedUpi && !isValidUpiId(trimmedUpi)) {
+      showToast('Enter a valid UPI ID (e.g. name@oksbi)', 'warn');
+      return;
+    }
+
     try {
+      const payload: Record<string, unknown> = {
+        name: contactName.trim(),
+        phone: contactPhone.trim(),
+        email: contactEmail.trim() || undefined,
+        dueDate: contactDueDate || null,
+        avatarSeed: contactAvatarSeed,
+      };
+      // Don't overwrite linked peer UPI with a blank local edit
+      if (!editing?.upiLocked) {
+        payload.upiId = trimmedUpi || null;
+      }
+
       const res = await fetch(`/api/contacts/${selectedContactId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: contactName.trim(),
-          phone: contactPhone.trim(),
-          email: contactEmail.trim() || undefined,
-          dueDate: contactDueDate || null,
-          avatarSeed: contactAvatarSeed,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (res.ok) {
@@ -819,6 +858,8 @@ export default function Dashboard() {
                 name: updatedContact.name,
                 phone: updatedContact.phone,
                 email: updatedContact.email,
+                upiId: updatedContact.upiId || undefined,
+                upiLocked: updatedContact.upiLocked,
                 avatarSeed: updatedContact.avatarSeed || contactAvatarSeed,
                 avatarLocked: updatedContact.avatarLocked,
                 dueDate: updatedContact.dueDate || null,
@@ -1096,7 +1137,7 @@ export default function Dashboard() {
     amount: number,
     type: 'gave' | 'got',
     remark: string
-  ) => {
+  ): Promise<{ ok: boolean; txId?: string; error?: string }> => {
     const newTxId = 'tx_' + Date.now();
     const today = new Date().toISOString().split('T')[0];
 
@@ -1115,55 +1156,71 @@ export default function Dashboard() {
         }),
       });
 
-      if (res.ok) {
-        const createdTx = await res.json();
-        const updatedContacts = contacts.map((c) => {
-          if (c.id !== contactId) return c;
-          return {
-            ...c,
-            transactions: [...c.transactions, createdTx],
-          };
-        });
-        saveContactsState(updatedContacts);
-      } else {
-        const fallbackTx: Transaction = {
-          id: newTxId,
-          amount,
-          type,
-          remark,
-          mode: defaultTxMode || 'Online Transfer',
-          category: 'travel',
-          date: today,
-          createdAt: new Date().toISOString(),
-        };
-        const updatedContacts = contacts.map((c) => {
-          if (c.id !== contactId) return c;
-          return {
-            ...c,
-            transactions: [...c.transactions, fallbackTx],
-          };
-        });
-        saveContactsState(updatedContacts);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        return { ok: false, error: body.error || 'Failed to record on ledger' };
       }
-    } catch {
-      const fallbackTx: Transaction = {
-        id: newTxId,
-        amount,
-        type,
-        remark,
-        mode: defaultTxMode || 'Online Transfer',
-        category: 'travel',
-        date: today,
-        createdAt: new Date().toISOString(),
-      };
+
+      const createdTx = await res.json();
+      const txId = createdTx?.id || newTxId;
       const updatedContacts = contacts.map((c) => {
         if (c.id !== contactId) return c;
         return {
           ...c,
-          transactions: [...c.transactions, fallbackTx],
+          transactions: [...c.transactions, createdTx],
         };
       });
       saveContactsState(updatedContacts);
+      return { ok: true, txId };
+    } catch (err) {
+      console.error('Error recording trip settlement to ledger:', err);
+      return { ok: false, error: 'Could not reach the server' };
+    }
+  };
+
+  const handleEnsureTripContact = async (
+    name: string,
+    phone?: string
+  ): Promise<Contact | null> => {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+
+    const existing = contacts.find(
+      (c) => c.name.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (existing) return existing;
+
+    const newContactId = 'c_' + Date.now();
+    const phoneVal = (phone || '').trim() || `9${String(Date.now()).slice(-9)}`;
+    const avatarSeed = randomAvatarPreset();
+    const newContact: Contact = {
+      id: newContactId,
+      name: trimmed,
+      phone: phoneVal,
+      avatarSeed,
+      transactions: [],
+      createdAt: new Date().toISOString(),
+    };
+
+    try {
+      const res = await fetch('/api/contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newContact),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        showToast(body.error || 'Could not create contact', 'error');
+        return null;
+      }
+      const saved = await res.json().catch(() => newContact);
+      const merged = { ...newContact, ...saved };
+      saveContactsState([merged, ...contacts]);
+      return merged;
+    } catch (err) {
+      console.error('Error creating trip contact:', err);
+      showToast('Could not create contact', 'error');
+      return null;
     }
   };
 
@@ -1240,24 +1297,82 @@ export default function Dashboard() {
     return String(data.shareUrl || '');
   };
 
-  const buildReminderMessage = (shareUrl?: string) => {
-    if (!selectedContact) return '';
-    const balance = getContactBalance(selectedContact);
+  const buildReminderMessage = (contact: Contact, shareUrl?: string, dueLabel?: string) => {
+    const balance = getContactBalance(contact);
     if (balance === 0) return '';
 
-    const name = selectedContact.name;
+    const name = contact.name;
     const amount = `₹${Math.abs(balance).toLocaleString('en-IN')}`;
+    const dueLine = dueLabel ? `\nDue: ${dueLabel}` : '';
+    const myUpi = normalizeUpiId(userUpiId);
 
     let text =
       balance > 0
-        ? `Hi ${name},\n\nJust reminding you — ${amount} is still left from your side.\n\nSend it whenever you can. Thank you!`
-        : `Hi ${name},\n\nJust a quick note — I still have to give you ${amount}.\n\nI'll send it soon. Thanks!`;
+        ? `Hi ${name},\n\nJust reminding you — ${amount} is still left from your side.${dueLine}\n\nSend it whenever you can. Thank you!`
+        : `Hi ${name},\n\nJust a quick note — I still have to give you ${amount}.${dueLine}\n\nI'll send it soon. Thanks!`;
+
+    if (balance > 0 && myUpi) {
+      text += `\n\nUPI: ${myUpi}`;
+    }
 
     if (shareUrl) {
       text += `\n\nSee our chat here:\n${shareUrl}`;
     }
 
     return text;
+  };
+
+  const openEditContactFor = (contact: Contact) => {
+    setContactName(contact.name);
+    setContactPhone(contact.phone);
+    setContactEmail(contact.email || '');
+    setContactUpiId(contact.upiId || '');
+    setContactDueDate(contact.dueDate || '');
+    setContactAvatarSeed(
+      (contact.avatarSeed as AvatarPresetId) || presetFromFallback(contact.id)
+    );
+    setIsEditContactOpen(true);
+  };
+
+  const handlePayViaUpi = (contactId?: string) => {
+    const contact =
+      (contactId ? contacts.find((c) => c.id === contactId) : null) || selectedContact;
+    if (!contact) return;
+
+    const balance = getContactBalance(contact);
+    if (!(balance < 0)) {
+      showToast('UPI pay is for balances you owe', 'info');
+      return;
+    }
+    if (contact.isSample) {
+      showToast('Sample friends can’t be paid on UPI', 'info');
+      return;
+    }
+
+    const amount = Math.abs(balance);
+    const pa = normalizeUpiId(contact.upiId || '');
+    if (!pa) {
+      showToast('Add their UPI ID first', 'warn');
+      if (contact.role !== 'peer' && !contact.upiLocked) {
+        openContactChat(contact.id);
+        openEditContactFor(contact);
+      }
+      return;
+    }
+
+    const url = buildUpiPayUrl({
+      pa,
+      am: amount,
+      pn: contact.name,
+      tn: `Udharwale · ${userName || 'Settle'}`,
+    });
+    if (!url) {
+      showToast('Could not open UPI — check their UPI ID', 'error');
+      return;
+    }
+
+    window.location.href = url;
+    showToast('After paying, tap Settle to record it', 'info');
   };
 
   const buildLedgerMessage = (option: 'all' | 'gave' | 'got', shareUrl?: string) => {
@@ -1325,14 +1440,25 @@ export default function Dashboard() {
     }
   };
 
-  const handleWhatsAppReminder = async () => {
-    if (!selectedContact) return;
+  const handleWhatsAppReminder = async (contactId?: string, dueLabel?: string) => {
+    const contact =
+      (contactId ? contacts.find((c) => c.id === contactId) : null) || selectedContact;
+    if (!contact) return;
+    if (contact.isSample) {
+      showToast('Sample friends can’t be reminded on WhatsApp', 'info');
+      return;
+    }
+    const waPhone = toWhatsAppPhone(contact.phone || '');
+    if (!waPhone) {
+      showToast('Add a valid phone number to remind on WhatsApp', 'warn');
+      return;
+    }
     try {
-      const shareUrl = await getOrCreateShareUrl(selectedContact.id);
-      const msg = buildReminderMessage(shareUrl);
+      const shareUrl = await getOrCreateShareUrl(contact.id);
+      const msg = buildReminderMessage(contact, shareUrl, dueLabel);
       if (!msg) return;
 
-      const whatsappUrl = `https://api.whatsapp.com/send?phone=${selectedContact.phone.replace(/[^0-9+]/g, '')}&text=${encodeURIComponent(msg)}`;
+      const whatsappUrl = `https://api.whatsapp.com/send?phone=${waPhone}&text=${encodeURIComponent(msg)}`;
       window.open(whatsappUrl, '_blank');
     } catch (err) {
       console.error(err);
@@ -1340,11 +1466,13 @@ export default function Dashboard() {
     }
   };
 
-  const handleCopyReminder = async () => {
-    if (!selectedContact) return;
+  const handleCopyReminder = async (contactId?: string, dueLabel?: string) => {
+    const contact =
+      (contactId ? contacts.find((c) => c.id === contactId) : null) || selectedContact;
+    if (!contact) return;
     try {
-      const shareUrl = await getOrCreateShareUrl(selectedContact.id);
-      const msg = buildReminderMessage(shareUrl);
+      const shareUrl = await getOrCreateShareUrl(contact.id);
+      const msg = buildReminderMessage(contact, shareUrl, dueLabel);
       if (!msg) return;
       await copyTextToClipboard(msg, 'Reminder copied — paste it anywhere');
     } catch (err) {
@@ -1939,20 +2067,20 @@ export default function Dashboard() {
             profileContact.role === 'peer'
               ? undefined
               : () => {
-                  setContactName(profileContact.name);
-                  setContactPhone(profileContact.phone);
-                  setContactEmail(profileContact.email || '');
-                  setContactDueDate(profileContact.dueDate || '');
-                  setContactAvatarSeed(
-                    (profileContact.avatarSeed as AvatarPresetId) ||
-                      presetFromFallback(profileContact.id)
-                  );
                   if (selectedContactId !== profileContact.id) {
                     setSelectedContactId(profileContact.id);
                   }
                   closeContactProfile();
-                  setIsEditContactOpen(true);
+                  openEditContactFor(profileContact);
                 }
+          }
+          onPayUpi={
+            getContactBalance(profileContact) < 0
+              ? () => {
+                  closeContactProfile();
+                  handlePayViaUpi(profileContact.id);
+                }
+              : undefined
           }
           onCopyPhone={
             profileContact.phone
@@ -2807,172 +2935,6 @@ export default function Dashboard() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
                           </svg>
                         </button>
-                        {isContactMenuOpen && (
-                          <>
-                            <div className="fixed inset-0 z-10" onClick={() => setIsContactMenuOpen(false)} />
-                            <div
-                              className="absolute right-0 mt-2 w-56 rounded-xl py-1.5 z-20 animate-fade-slide-down"
-                              style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border-soft)', boxShadow: 'var(--shadow-card)' }}
-                            >
-                              <div className="px-4 py-2.5 mb-1" style={{ borderBottom: '1px solid var(--border-soft)' }}>
-                                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-                                  {selectedContact.role === 'peer' ? 'Shared ledger' : 'Contact'}
-                                </p>
-                                <p className="text-xs font-semibold mt-1 truncate" style={{ color: 'var(--text-primary)' }}>
-                                  {selectedContact.role === 'peer'
-                                    ? (selectedContact.ownerName || 'Owner')
-                                    : selectedContact.phone}
-                                </p>
-                                {selectedContact.role !== 'peer' && selectedContact.email ? (
-                                  <p className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
-                                    {selectedContact.email}
-                                  </p>
-                                ) : null}
-                                {(selectedContact.peerLinked || selectedContact.role === 'peer') && (
-                                  <p className="text-[10px] mt-1 font-semibold" style={{ color: '#22d3ee' }}>
-                                    Both parties can edit · changes are logged
-                                  </p>
-                                )}
-                              </div>
-
-                              {contactBal !== 0 && (
-                                <button onClick={() => { setIsContactMenuOpen(false); handleOpenSettlement('full'); }}
-                                  className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                  style={{ color: '#10b981' }}
-                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(16,185,129,0.08)'}
-                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                  🤝 Settle in full
-                                </button>
-                              )}
-
-                              {contactBal !== 0 && (
-                                <button onClick={() => { setIsContactMenuOpen(false); handleOpenSettlement('partial'); }}
-                                  className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                  style={{ color: '#22d3ee' }}
-                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(6,182,212,0.08)'}
-                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                  ✂️ Settle partly
-                                </button>
-                              )}
-
-                              {contactBal !== 0 && selectedContact.role !== 'peer' && (
-                                <button onClick={() => { setIsContactMenuOpen(false); handleWhatsAppReminder(); }}
-                                  className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                  style={{ color: 'var(--primary)' }}
-                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(15,118,110,0.08)'}
-                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                  💬 WhatsApp reminder
-                                </button>
-                              )}
-
-                              {contactBal !== 0 && (
-                                <button onClick={() => { setIsContactMenuOpen(false); handleCopyReminder(); }}
-                                  className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                  style={{ color: '#38bdf8' }}
-                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(56,189,248,0.08)'}
-                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                  📋 Copy reminder
-                                </button>
-                              )}
-
-                              {selectedContact.role !== 'peer' && (
-                                <button onClick={() => { setIsContactMenuOpen(false); handleCopyChatLink(); }}
-                                  className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                  style={{ color: '#a78bfa' }}
-                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(15,118,110,0.08)'}
-                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                  🔗 Copy chat link
-                                </button>
-                              )}
-
-                              {selectedContact.role !== 'peer' && (
-                                <button onClick={() => { setIsContactMenuOpen(false); setIsShareModalOpen(true); }}
-                                  className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                  style={{ color: 'var(--primary)' }}
-                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(15,118,110,0.08)'}
-                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
-                                  Share / copy record
-                                </button>
-                              )}
-
-                              <button
-                                onClick={() => {
-                                  setIsContactMenuOpen(false);
-                                  openContactProfile(selectedContact.id);
-                                }}
-                                className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                style={{ color: 'var(--text-primary)' }}
-                                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-raised)'}
-                                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                View profile
-                              </button>
-
-                              {selectedContact.role !== 'peer' && (
-                                <button onClick={() => {
-                                  setIsContactMenuOpen(false);
-                                  setContactName(selectedContact.name);
-                                  setContactPhone(selectedContact.phone);
-                                  setContactEmail(selectedContact.email || '');
-                                  setContactDueDate(selectedContact.dueDate || '');
-                                  setContactAvatarSeed(
-                                    (selectedContact.avatarSeed as AvatarPresetId) ||
-                                      presetFromFallback(selectedContact.id)
-                                  );
-                                  setIsEditContactOpen(true);
-                                }}
-                                  className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                  style={{ color: 'var(--text-primary)' }}
-                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-raised)'}
-                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                                  Edit contact
-                                </button>
-                              )}
-
-                              <button
-                                onClick={() => {
-                                  setIsContactMenuOpen(false);
-                                  const deleted = (selectedContact.allTransactions || []).filter((t) => t.deletedAt);
-                                  const withHistory = (selectedContact.allTransactions || []).filter(
-                                    (t) => (t.history && t.history.length > 0) || t.deletedAt
-                                  );
-                                  if (withHistory.length === 0) {
-                                    showToast('No change history in this chat yet', 'info');
-                                    return;
-                                  }
-                                  setHistoryTx(deleted[0] || withHistory[withHistory.length - 1]);
-                                }}
-                                className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                style={{ color: '#94a3b8' }}
-                                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg-raised)'}
-                                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                Change history
-                              </button>
-
-                              {(selectedContact.role === 'owner' || !selectedContact.role) && selectedContact.peerLinked && (
-                                <button onClick={() => { setIsContactMenuOpen(false); handleUnlinkPeer(); }}
-                                  className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                  style={{ color: '#fbbf24' }}
-                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(251,191,36,0.08)'}
-                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                  Unlink shared access
-                                </button>
-                              )}
-
-                              {selectedContact.role !== 'peer' && (
-                                <button onClick={() => { setIsContactMenuOpen(false); handleDeleteContact(selectedContact.id); }}
-                                  className="w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 transition-colors"
-                                  style={{ color: '#f43f5e' }}
-                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(244,63,94,0.08)'}
-                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}>
-                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                  Delete contact
-                                </button>
-                              )}
-                            </div>
-                          </>
-                        )}
                       </div>
                     </div>
 
@@ -3014,7 +2976,7 @@ export default function Dashboard() {
                   {/* Full-bleed payment chat */}
                   <div
                     ref={chatScrollRef}
-                    className="flex-1 overflow-y-auto scrollbar-thin px-3 pt-16 pb-24 md:px-5"
+                    className="flex-1 overflow-y-auto scrollbar-thin px-3 pt-16 pb-36 md:px-5"
                     style={{
                       background: 'var(--bg-base)',
                       backgroundImage: 'radial-gradient(rgba(148,163,184,0.08) 1px, transparent 1px)',
@@ -3039,10 +3001,17 @@ export default function Dashboard() {
                     ) : null}
                     {filteredTransactions.length === 0 ? (
                       <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
-                        <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>💬</div>
+                        <div
+                          className="w-14 h-14 rounded-2xl flex items-center justify-center text-sm font-bold"
+                          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)', color: 'var(--text-muted)' }}
+                        >
+                          ₹
+                        </div>
                         <div>
                           <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>No payments yet</p>
-                          <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>Add a record — it will appear here like a chat</p>
+                          <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+                            Tap Got or Gave below to add the first one
+                          </p>
                         </div>
                       </div>
                     ) : (
@@ -3118,56 +3087,214 @@ export default function Dashboard() {
                     )}
                   </div>
 
-                  {/* Floating Gave / Got dock */}
-                  <div className="absolute bottom-5 inset-x-0 z-20 flex justify-center px-4 pointer-events-none">
+                  {/* Simple bottom composer */}
+                  <div
+                    className="absolute bottom-0 inset-x-0 z-20 px-3 pt-2"
+                    style={{
+                      paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
+                      background: 'linear-gradient(180deg, transparent 0%, var(--bg-base) 28%)',
+                    }}
+                  >
+                    {contactBal !== 0 ? (
+                      <div className="mb-2 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSettlement('full')}
+                            className="flex-1 h-10 rounded-xl text-sm font-bold"
+                            style={{
+                              background: 'color-mix(in srgb, var(--emerald) 12%, var(--bg-surface))',
+                              color: 'var(--emerald)',
+                              border: '1px solid color-mix(in srgb, var(--emerald) 28%, transparent)',
+                            }}
+                          >
+                            Settle ₹{Math.abs(contactBal).toLocaleString('en-IN')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSettlement('partial')}
+                            className="h-10 px-3 rounded-xl text-xs font-bold"
+                            style={{
+                              background: 'var(--bg-surface)',
+                              color: 'var(--text-secondary)',
+                              border: '1px solid var(--border-soft)',
+                            }}
+                          >
+                            Partial
+                          </button>
+                        </div>
+                        {contactBal < 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => handlePayViaUpi(selectedContact.id)}
+                            className="w-full h-10 rounded-xl text-sm font-bold"
+                            style={{
+                              background: 'color-mix(in srgb, var(--primary) 12%, var(--bg-surface))',
+                              color: 'var(--primary)',
+                              border: '1px solid color-mix(in srgb, var(--primary) 28%, transparent)',
+                            }}
+                          >
+                            {selectedContact.upiId
+                              ? 'Pay via UPI'
+                              : selectedContact.role === 'peer' || selectedContact.upiLocked
+                                ? 'No UPI on file'
+                                : 'Add UPI to pay'}
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+
                     <div
-                      className="pointer-events-auto flex items-center gap-2 p-1.5 rounded-full backdrop-blur-xl"
+                      className="grid grid-cols-2 gap-2 p-1.5 rounded-2xl"
                       style={{
-                        background: 'color-mix(in srgb, var(--bg-surface) 88%, transparent)',
+                        background: 'var(--bg-surface)',
                         border: '1px solid var(--border-soft)',
-                        boxShadow: '0 14px 44px rgba(0,0,0,0.32)',
                       }}
                     >
                       <button
                         type="button"
                         onClick={() => handleOpenAddTx('got')}
-                        className="flex items-center gap-2 pl-2 pr-4 py-1.5 rounded-full text-sm font-bold active:scale-[0.97] transition-all"
+                        className="h-12 rounded-xl text-sm font-bold active:scale-[0.98] transition-transform"
                         style={{
-                          background: 'rgba(194,59,74,0.08)',
-                          border: '1px solid rgba(251,113,133,0.35)',
-                          color: '#fb7185',
-                          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)',
+                          background: 'color-mix(in srgb, var(--rose) 10%, transparent)',
+                          color: 'var(--rose)',
                         }}
                       >
-                        <span
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-base font-bold leading-none"
-                          style={{ background: 'var(--rose)' }}
-                        >
-                          ↓
-                        </span>
                         Got
                       </button>
                       <button
                         type="button"
                         onClick={() => handleOpenAddTx('gave')}
-                        className="flex items-center gap-2 pl-2 pr-4 py-1.5 rounded-full text-sm font-bold active:scale-[0.97] transition-all"
+                        className="h-12 rounded-xl text-sm font-bold active:scale-[0.98] transition-transform"
                         style={{
-                          background: 'rgba(4,120,87,0.08)',
-                          border: '1px solid rgba(52,211,153,0.35)',
-                          color: '#34d399',
-                          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)',
+                          background: 'color-mix(in srgb, var(--emerald) 10%, transparent)',
+                          color: 'var(--emerald)',
                         }}
                       >
-                        <span
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-base font-bold leading-none"
-                          style={{ background: 'var(--emerald)' }}
-                        >
-                          ↑
-                        </span>
                         Gave
                       </button>
                     </div>
                   </div>
+
+                  {/* Simplified chat menu sheet */}
+                  {isContactMenuOpen && (
+                    <div className="fixed inset-0 z-40 flex items-end justify-center">
+                      <div
+                        className="absolute inset-0"
+                        style={{ background: 'rgba(10,16,14,0.45)' }}
+                        onClick={() => setIsContactMenuOpen(false)}
+                      />
+                      <div
+                        className="relative w-full max-w-md rounded-t-2xl overflow-hidden animate-slide-up"
+                        style={{
+                          background: 'var(--bg-surface)',
+                          border: '1px solid var(--border-soft)',
+                          paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
+                        }}
+                      >
+                        <div className="flex justify-center pt-3 pb-2">
+                          <div className="h-1 w-10 rounded-full" style={{ background: 'var(--border-soft)' }} />
+                        </div>
+                        <p className="px-5 pb-2 text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                          {selectedContact.name}
+                        </p>
+                        <div className="px-3 pb-2 space-y-1">
+                          {contactBal < 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsContactMenuOpen(false);
+                                handlePayViaUpi(selectedContact.id);
+                              }}
+                              className="w-full text-left px-3 py-3 rounded-xl text-sm font-semibold"
+                              style={{ color: 'var(--text-primary)' }}
+                            >
+                              {selectedContact.upiId ? 'Pay via UPI' : 'Add UPI to pay'}
+                            </button>
+                          ) : null}
+                          {contactBal !== 0 && selectedContact.role !== 'peer' ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsContactMenuOpen(false);
+                                void handleWhatsAppReminder();
+                              }}
+                              className="w-full text-left px-3 py-3 rounded-xl text-sm font-semibold"
+                              style={{ color: 'var(--text-primary)' }}
+                            >
+                              Remind on WhatsApp
+                            </button>
+                          ) : null}
+                          {contactBal !== 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsContactMenuOpen(false);
+                                void handleCopyReminder();
+                              }}
+                              className="w-full text-left px-3 py-3 rounded-xl text-sm font-semibold"
+                              style={{ color: 'var(--text-primary)' }}
+                            >
+                              Copy reminder
+                            </button>
+                          ) : null}
+                          {selectedContact.role !== 'peer' ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsContactMenuOpen(false);
+                                setIsShareModalOpen(true);
+                              }}
+                              className="w-full text-left px-3 py-3 rounded-xl text-sm font-semibold"
+                              style={{ color: 'var(--text-primary)' }}
+                            >
+                              Share
+                            </button>
+                          ) : null}
+                          {selectedContact.role !== 'peer' ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsContactMenuOpen(false);
+                                openEditContactFor(selectedContact);
+                              }}
+                              className="w-full text-left px-3 py-3 rounded-xl text-sm font-semibold"
+                              style={{ color: 'var(--text-primary)' }}
+                            >
+                              Edit contact
+                            </button>
+                          ) : null}
+                          {(selectedContact.role === 'owner' || !selectedContact.role) &&
+                          selectedContact.peerLinked ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsContactMenuOpen(false);
+                                void handleUnlinkPeer();
+                              }}
+                              className="w-full text-left px-3 py-3 rounded-xl text-sm font-semibold"
+                              style={{ color: 'var(--amber)' }}
+                            >
+                              Unlink shared access
+                            </button>
+                          ) : null}
+                          {selectedContact.role !== 'peer' ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsContactMenuOpen(false);
+                                void handleDeleteContact(selectedContact.id);
+                              }}
+                              className="w-full text-left px-3 py-3 rounded-xl text-sm font-semibold"
+                              style={{ color: 'var(--rose)' }}
+                            >
+                              Delete contact
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                 </div>
               );
@@ -3181,6 +3308,8 @@ export default function Dashboard() {
                 userAvatarSeed={userAvatarSeed || undefined}
                 onOpenAccount={() => goToTab('settings')}
                 onRecordToLedger={handleRecordTripSettlement}
+                onEnsureContact={handleEnsureTripContact}
+                onConfirmAction={confirmAction}
                 showToast={showToast}
               />
             )}
@@ -3189,6 +3318,7 @@ export default function Dashboard() {
             {appReady && (activeTab === 'activity' || activeTab === 'insights') && (
               <ActivityFeed
                 contacts={contacts}
+                reminders={balanceReminders}
                 netBalance={stats.netBalance}
                 totalCredit={stats.totalCredit}
                 totalDebit={stats.totalDebit}
@@ -3198,6 +3328,15 @@ export default function Dashboard() {
                 onToggleBalances={() => setShowBalances((v) => !v)}
                 onOpenAccount={() => goToTab('settings')}
                 onOpenContact={(id) => openContactChat(id)}
+                onRemindWhatsApp={(contactId, dueLabel) => {
+                  void handleWhatsAppReminder(contactId, dueLabel);
+                }}
+                onCopyReminder={(contactId, dueLabel) => {
+                  void handleCopyReminder(contactId, dueLabel);
+                }}
+                onPayUpi={(contactId) => {
+                  handlePayViaUpi(contactId);
+                }}
                 onOpenTrip={(tripId) => {
                   pushDashboardNav({ tab: 'trips', tripId, contactId: null });
                   setActiveTab('trips');
@@ -3213,6 +3352,7 @@ export default function Dashboard() {
                 userName={userName}
                 userEmail={userEmail}
                 userPhone={userPhone}
+                userUpiId={userUpiId || undefined}
                 userId={userEmail || userPhone || userName}
                 avatarSeed={userAvatarSeed || undefined}
                 contactCount={ledgerSummary.contactCount}
@@ -3424,6 +3564,23 @@ export default function Dashboard() {
                 <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Email (optional)</label>
                 <input type="email" value={contactEmail} onChange={e => setContactEmail(e.target.value)}
                   className="input-field" placeholder="friend@email.com" />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>UPI ID (optional)</label>
+                <input
+                  type="text"
+                  value={contactUpiId}
+                  onChange={(e) => setContactUpiId(e.target.value)}
+                  className="input-field"
+                  placeholder="name@oksbi"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+                <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                  Needed for one-tap Pay via UPI when you owe them.
+                </p>
               </div>
 
               <div className="space-y-1.5">
@@ -3665,7 +3822,7 @@ export default function Dashboard() {
                     className="input-field rounded-2xl"
                   />
                   <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                    Reminds you on Overview before this repayment gets awkward.
+                    Shows up under Activity → Due so you can remind them in one tap.
                   </p>
                 </div>
 
@@ -3762,6 +3919,40 @@ export default function Dashboard() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                    UPI ID <span style={{ opacity: 0.5 }}>(Optional)</span>
+                  </label>
+                  {selectedContact?.upiLocked ? (
+                    <div
+                      className="rounded-xl px-3 py-2.5"
+                      style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}
+                    >
+                      <p className="text-sm font-semibold break-all" style={{ color: 'var(--text-primary)' }}>
+                        {selectedContact.upiId || 'Not set on their account'}
+                      </p>
+                      <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>
+                        This friend is on Udharwale — their account UPI is used for pay.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        value={contactUpiId}
+                        onChange={(e) => setContactUpiId(e.target.value)}
+                        className="input-field w-full"
+                        placeholder="name@oksbi"
+                        autoCapitalize="off"
+                        autoCorrect="off"
+                        spellCheck={false}
+                      />
+                      <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                        Used for Pay via UPI when you owe this friend.
+                      </p>
+                    </>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
                     Balance due date <span style={{ opacity: 0.5 }}>(Optional)</span>
                   </label>
                   <input
@@ -3771,7 +3962,7 @@ export default function Dashboard() {
                     className="input-field w-full"
                   />
                   <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                    Surfaces on Overview reminders while this contact still has an open balance.
+                    Surfaces under Activity → Due while this contact still has an open balance.
                   </p>
                   {contactDueDate && (
                     <button
@@ -3844,6 +4035,22 @@ export default function Dashboard() {
                   className="input-field rounded-2xl" placeholder="9876543210" />
                 <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
                   Used to find chats others already started with you.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Your UPI ID</label>
+                <input
+                  type="text"
+                  value={profileUpiId}
+                  onChange={(e) => setProfileUpiId(e.target.value)}
+                  className="input-field rounded-2xl"
+                  placeholder="name@oksbi"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+                <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                  Added to WhatsApp reminders so friends can pay you faster.
                 </p>
               </div>
               <div className="space-y-1.5">
