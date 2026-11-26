@@ -35,6 +35,18 @@ import {
 } from '@/lib/dashboard-nav';
 import { useHistoryLayer } from '@/lib/useHistoryLayer';
 import {
+  clearClientCaches,
+  readContactsCache,
+  readSessionCache,
+  sessionUserKey,
+  writeContactsCache,
+  writeSessionCache,
+} from '@/lib/client-cache';
+import {
+  AccountPanelSkeleton,
+  FriendsListSkeleton,
+} from './Skeleton';
+import {
   Clock3,
   History,
   Pencil,
@@ -69,12 +81,18 @@ const getStoredCompactLedgerView = () => {
 export default function Dashboard() {
   const { theme, toggleTheme } = useTheme();
 
-  // --- Persistent State ---
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [userName, setUserName] = useState<string>('');
-  const [userEmail, setUserEmail] = useState<string>('');
-  const [userPhone, setUserPhone] = useState<string>('');
-  const [userAvatarSeed, setUserAvatarSeed] = useState<string>('');
+  // --- Persistent State (warm-start from local cache, then refresh from API) ---
+  const [contacts, setContacts] = useState<Contact[]>(() => {
+    const session = readSessionCache();
+    if (!session) return [];
+    return readContactsCache<Contact>(session.userKey) || [];
+  });
+  const [userName, setUserName] = useState<string>(() => readSessionCache()?.name || '');
+  const [userEmail, setUserEmail] = useState<string>(() => readSessionCache()?.email || '');
+  const [userPhone, setUserPhone] = useState<string>(() => readSessionCache()?.phone || '');
+  const [userAvatarSeed, setUserAvatarSeed] = useState<string>(
+    () => readSessionCache()?.avatarSeed || ''
+  );
   const [historyTx, setHistoryTx] = useState<Transaction | null>(null);
   const [claimedOnce, setClaimedOnce] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
@@ -82,9 +100,18 @@ export default function Dashboard() {
   const [profilePhone, setProfilePhone] = useState('');
   const [profileAvatarSeed, setProfileAvatarSeed] = useState<AvatarPresetId>(() => randomAvatarPreset());
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const userKeyRef = useRef<string>(readSessionCache()?.userKey || '');
+  const contactsRef = useRef<Contact[]>(contacts);
+  contactsRef.current = contacts;
 
   // Database connection status: connecting, connected, or error
-  const [dbStatus, setDbStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
+  const [dbStatus, setDbStatus] = useState<'connecting' | 'connected' | 'error'>(() => {
+    const session = readSessionCache();
+    if (!session) return 'connecting';
+    const cached = readContactsCache(session.userKey);
+    return cached ? 'connected' : 'connecting';
+  });
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // --- UI Navigation State ---
   const [activeTab, setActiveTab] = useState<ActiveTab>('ledgers');
@@ -156,24 +183,34 @@ export default function Dashboard() {
   } | null>(null);
 
   // --- Fetch Contacts Function (Component Scope for Retry) ---
-  const loadContacts = async () => {
-    setDbStatus('connecting');
+  const loadContacts = async (opts?: { silent?: boolean }) => {
+    const hasWarmData = contactsRef.current.length > 0 || !!opts?.silent;
+    if (!hasWarmData) setDbStatus('connecting');
+    else setIsRefreshing(true);
+
     try {
       const res = await fetch('/api/contacts');
       if (res.status === 401) {
+        clearClientCaches();
         window.location.href = '/login';
         return;
       }
       if (res.ok) {
         const data = await res.json();
-        setContacts(data);
+        if (Array.isArray(data)) {
+          setContacts(data);
+          contactsRef.current = data;
+          if (userKeyRef.current) writeContactsCache(userKeyRef.current, data);
+        }
         setDbStatus('connected');
-      } else {
+      } else if (!hasWarmData) {
         setDbStatus('error');
       }
     } catch (err) {
       console.error('Failed to load contacts from database:', err);
-      setDbStatus('error');
+      if (!hasWarmData) setDbStatus('error');
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -184,47 +221,79 @@ export default function Dashboard() {
       const data = await res.json();
       if (data.linked > 0) {
         showToast(data.message || `${data.linked} shared chats linked`, 'success');
-        await loadContacts();
+        await loadContacts({ silent: true });
       }
     } catch (err) {
       console.error('claim-matches failed:', err);
     }
   };
 
-  // --- Load Initial Data ---
+  // --- Load Initial Data (show cache immediately, refresh in background) ---
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setIsMobileDevice(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent));
-      setContactsSupported('contacts' in navigator && typeof (navigator as any).contacts?.select === 'function');
-      // Check session profile on mount
-      fetch('/api/auth/me')
-        .then((res) => {
-          if (res.status === 401) {
-            window.location.href = '/login?next=/dashboard';
-            return null;
-          }
-          if (!res.ok) throw new Error('API session load failed');
-          return res.json();
-        })
-        .then(async (data) => {
-          if (data && data.authenticated) {
-            setUserName(data.user.name);
-            setUserEmail(data.user.email);
-            setUserPhone(data.user.phone || '');
-            setUserAvatarSeed(data.user.avatarSeed || '');
-            await loadContacts();
-            if (!claimedOnce) {
-              setClaimedOnce(true);
-              await claimMatchingChats();
-            }
-          }
-        })
-        .catch((err) => {
-          console.error('Session authentication check failed:', err);
+    if (typeof window === 'undefined') return;
+
+    let cancelled = false;
+    setIsMobileDevice(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent));
+    setContactsSupported(
+      'contacts' in navigator && typeof (navigator as any).contacts?.select === 'function'
+    );
+
+    const bootstrap = async () => {
+      try {
+        const res = await fetch('/api/auth/me');
+        if (res.status === 401) {
+          clearClientCaches();
           window.location.href = '/login?next=/dashboard';
+          return;
+        }
+        if (!res.ok) throw new Error('API session load failed');
+        const data = await res.json();
+        if (cancelled || !data?.authenticated) return;
+
+        const key = sessionUserKey(data.user.email, data.user.phone, data.user.name);
+        const previousKey = userKeyRef.current;
+        userKeyRef.current = key;
+
+        setUserName(data.user.name);
+        setUserEmail(data.user.email);
+        setUserPhone(data.user.phone || '');
+        setUserAvatarSeed(data.user.avatarSeed || '');
+        writeSessionCache(key, {
+          name: data.user.name,
+          email: data.user.email,
+          phone: data.user.phone || '',
+          avatarSeed: data.user.avatarSeed || undefined,
         });
 
-    }
+        if (previousKey && previousKey !== key) {
+          setContacts([]);
+          setDbStatus('connecting');
+        } else if (!previousKey) {
+          const cached = readContactsCache<Contact>(key);
+          if (cached?.length) {
+            setContacts(cached);
+            setDbStatus('connected');
+          }
+        }
+
+        await loadContacts({ silent: true });
+        if (!cancelled && !claimedOnce) {
+          setClaimedOnce(true);
+          await claimMatchingChats();
+        }
+      } catch (err) {
+        console.error('Session authentication check failed:', err);
+        if (!cancelled && contacts.length === 0 && !userName) {
+          window.location.href = '/login?next=/dashboard';
+        }
+      }
+    };
+
+    void bootstrap();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -339,6 +408,14 @@ export default function Dashboard() {
       setUserName(data.user.name);
       setUserPhone(data.user.phone || '');
       setUserAvatarSeed(data.user.avatarSeed || profileAvatarSeed);
+      const key = sessionUserKey(data.user.email || userEmail, data.user.phone, data.user.name);
+      userKeyRef.current = key;
+      writeSessionCache(key, {
+        name: data.user.name,
+        email: data.user.email || userEmail,
+        phone: data.user.phone || '',
+        avatarSeed: data.user.avatarSeed || profileAvatarSeed,
+      });
       setIsEditProfileOpen(false);
       showToast('Profile updated', 'success');
       // Re-claim matches if phone changed
@@ -352,6 +429,7 @@ export default function Dashboard() {
 
   const handleLogout = async () => {
     try {
+      clearClientCaches();
       await signOut({ callbackUrl: '/login' });
     } catch (e) {
       console.error(e);
@@ -364,6 +442,7 @@ export default function Dashboard() {
   // This helper updates local React state for instantaneous UI responsiveness.
   const saveContactsState = (newContacts: Contact[]) => {
     setContacts(newContacts);
+    if (userKeyRef.current) writeContactsCache(userKeyRef.current, newContacts);
   };
 
 
@@ -430,6 +509,7 @@ export default function Dashboard() {
         }
         try {
           localStorage.removeItem('udharwale-trips-v1');
+          if (userKeyRef.current) writeContactsCache(userKeyRef.current, contacts.filter((c) => !c.isSample));
         } catch {}
         window.dispatchEvent(new Event('udharwale:sample-cleared'));
         showToast('Sample examples removed', 'success');
@@ -450,6 +530,15 @@ export default function Dashboard() {
         saveContactsState([]);
         setSelectedContactId(null);
         setDbStatus('connected');
+        clearClientCaches();
+        if (userKeyRef.current) {
+          writeSessionCache(userKeyRef.current, {
+            name: userName,
+            email: userEmail,
+            phone: userPhone,
+            avatarSeed: userAvatarSeed || undefined,
+          });
+        }
         showToast('All ledger data wiped', 'success');
       } else {
         showToast('Failed to wipe database on backend.', 'error');
@@ -459,6 +548,11 @@ export default function Dashboard() {
       showToast('An error occurred while connecting to the database server.', 'error');
     }
   };
+
+  const hasWarmUi = contacts.length > 0 || !!userName;
+  const showBootSkeleton = dbStatus === 'connecting' && !hasWarmUi;
+  const showBootError = dbStatus === 'error' && !hasWarmUi;
+  const appReady = dbStatus === 'connected' || hasWarmUi;
 
   // --- Selected Contact Ledger Logic ---
   const selectedContact = useMemo(() => {
@@ -1128,9 +1222,11 @@ export default function Dashboard() {
     const data = await res.json();
     // Keep token on local contact so later shares are instant
     if (data.shareToken) {
-      setContacts((prev) =>
-        prev.map((c) => (c.id === contactId ? { ...c, shareToken: data.shareToken } : c))
-      );
+      setContacts((prev) => {
+        const next = prev.map((c) => (c.id === contactId ? { ...c, shareToken: data.shareToken } : c));
+        if (userKeyRef.current) writeContactsCache(userKeyRef.current, next);
+        return next;
+      });
     }
     return String(data.shareUrl || '');
   };
@@ -2246,24 +2342,13 @@ export default function Dashboard() {
         >
           <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
 
-            {/* Loading skeleton */}
-            {dbStatus === 'connecting' && (
-              <div className="flex-1 flex flex-col p-6 space-y-4">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="flex items-center gap-4 p-4 rounded-2xl" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}>
-                    <div className="skeleton w-11 h-11 rounded-full shrink-0" />
-                    <div className="flex-1 space-y-2">
-                      <div className="skeleton h-3 rounded-full w-2/5" />
-                      <div className="skeleton h-2.5 rounded-full w-1/3" />
-                    </div>
-                    <div className="skeleton h-5 w-16 rounded-full" />
-                  </div>
-                ))}
-              </div>
+            {/* Cold-start skeleton — skipped when local cache is warm */}
+            {showBootSkeleton && activeTab !== 'settings' && activeTab !== 'trips' && (
+              <FriendsListSkeleton />
             )}
 
             {/* Error state */}
-            {dbStatus === 'error' && (
+            {showBootError && (
               <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-6">
                 <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-sm font-semibold"
                   style={{ background: 'rgba(194,59,74,0.08)', border: '1px solid rgba(194,59,74,0.15)', color: 'var(--rose)' }}>Offline</div>
@@ -2271,12 +2356,12 @@ export default function Dashboard() {
                   <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Couldn't load your data</h3>
                   <p className="text-sm max-w-xs" style={{ color: 'var(--text-secondary)' }}>Check your internet connection and try again.</p>
                 </div>
-                <button onClick={loadContacts} className="btn-primary px-8">Retry</button>
+                <button onClick={() => loadContacts()} className="btn-primary px-8">Retry</button>
               </div>
             )}
 
             {/* ── FRIENDS LIST (full screen) ─────────────────── */}
-            {dbStatus === 'connected' && activeTab === 'ledgers' && !isChatOpen && (
+            {appReady && activeTab === 'ledgers' && !isChatOpen && (
               <div className="flex-1 flex flex-col overflow-hidden">
                 {/* App bar */}
                 <div className="px-4 pt-3 pb-2 shrink-0" style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-soft)' }}>
@@ -2284,7 +2369,13 @@ export default function Dashboard() {
                     <div className="min-w-0">
                       <h1 className="text-xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>Friends</h1>
                       <p className="text-[11px] mt-1 truncate" style={{ color: 'var(--text-muted)' }}>
-                        {dbStatus === 'connected' ? 'Synced' : 'Syncing…'} · {userName || 'You'}
+                        {isRefreshing || dbStatus === 'connecting'
+                          ? 'Updating…'
+                          : dbStatus === 'error'
+                            ? 'Offline copy'
+                            : 'Synced'}
+                        {' · '}
+                        {userName || 'You'}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -2543,7 +2634,7 @@ export default function Dashboard() {
             )}
 
             {/* ── CHAT (full screen) ─────────────────────────── */}
-            {dbStatus === 'connected' && activeTab === 'ledgers' && isChatOpen && selectedContact && (() => {
+            {appReady && activeTab === 'ledgers' && isChatOpen && selectedContact && (() => {
               const contactBal = getContactBalance(selectedContact);
 
               return (
@@ -3019,7 +3110,7 @@ export default function Dashboard() {
             )}
 
             {/* ── ACTIVITY TAB ─────────────────────────────── */}
-            {dbStatus === 'connected' && (activeTab === 'activity' || activeTab === 'insights') && (
+            {appReady && (activeTab === 'activity' || activeTab === 'insights') && (
               <ActivityFeed
                 contacts={contacts}
                 netBalance={stats.netBalance}
@@ -3037,7 +3128,8 @@ export default function Dashboard() {
             )}
 
             {/* ── ACCOUNT TAB ──────────────────────────────── */}
-            {dbStatus === 'connected' && activeTab === 'settings' && (
+            {showBootSkeleton && activeTab === 'settings' ? <AccountPanelSkeleton /> : null}
+            {appReady && activeTab === 'settings' && (
               <AccountPanel
                 userName={userName}
                 userEmail={userEmail}
@@ -3226,7 +3318,7 @@ export default function Dashboard() {
                 onChange={setContactAvatarSeed}
                 columns={4}
                 size="sm"
-                label="Avatar"
+                label="Colour"
                 hint="Only you see this — they can pick their own if they join Udharwale."
               />
 
@@ -3553,7 +3645,7 @@ export default function Dashboard() {
                       size="md"
                     />
                     <p className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
-                      This friend is on Udharwale — their account avatar is shown. You can&apos;t change it for them.
+                      This friend is on Udharwale — their account colour is shown. You can&apos;t change it for them.
                     </p>
                   </div>
                 ) : (
@@ -3563,7 +3655,7 @@ export default function Dashboard() {
                     onChange={setContactAvatarSeed}
                     columns={4}
                     size="sm"
-                    label="Avatar"
+                    label="Colour"
                     hint="Local look for this friend — only on your ledger."
                   />
                 )}
@@ -3652,8 +3744,8 @@ export default function Dashboard() {
                 onChange={setProfileAvatarSeed}
                 columns={4}
                 size="sm"
-                label="Your avatar"
-                hint="Friends who link with you will see this face."
+                label="Your colour"
+                hint="Friends who link with you will see this tone."
               />
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Display name</label>

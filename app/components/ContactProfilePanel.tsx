@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import {
   ArrowLeft,
   Copy,
@@ -11,7 +12,7 @@ import {
   Trash2,
   Unlink,
 } from 'lucide-react';
-import PersonAvatar from '@/app/components/PersonAvatar';
+import PersonAvatar, { getAvatarAccent } from '@/app/components/PersonAvatar';
 import type { Contact } from './types';
 
 type Props = {
@@ -45,20 +46,21 @@ function ActionChip({
   const color =
     tone === 'danger' ? 'var(--rose)' : tone === 'accent' ? 'var(--primary)' : 'var(--text-secondary)';
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex flex-col items-center gap-1.5 min-w-[4.5rem]"
-    >
+    <button type="button" onClick={onClick} className="flex flex-col items-center gap-1.5 min-w-[4.25rem]">
       <span
-        className="h-12 w-12 rounded-full inline-flex items-center justify-center"
+        className="h-11 w-11 rounded-full inline-flex items-center justify-center transition-transform active:scale-95"
         style={{
-          background: 'var(--bg-raised)',
-          border: '1px solid var(--border-soft)',
+          background:
+            tone === 'accent'
+              ? 'color-mix(in srgb, var(--primary) 14%, var(--bg-surface))'
+              : 'var(--bg-surface)',
+          border: `1px solid ${
+            tone === 'accent' ? 'color-mix(in srgb, var(--primary) 28%, transparent)' : 'var(--border-soft)'
+          }`,
           color,
         }}
       >
-        <Icon className="w-5 h-5" />
+        <Icon className="w-[18px] h-[18px]" strokeWidth={2.1} />
       </span>
       <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
         {label}
@@ -72,11 +74,13 @@ function InfoRow({
   value,
   onClick,
   hint,
+  last,
 }: {
   label: string;
   value: string;
   onClick?: () => void;
   hint?: string;
+  last?: boolean;
 }) {
   const Comp = onClick ? 'button' : 'div';
   return (
@@ -84,9 +88,12 @@ function InfoRow({
       type={onClick ? 'button' : undefined}
       onClick={onClick}
       className="w-full text-left px-4 py-3.5"
-      style={{ borderBottom: '1px solid var(--border-soft)' }}
+      style={{ borderBottom: last ? undefined : '1px solid var(--border-soft)' }}
     >
-      <p className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: 'var(--text-muted)' }}>
+      <p
+        className="text-[10px] font-bold uppercase tracking-[0.14em]"
+        style={{ color: 'var(--text-muted)' }}
+      >
         {label}
       </p>
       <p className="text-[15px] font-semibold mt-1 break-all" style={{ color: 'var(--text-primary)' }}>
@@ -98,6 +105,17 @@ function InfoRow({
         </p>
       ) : null}
     </Comp>
+  );
+}
+
+function SectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <p
+      className="text-[10px] font-bold uppercase tracking-[0.14em] px-1 mb-2"
+      style={{ color: 'var(--text-muted)' }}
+    >
+      {children}
+    </p>
   );
 }
 
@@ -119,6 +137,7 @@ export default function ContactProfilePanel({
 }: Props) {
   const isPeer = contact.role === 'peer';
   const txCount = contact.transactions?.length || 0;
+  const accent = getAvatarAccent(contact.avatarSeed || contact.id || contact.name);
   const since = contact.createdAt
     ? new Date(contact.createdAt).toLocaleDateString('en-IN', {
         day: 'numeric',
@@ -129,13 +148,65 @@ export default function ContactProfilePanel({
 
   const balanceLabel =
     balance === 0
-      ? 'Settled'
+      ? 'Settled up'
       : balance > 0
         ? `Owes you ₹${Math.abs(balance).toLocaleString('en-IN')}`
         : `You owe ₹${Math.abs(balance).toLocaleString('en-IN')}`;
 
   const balanceColor =
     balance === 0 ? 'var(--text-muted)' : balance > 0 ? 'var(--emerald)' : 'var(--rose)';
+
+  const detailRows: Array<{
+    key: string;
+    label: string;
+    value: string;
+    onClick?: () => void;
+    hint?: string;
+  }> = [];
+
+  if (contact.phone) {
+    detailRows.push({
+      key: 'phone',
+      label: 'Phone',
+      value: contact.phone,
+      onClick: onCall || onCopyPhone,
+      hint: contact.isSample ? 'Fake sample number' : onCall ? 'Tap to call' : 'Tap to copy',
+    });
+  } else {
+    detailRows.push({ key: 'phone', label: 'Phone', value: 'Not added' });
+  }
+
+  if (contact.email) {
+    detailRows.push({
+      key: 'email',
+      label: 'Email',
+      value: contact.email,
+      hint: contact.isSample ? 'Fake sample email' : undefined,
+    });
+  }
+
+  if (contact.dueDate) {
+    detailRows.push({
+      key: 'due',
+      label: 'Balance due',
+      value: new Date(`${contact.dueDate}T00:00:00`).toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      }),
+    });
+  }
+
+  if (isPeer && contact.ownerName) {
+    detailRows.push({
+      key: 'shared',
+      label: 'Shared by',
+      value: contact.ownerName,
+      hint: 'Both can edit this ledger',
+    });
+  }
+
+  const hasEmptyDetails = !contact.phone && !contact.email && !contact.dueDate && !isPeer;
 
   return (
     <div
@@ -144,47 +215,56 @@ export default function ContactProfilePanel({
       role="dialog"
       aria-label={`${contact.name} profile`}
     >
-      {/* Top bar */}
       <div
         className="shrink-0 flex items-center gap-2 px-3 pt-3 pb-2"
-        style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-soft)' }}
+        style={{ background: 'var(--bg-base)' }}
       >
         <button
           type="button"
           onClick={onClose}
           className="h-10 w-10 rounded-full inline-flex items-center justify-center"
-          style={{ background: 'var(--bg-raised)', color: 'var(--text-primary)' }}
+          style={{
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-soft)',
+            color: 'var(--text-primary)',
+          }}
           aria-label="Back"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <p className="text-sm font-bold">Contact info</p>
+        <p className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>
+          Contact
+        </p>
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin">
-        {/* Hero */}
-        <div
-          className="px-5 pt-8 pb-6 flex flex-col items-center text-center"
-          style={{
-            background:
-              'linear-gradient(180deg, color-mix(in srgb, var(--primary) 12%, var(--bg-surface)) 0%, var(--bg-base) 100%)',
-          }}
-        >
+        <div className="relative px-5 pt-6 pb-5 flex flex-col items-center text-center overflow-hidden">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 -top-8 h-48"
+            style={{
+              background: `radial-gradient(ellipse 70% 80% at 50% 0%, color-mix(in srgb, ${accent} 16%, transparent) 0%, transparent 72%)`,
+            }}
+          />
           <PersonAvatar
             name={contact.name}
             seed={contact.avatarSeed || contact.id}
             size="hero"
-            className="shadow-lg"
           />
-          <h1 className="mt-4 text-2xl font-extrabold tracking-tight">{contact.name}</h1>
-          <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
+          <h1
+            className="relative mt-4 text-[1.65rem] font-extrabold tracking-tight leading-tight"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            {contact.name}
+          </h1>
+
+          <div className="relative mt-2.5 flex flex-wrap items-center justify-center gap-1.5">
             {contact.isSample ? (
               <span
-                className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded"
+                className="text-[10px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-md"
                 style={{
-                  background: 'rgba(180,83,9,0.14)',
-                  color: '#b45309',
-                  border: '1px dashed rgba(180,83,9,0.4)',
+                  background: 'color-mix(in srgb, var(--amber) 12%, transparent)',
+                  color: 'var(--amber)',
                 }}
               >
                 Sample
@@ -192,30 +272,49 @@ export default function ContactProfilePanel({
             ) : null}
             {(contact.role === 'peer' || contact.peerLinked) && (
               <span
-                className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full"
-                style={{ background: 'rgba(6,182,212,0.15)', color: '#22d3ee' }}
+                className="text-[10px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded-md"
+                style={{
+                  background: 'color-mix(in srgb, var(--cyan) 12%, transparent)',
+                  color: 'var(--cyan)',
+                }}
               >
                 {contact.role === 'peer' ? 'Linked ledger' : 'Shared'}
               </span>
             )}
           </div>
+
           {contact.isSample ? (
-            <p className="mt-2 text-xs max-w-xs" style={{ color: '#b45309' }}>
+            <p className="relative mt-2 text-xs max-w-xs" style={{ color: 'var(--amber)' }}>
               Practice example — not a real person
             </p>
           ) : null}
-          <p className="mt-3 text-sm font-bold tabular-nums" style={{ color: balanceColor }}>
-            {showBalances || balance === 0 ? balanceLabel : 'Balance hidden'}
-          </p>
-          {since ? (
-            <p className="mt-1 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              Friend since {since} · {txCount} payment{txCount === 1 ? '' : 's'}
+
+          <div
+            className="relative mt-4 w-full max-w-sm rounded-2xl px-4 py-3.5"
+            style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-soft)',
+            }}
+          >
+            <p
+              className="text-[10px] font-bold uppercase tracking-[0.14em]"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              Balance
             </p>
-          ) : null}
+            <p className="mt-1 text-lg font-extrabold tabular-nums" style={{ color: balanceColor }}>
+              {showBalances || balance === 0 ? balanceLabel : 'Balance hidden'}
+            </p>
+            {since ? (
+              <p className="mt-1 text-[11px]" style={{ color: 'var(--text-faint)' }}>
+                Since {since}
+                {txCount > 0 ? ` · ${txCount} payment${txCount === 1 ? '' : 's'}` : ''}
+              </p>
+            ) : null}
+          </div>
         </div>
 
-        {/* Quick actions */}
-        <div className="px-4 py-4 flex justify-center gap-5 flex-wrap">
+        <div className="px-4 pb-4 flex justify-center gap-4 flex-wrap">
           <ActionChip label="Message" icon={MessageCircle} onClick={onMessage} tone="accent" />
           {onCall && contact.phone && !contact.isSample ? (
             <ActionChip label="Call" icon={Phone} onClick={onCall} />
@@ -229,56 +328,34 @@ export default function ContactProfilePanel({
           ) : null}
         </div>
 
-        {/* Details */}
         <div className="px-4 pb-3">
+          <SectionLabel>Details</SectionLabel>
           <div
             className="rounded-2xl overflow-hidden"
             style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
           >
-            {contact.phone ? (
-              <InfoRow
-                label="Phone"
-                value={contact.phone}
-                onClick={onCall || onCopyPhone}
-                hint={contact.isSample ? 'Fake sample number' : onCall ? 'Tap to call' : 'Tap to copy'}
-              />
-            ) : (
-              <InfoRow label="Phone" value="Not added" />
-            )}
-            {contact.email ? (
-              <InfoRow
-                label="Email"
-                value={contact.email}
-                hint={contact.isSample ? 'Fake sample email' : undefined}
-              />
-            ) : null}
-            {contact.dueDate ? (
-              <InfoRow
-                label="Balance due"
-                value={new Date(`${contact.dueDate}T00:00:00`).toLocaleDateString('en-IN', {
-                  day: 'numeric',
-                  month: 'short',
-                  year: 'numeric',
-                })}
-              />
-            ) : null}
-            {isPeer && contact.ownerName ? (
-              <InfoRow label="Shared by" value={contact.ownerName} hint="Both can edit this ledger" />
-            ) : null}
-            {!contact.phone && !contact.email && !contact.dueDate && !isPeer ? (
+            {hasEmptyDetails ? (
               <div className="px-4 py-4 text-sm" style={{ color: 'var(--text-muted)' }}>
                 No contact details yet — edit to add phone or email.
               </div>
-            ) : null}
+            ) : (
+              detailRows.map((row, index) => (
+                <InfoRow
+                  key={row.key}
+                  label={row.label}
+                  value={row.value}
+                  onClick={row.onClick}
+                  hint={row.hint}
+                  last={index === detailRows.length - 1}
+                />
+              ))
+            )}
           </div>
         </div>
 
-        {/* Money actions */}
         {balance !== 0 && (onSettleFull || onSettlePartial) ? (
-          <div className="px-4 pb-3 space-y-2">
-            <p className="text-xs font-bold px-1" style={{ color: 'var(--text-muted)' }}>
-              Settle
-            </p>
+          <div className="px-4 pb-3">
+            <SectionLabel>Settle</SectionLabel>
             <div
               className="rounded-2xl overflow-hidden"
               style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
@@ -288,7 +365,10 @@ export default function ContactProfilePanel({
                   type="button"
                   onClick={onSettleFull}
                   className="w-full text-left px-4 py-3.5 text-[15px] font-semibold"
-                  style={{ color: 'var(--emerald)', borderBottom: onSettlePartial ? '1px solid var(--border-soft)' : undefined }}
+                  style={{
+                    color: 'var(--emerald)',
+                    borderBottom: onSettlePartial ? '1px solid var(--border-soft)' : undefined,
+                  }}
                 >
                   Settle in full
                 </button>
@@ -298,7 +378,7 @@ export default function ContactProfilePanel({
                   type="button"
                   onClick={onSettlePartial}
                   className="w-full text-left px-4 py-3.5 text-[15px] font-semibold"
-                  style={{ color: '#0e7490' }}
+                  style={{ color: 'var(--cyan)' }}
                 >
                   Settle partly
                 </button>
@@ -307,53 +387,57 @@ export default function ContactProfilePanel({
           </div>
         ) : null}
 
-        {/* More */}
-        <div className="px-4 pb-8 space-y-2">
-          <p className="text-xs font-bold px-1" style={{ color: 'var(--text-muted)' }}>
-            More
-          </p>
-          <div
-            className="rounded-2xl overflow-hidden"
-            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
-          >
-            {onCopyChatLink && !isPeer ? (
-              <button
-                type="button"
-                onClick={onCopyChatLink}
-                className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
-                style={{ borderBottom: '1px solid var(--border-soft)' }}
-              >
-                <Link2 className="w-4 h-4 shrink-0" style={{ color: 'var(--primary)' }} />
-                <span className="text-[15px] font-semibold">Copy chat link</span>
-              </button>
-            ) : null}
-            {onUnlink ? (
-              <button
-                type="button"
-                onClick={onUnlink}
-                className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
-                style={{ borderBottom: onDelete ? '1px solid var(--border-soft)' : undefined }}
-              >
-                <Unlink className="w-4 h-4 shrink-0" style={{ color: '#b45309' }} />
-                <span className="text-[15px] font-semibold" style={{ color: '#b45309' }}>
-                  Unlink shared access
-                </span>
-              </button>
-            ) : null}
-            {onDelete && !isPeer ? (
-              <button
-                type="button"
-                onClick={onDelete}
-                className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
-              >
-                <Trash2 className="w-4 h-4 shrink-0" style={{ color: 'var(--rose)' }} />
-                <span className="text-[15px] font-semibold" style={{ color: 'var(--rose)' }}>
-                  Delete contact
-                </span>
-              </button>
-            ) : null}
+        {(onCopyChatLink && !isPeer) || onUnlink || (onDelete && !isPeer) ? (
+          <div className="px-4 pb-8">
+            <SectionLabel>More</SectionLabel>
+            <div
+              className="rounded-2xl overflow-hidden"
+              style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
+            >
+              {onCopyChatLink && !isPeer ? (
+                <button
+                  type="button"
+                  onClick={onCopyChatLink}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
+                  style={{
+                    borderBottom:
+                      onUnlink || (onDelete && !isPeer) ? '1px solid var(--border-soft)' : undefined,
+                  }}
+                >
+                  <Link2 className="w-4 h-4 shrink-0" style={{ color: 'var(--primary)' }} />
+                  <span className="text-[15px] font-semibold">Copy chat link</span>
+                </button>
+              ) : null}
+              {onUnlink ? (
+                <button
+                  type="button"
+                  onClick={onUnlink}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
+                  style={{
+                    borderBottom: onDelete && !isPeer ? '1px solid var(--border-soft)' : undefined,
+                  }}
+                >
+                  <Unlink className="w-4 h-4 shrink-0" style={{ color: 'var(--amber)' }} />
+                  <span className="text-[15px] font-semibold" style={{ color: 'var(--amber)' }}>
+                    Unlink shared access
+                  </span>
+                </button>
+              ) : null}
+              {onDelete && !isPeer ? (
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
+                >
+                  <Trash2 className="w-4 h-4 shrink-0" style={{ color: 'var(--rose)' }} />
+                  <span className="text-[15px] font-semibold" style={{ color: 'var(--rose)' }}>
+                    Delete contact
+                  </span>
+                </button>
+              ) : null}
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </div>
   );

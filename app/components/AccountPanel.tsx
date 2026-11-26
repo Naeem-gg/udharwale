@@ -169,7 +169,6 @@ export default function AccountPanel({
             name={userName || 'You'}
             seed={avatarSeed || userId || userName || 'you'}
             size="xl"
-            className="shadow-[0_10px_28px_rgba(15,118,110,0.22)]"
           />
           <h1
             className="mt-4 text-2xl font-extrabold tracking-tight"

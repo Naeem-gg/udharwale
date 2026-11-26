@@ -312,16 +312,7 @@ h1, h2, h3, h4, h5, h6 {
     animation: none;
   }
 
-  .shimmer-bg {
-    background: linear-gradient(
-      90deg,
-      rgba(20, 32, 28, 0.04) 0%,
-      rgba(20, 32, 28, 0.09) 50%,
-      rgba(20, 32, 28, 0.04) 100%
-    );
-    background-size: 200% 100%;
-    animation: shimmer 1.6s ease-in-out infinite;
-  }
+  /* shimmer-bg defined with .skeleton below (theme-aware) */
 
   .glass,
   .glass-light,
@@ -574,10 +565,21 @@ html.dark .input-field {
   border-radius: 8px;
   background: linear-gradient(
     90deg,
-    rgba(20, 32, 28, 0.04) 0%,
-    rgba(20, 32, 28, 0.09) 50%,
-    rgba(20, 32, 28, 0.04) 100%
+    color-mix(in srgb, var(--text-primary) 4%, transparent) 0%,
+    color-mix(in srgb, var(--text-primary) 9%, transparent) 50%,
+    color-mix(in srgb, var(--text-primary) 4%, transparent) 100%
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.shimmer-bg {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--text-primary) 4%, transparent) 0%,
+    color-mix(in srgb, var(--text-primary) 9%, transparent) 50%,
+    color-mix(in srgb, var(--text-primary) 4%, transparent) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
 }

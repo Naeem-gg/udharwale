@@ -2,6 +2,7 @@
 
 import { Check, Copy, Link2, Share2, X } from 'lucide-react';
 import { useState } from 'react';
+import PersonAvatar from '@/app/components/PersonAvatar';
 
 export type ChatShareOption = 'all' | 'gave' | 'got';
 
@@ -42,12 +43,6 @@ const LEDGER_OPTIONS: {
     soft: 'rgba(194,59,74,0.1)',
   },
 ];
-
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
-}
 
 export default function ChatShareSheet({
   open,
@@ -102,15 +97,7 @@ export default function ChatShareSheet({
           />
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <div
-                className="h-12 w-12 rounded-2xl flex items-center justify-center text-sm font-extrabold text-white shrink-0"
-                style={{
-                  background: 'linear-gradient(145deg, #0f766e 0%, #115e59 100%)',
-                  boxShadow: '0 8px 20px rgba(15,118,110,0.28)',
-                }}
-              >
-                {initials(contactName)}
-              </div>
+              <PersonAvatar name={contactName} seed={contactName} size="lg" />
               <div className="min-w-0">
                 <p
                   className="text-[10px] font-bold uppercase tracking-[0.14em]"

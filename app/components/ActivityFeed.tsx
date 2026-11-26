@@ -26,6 +26,8 @@ import {
   type ActivityItem,
   type ActivityKind,
 } from '@/lib/activity-feed';
+import { readSessionCache, readTripsCache } from '@/lib/client-cache';
+import { ActivityFeedSkeleton } from './Skeleton';
 
 type Props = {
   contacts: Contact[];
@@ -89,12 +91,18 @@ export default function ActivityFeed({
   onOpenTrip,
 }: Props) {
   const [filter, setFilter] = useState<ActivityFilter>('all');
-  const [trips, setTrips] = useState<Trip[]>([]);
-  const [loadingTrips, setLoadingTrips] = useState(true);
+  const [trips, setTrips] = useState<Trip[]>(() => {
+    const key = readSessionCache()?.userKey;
+    return readTripsCache<Trip>(key) || [];
+  });
+  const [loadingTrips, setLoadingTrips] = useState(() => {
+    const key = readSessionCache()?.userKey;
+    return !(readTripsCache<Trip>(key)?.length);
+  });
 
   useEffect(() => {
     let cancelled = false;
-    const load = (showSpinner = true) => {
+    const load = (showSpinner = trips.length === 0) => {
       if (showSpinner) setLoadingTrips(true);
       fetch('/api/trips')
         .then((res) => (res.ok ? res.json() : []))
@@ -102,19 +110,20 @@ export default function ActivityFeed({
           if (!cancelled && Array.isArray(data)) setTrips(data);
         })
         .catch(() => {
-          if (!cancelled) setTrips([]);
+          if (!cancelled && trips.length === 0) setTrips([]);
         })
         .finally(() => {
           if (!cancelled) setLoadingTrips(false);
         });
     };
-    load();
+    load(trips.length === 0);
     const onSampleCleared = () => load(false);
     window.addEventListener('udharwale:sample-cleared', onSampleCleared);
     return () => {
       cancelled = true;
       window.removeEventListener('udharwale:sample-cleared', onSampleCleared);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const feed = useMemo(() => buildActivityFeed(contacts, trips), [contacts, trips]);
@@ -241,11 +250,7 @@ export default function ActivityFeed({
         </div>
 
         {loadingTrips && feed.length === 0 ? (
-          <div className="space-y-3 pt-2">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="h-16 rounded-2xl shimmer-bg" />
-            ))}
-          </div>
+          <ActivityFeedSkeleton rows={5} />
         ) : groups.length === 0 ? (
           <div
             className="rounded-3xl px-5 py-10 text-center"

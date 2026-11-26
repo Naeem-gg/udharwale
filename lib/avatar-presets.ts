@@ -1,4 +1,4 @@
-/** Tiny preset ids only — faces render client-side (no images in Mongo). */
+/** Tiny preset ids only — colour tones render client-side (no images in Mongo). */
 export const AVATAR_PRESETS = [
   'uw-a01',
   'uw-a02',

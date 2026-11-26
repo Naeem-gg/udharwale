@@ -36,11 +36,30 @@ import {
 } from './trip-types';
 import { Contact } from './types';
 import PersonAvatar, { avatarToneClass } from './PersonAvatar';
-
-const STORAGE_KEY = 'udharwale-trips-v1';
+import { TripsListSkeleton } from './Skeleton';
+import {
+  readSessionCache,
+  readTripsCache,
+  TRIPS_CACHE_KEY,
+  writeTripsCache,
+} from '@/lib/client-cache';
 
 function avatarGradient(name: string) {
   return avatarToneClass(name);
+}
+
+function resolveTripUserKey() {
+  return readSessionCache()?.userKey || '';
+}
+
+function persistTrips(trips: Trip[]) {
+  const key = resolveTripUserKey();
+  if (key) writeTripsCache(key, trips);
+  else {
+    try {
+      localStorage.setItem(TRIPS_CACHE_KEY, JSON.stringify(trips));
+    } catch {}
+  }
 }
 
 interface TripExpensesViewProps {
@@ -56,8 +75,15 @@ export default function TripExpensesView({
   onRecordToLedger,
   showToast = () => {},
 }: TripExpensesViewProps) {
-  // Trips State
-  const [trips, setTrips] = useState<Trip[]>([]);
+  // Trips State (warm-start from cache)
+  const [trips, setTrips] = useState<Trip[]>(() => {
+    const cached = readTripsCache<Trip>(resolveTripUserKey() || undefined) || [];
+    return cached.filter((t) => !String(t.id || '').startsWith('trip_demo_'));
+  });
+  const [isLoadingTrips, setIsLoadingTrips] = useState(() => {
+    const cached = readTripsCache<Trip>(resolveTripUserKey() || undefined) || [];
+    return cached.filter((t) => !String(t.id || '').startsWith('trip_demo_')).length === 0;
+  });
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   const [activeTab, setActiveTab] = useState<'expenses' | 'settlement'>('settlement');
@@ -101,22 +127,12 @@ export default function TripExpensesView({
   const [splitMode, setSplitMode] = useState<'all' | 'custom'>('all');
   const [selectedBeneficiaries, setSelectedBeneficiaries] = useState<string[]>([]);
 
-  // Load Trips on mount (API first; cache is only a warm start)
+  // Load Trips on mount — show cache immediately, replace when API returns
   useEffect(() => {
     let cancelled = false;
-    let loadedTrips: Trip[] = [];
-    try {
-      const cached = localStorage.getItem(STORAGE_KEY);
-      if (cached) {
-        loadedTrips = JSON.parse(cached).filter((t: Trip) => !String(t.id || '').startsWith('trip_demo_'));
-      }
-    } catch (e) {
-      console.warn('Failed to parse cached trips', e);
-    }
 
-    if (loadedTrips.length > 0) setTrips(loadedTrips);
-
-    const refresh = () => {
+    const refresh = (showLoader = trips.length === 0) => {
+      if (showLoader) setIsLoadingTrips(true);
       fetch('/api/trips')
         .then((res) => {
           if (res.ok) return res.json();
@@ -126,21 +142,23 @@ export default function TripExpensesView({
           if (cancelled) return;
           if (Array.isArray(remoteTrips)) {
             setTrips(remoteTrips);
-            try {
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteTrips));
-            } catch {}
+            persistTrips(remoteTrips);
           }
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setIsLoadingTrips(false);
+        });
     };
 
-    refresh();
-    const onSampleCleared = () => refresh();
+    refresh(trips.length === 0);
+    const onSampleCleared = () => refresh(false);
     window.addEventListener('udharwale:sample-cleared', onSampleCleared);
     return () => {
       cancelled = true;
       window.removeEventListener('udharwale:sample-cleared', onSampleCleared);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Selected Trip — null on list view
@@ -210,7 +228,7 @@ export default function TripExpensesView({
     async (updated: Trip[]) => {
       setTrips(updated);
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+        persistTrips(updated);
       } catch (err) {
         console.warn('LocalStorage save error:', err);
       }
@@ -582,7 +600,7 @@ export default function TripExpensesView({
     openTrip(newTrip.id);
 
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      persistTrips(updated);
       await fetch('/api/trips', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -768,23 +786,9 @@ export default function TripExpensesView({
           </div>
 
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 pb-8">
-            {trips.some((t) => t.isSample) ? (
-              <div
-                className="rounded-xl px-3 py-2.5 mb-1"
-                style={{
-                  background: 'rgba(180,83,9,0.1)',
-                  border: '1px dashed rgba(180,83,9,0.35)',
-                }}
-              >
-                <p className="text-[11px] font-bold" style={{ color: '#b45309' }}>
-                  Practice trip — not a real vacation
-                </p>
-                <p className="text-[10px] mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>
-                  Explore splits and settlements. Remove from Account when you&apos;re done.
-                </p>
-              </div>
-            ) : null}
-            {tripListRows.length === 0 ? (
+            {isLoadingTrips && trips.length === 0 ? (
+              <TripsListSkeleton rows={4} />
+            ) : tripListRows.length === 0 ? (
               <div
                 className="rounded-2xl p-8 text-center space-y-3"
                 style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-soft)' }}
@@ -803,7 +807,24 @@ export default function TripExpensesView({
                 </button>
               </div>
             ) : (
-              tripListRows.map(({ trip, pending, pendingCount, totalSpend }) => (
+              <>
+                {trips.some((t) => t.isSample) ? (
+                  <div
+                    className="rounded-xl px-3 py-2.5 mb-1"
+                    style={{
+                      background: 'rgba(180,83,9,0.1)',
+                      border: '1px dashed rgba(180,83,9,0.35)',
+                    }}
+                  >
+                    <p className="text-[11px] font-bold" style={{ color: '#b45309' }}>
+                      Practice trip — not a real vacation
+                    </p>
+                    <p className="text-[10px] mt-0.5 leading-snug" style={{ color: 'var(--text-muted)' }}>
+                      Explore splits and settlements. Remove from Account when you&apos;re done.
+                    </p>
+                  </div>
+                ) : null}
+                {tripListRows.map(({ trip, pending, pendingCount, totalSpend }) => (
                 <button
                   key={trip.id}
                   type="button"
@@ -859,7 +880,8 @@ export default function TripExpensesView({
                     )}
                   </div>
                 </button>
-              ))
+              ))}
+              </>
             )}
           </div>
         </>

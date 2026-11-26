@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, CheckCircle2, Loader2 } from 'lucide-react';
 import BrandMark from '@/app/components/BrandMark';
+import PersonAvatar from '@/app/components/PersonAvatar';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import CreatorCredit from '@/app/components/CreatorCredit';
@@ -40,28 +41,6 @@ type SharedLedger = {
   transactions: SharedTx[];
 };
 
-const AVATAR_TONES = [
-  'bg-[#0f766e]',
-  'bg-[#115e59]',
-  'bg-[#134e4a]',
-  'bg-[#1e3a36]',
-  'bg-[#0e7490]',
-  'bg-[#3d4f47]',
-];
-
-function avatarTone(name: string) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
-  return AVATAR_TONES[Math.abs(hash) % AVATAR_TONES.length];
-}
-
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-}
-
 function formatChatDateLabel(dateStr: string) {
   const date = new Date(`${dateStr}T00:00:00`);
   const today = new Date();
@@ -82,19 +61,7 @@ function formatChatDateLabel(dateStr: string) {
 }
 
 function Avatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'md' | 'lg' }) {
-  const dim = size === 'lg' ? 'w-12 h-12 text-base' : size === 'sm' ? 'w-8 h-8 text-[10px]' : 'w-10 h-10 text-sm';
-  return (
-    <div
-      className={cn(
-        'rounded-full flex items-center justify-center font-semibold text-white shrink-0',
-        dim,
-        avatarTone(name)
-      )}
-      title={name}
-    >
-      {initials(name)}
-    </div>
-  );
+  return <PersonAvatar name={name} seed={name} size={size} />;
 }
 
 export default function SharedChatClient({ token }: { token: string }) {
