@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
 import { connectToDatabase } from '@/lib/db';
 import Contact from '@/models/Contact';
 import { getAuthenticatedUserId } from '@/lib/session';
+import { buildShareToken, chatSharePath, isLegacyShareToken } from '@/lib/share-slug';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,6 +10,20 @@ function appOrigin(req: NextRequest) {
   const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '');
   if (fromEnv) return fromEnv;
   return req.nextUrl.origin;
+}
+
+async function allocateChatShareToken(name: string): Promise<string> {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const candidate = buildShareToken(name);
+    const taken = await Contact.findOne({ shareToken: candidate }).select('_id').lean();
+    if (!taken) return candidate;
+  }
+  // Extremely unlikely fallback
+  return buildShareToken(name) + shortFallback();
+}
+
+function shortFallback() {
+  return Math.random().toString(36).slice(2, 5);
 }
 
 export async function POST(
@@ -30,12 +44,13 @@ export async function POST(
       return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
     }
 
-    if (!contact.shareToken) {
-      contact.shareToken = crypto.randomBytes(16).toString('hex');
+    // New shares (and one-time upgrade from old hex tokens) get a short name link.
+    if (!contact.shareToken || isLegacyShareToken(contact.shareToken)) {
+      contact.shareToken = await allocateChatShareToken(contact.name);
       await contact.save();
     }
 
-    const shareUrl = `${appOrigin(req)}/share/${contact.shareToken}`;
+    const shareUrl = `${appOrigin(req)}${chatSharePath(contact.shareToken)}`;
 
     return NextResponse.json({
       shareToken: contact.shareToken,

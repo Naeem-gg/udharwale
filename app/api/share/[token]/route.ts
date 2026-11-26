@@ -15,7 +15,7 @@ export async function GET(
     await connectToDatabase();
     const { token } = await params;
 
-    if (!token || token.length < 16) {
+    if (!token || token.length < 6 || token.length > 80) {
       return NextResponse.json({ error: 'Invalid link' }, { status: 400 });
     }
 

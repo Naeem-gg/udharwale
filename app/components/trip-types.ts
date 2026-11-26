@@ -604,7 +604,7 @@ export function getDemoTrip(currentUserName = 'You', contacts: Contact[] = []): 
     participants,
     expenses,
     settlements: demoSettlements,
-    shareToken: 'demo_goa_share_' + Math.random().toString(36).substring(2, 9),
+    shareToken: 'goa-' + Math.random().toString(36).substring(2, 8),
     status: 'active',
     createdAt: new Date().toISOString(),
   };

@@ -656,12 +656,12 @@ export default function TripExpensesView({
       } else {
         const token = currentTrip.shareToken || 'demo_trip_' + currentTrip.id;
         const host = window.location.host;
-        setPublicShareUrl(`${window.location.protocol}//${host}/share/trip/${token}`);
+        setPublicShareUrl(`${window.location.protocol}//${host}/t/${token}`);
       }
     } catch {
       const token = currentTrip.shareToken || 'demo_trip_' + currentTrip.id;
       const host = window.location.host;
-      setPublicShareUrl(`${window.location.protocol}//${host}/share/trip/${token}`);
+      setPublicShareUrl(`${window.location.protocol}//${host}/t/${token}`);
     } finally {
       setIsGeneratingShare(false);
       setIsShareModalOpen(true);

@@ -72,7 +72,7 @@ export default function SharedChatClient({ token }: { token: string }) {
   const [claiming, setClaiming] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
 
-  const sharePath = `/share/${token}`;
+  const sharePath = `/c/${token}`;
   const loginHref = `/login?next=${encodeURIComponent(sharePath)}`;
   const signupHref = `/signup?next=${encodeURIComponent(sharePath)}`;
 

@@ -80,8 +80,8 @@ export default function SharedTripClient({ token }: { token: string }) {
   const [ackAmount, setAckAmount] = useState('');
   const [isSubmittingAck, setIsSubmittingAck] = useState(false);
 
-  const loginHref = `/login?next=${encodeURIComponent(`/share/trip/${token}`)}`;
-  const signupHref = `/signup?next=${encodeURIComponent(`/share/trip/${token}`)}`;
+  const loginHref = `/login?next=${encodeURIComponent(`/t/${token}`)}`;
+  const signupHref = `/signup?next=${encodeURIComponent(`/t/${token}`)}`;
 
   const canManageSettlementRow = (st: { fromId?: string }) => {
     if (!viewer.canSettle) return false;

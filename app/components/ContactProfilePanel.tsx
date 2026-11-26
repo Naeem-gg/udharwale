@@ -201,7 +201,11 @@ export default function ContactProfilePanel({
       label: 'Phone',
       value: contact.phone,
       onClick: onCall || onCopyPhone,
-      hint: contact.isSample ? 'Fake sample number' : onCall ? 'Tap to call' : 'Tap to copy',
+      hint: contact.isSample
+        ? 'Fake sample number'
+        : onCall
+          ? 'Tap to call · also used for UPI pay'
+          : 'Also used for UPI pay',
     });
   } else {
     detailRows.push({ key: 'phone', label: 'Phone', value: 'Not added' });
@@ -213,15 +217,6 @@ export default function ContactProfilePanel({
       label: 'Email',
       value: contact.email,
       hint: contact.isSample ? 'Fake sample email' : undefined,
-    });
-  }
-
-  if (contact.upiId) {
-    detailRows.push({
-      key: 'upi',
-      label: 'UPI ID',
-      value: contact.upiId,
-      hint: contact.upiLocked ? 'From their Udharwale account' : 'Saved for Pay via UPI',
     });
   }
 
@@ -246,8 +241,7 @@ export default function ContactProfilePanel({
     });
   }
 
-  const hasEmptyDetails =
-    !contact.phone && !contact.email && !contact.upiId && !contact.dueDate && !isPeer;
+  const hasEmptyDetails = !contact.phone && !contact.email && !contact.dueDate && !isPeer;
 
   return (
     <div
@@ -454,7 +448,7 @@ export default function ContactProfilePanel({
                       onSettleFull || onSettlePartial ? '1px solid var(--border-soft)' : undefined,
                   }}
                 >
-                  {contact.upiId ? 'Pay via UPI' : 'Add UPI to pay'}
+                  {contact.phone ? 'Pay via UPI' : 'Add phone to pay'}
                 </button>
               ) : null}
               {onSettleFull ? (

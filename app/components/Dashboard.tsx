@@ -27,8 +27,8 @@ import TransactionShareSheet, {
   type TransactionSharePayload,
 } from './TransactionShareSheet';
 import { buildBalanceReminders, formatReminderLabel } from '@/lib/reminders';
-import { toWhatsAppPhone } from '@/lib/phone';
-import { buildUpiPayUrl, isValidUpiId, normalizeUpiId } from '@/lib/upi';
+import { digitsOnly, toWhatsAppPhone } from '@/lib/phone';
+import { buildUpiPayUrl, phoneToUpiPa, resolveUpiPayee } from '@/lib/upi';
 import {
   pushDashboardNav,
   readDashboardNav,
@@ -89,13 +89,11 @@ export default function Dashboard() {
   const [userEmail, setUserEmail] = useState('');
   const [userPhone, setUserPhone] = useState('');
   const [userAvatarSeed, setUserAvatarSeed] = useState('');
-  const [userUpiId, setUserUpiId] = useState('');
   const [historyTx, setHistoryTx] = useState<Transaction | null>(null);
   const [claimedOnce, setClaimedOnce] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [profileName, setProfileName] = useState('');
   const [profilePhone, setProfilePhone] = useState('');
-  const [profileUpiId, setProfileUpiId] = useState('');
   const [profileAvatarSeed, setProfileAvatarSeed] = useState<AvatarPresetId>('uw-a01');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const userKeyRef = useRef('');
@@ -146,7 +144,6 @@ export default function Dashboard() {
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
-  const [contactUpiId, setContactUpiId] = useState('');
   const [contactDueDate, setContactDueDate] = useState('');
   const [contactAvatarSeed, setContactAvatarSeed] = useState<AvatarPresetId>('uw-a01');
   const [contactInitialBalance, setContactInitialBalance] = useState('');
@@ -246,7 +243,6 @@ export default function Dashboard() {
       setUserEmail(session.email);
       setUserPhone(session.phone || '');
       setUserAvatarSeed(session.avatarSeed || '');
-      setUserUpiId(session.upiId || '');
       const cached = readContactsCache<Contact>(session.userKey);
       if (cached?.length) {
         setContacts(cached);
@@ -276,13 +272,11 @@ export default function Dashboard() {
         setUserEmail(data.user.email);
         setUserPhone(data.user.phone || '');
         setUserAvatarSeed(data.user.avatarSeed || '');
-        setUserUpiId(data.user.upiId || '');
         writeSessionCache(key, {
           name: data.user.name,
           email: data.user.email,
           phone: data.user.phone || '',
           avatarSeed: data.user.avatarSeed || undefined,
-          upiId: data.user.upiId || undefined,
         });
 
         if (previousKey && previousKey !== key) {
@@ -400,7 +394,6 @@ export default function Dashboard() {
   const openEditProfile = () => {
     setProfileName(userName);
     setProfilePhone(userPhone);
-    setProfileUpiId(userUpiId);
     setProfileAvatarSeed(
       (userAvatarSeed as AvatarPresetId) ||
         presetFromFallback(userEmail || userPhone || userName || 'you')
@@ -410,11 +403,6 @@ export default function Dashboard() {
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmedUpi = normalizeUpiId(profileUpiId);
-    if (trimmedUpi && !isValidUpiId(trimmedUpi)) {
-      showToast('Enter a valid UPI ID (e.g. name@oksbi)', 'warn');
-      return;
-    }
     setIsSavingProfile(true);
     try {
       const res = await fetch('/api/auth/me', {
@@ -424,7 +412,6 @@ export default function Dashboard() {
           name: profileName,
           phone: profilePhone,
           avatarSeed: profileAvatarSeed,
-          upiId: trimmedUpi || null,
         }),
       });
       const data = await res.json();
@@ -432,7 +419,6 @@ export default function Dashboard() {
       setUserName(data.user.name);
       setUserPhone(data.user.phone || '');
       setUserAvatarSeed(data.user.avatarSeed || profileAvatarSeed);
-      setUserUpiId(data.user.upiId || '');
       const key = sessionUserKey(data.user.email || userEmail, data.user.phone, data.user.name);
       userKeyRef.current = key;
       writeSessionCache(key, {
@@ -440,7 +426,6 @@ export default function Dashboard() {
         email: data.user.email || userEmail,
         phone: data.user.phone || '',
         avatarSeed: data.user.avatarSeed || profileAvatarSeed,
-        upiId: data.user.upiId || undefined,
       });
       setIsEditProfileOpen(false);
       showToast('Profile updated', 'success');
@@ -563,7 +548,6 @@ export default function Dashboard() {
             email: userEmail,
             phone: userPhone,
             avatarSeed: userAvatarSeed || undefined,
-            upiId: userUpiId || undefined,
           });
         }
         showToast('All ledger data wiped', 'success');
@@ -754,12 +738,6 @@ export default function Dashboard() {
     e.preventDefault();
     if (!contactName.trim() || !contactPhone.trim()) return;
 
-    const trimmedUpi = normalizeUpiId(contactUpiId);
-    if (trimmedUpi && !isValidUpiId(trimmedUpi)) {
-      showToast('Enter a valid UPI ID (e.g. name@oksbi)', 'warn');
-      return;
-    }
-
     const newContactId = 'c_' + Date.now();
     const newTransactions: Transaction[] = [];
 
@@ -783,7 +761,6 @@ export default function Dashboard() {
       name: contactName.trim(),
       phone: contactPhone.trim(),
       email: contactEmail.trim() || undefined,
-      upiId: trimmedUpi || undefined,
       avatarSeed: contactAvatarSeed,
       transactions: newTransactions,
       createdAt: new Date().toISOString(),
@@ -803,7 +780,6 @@ export default function Dashboard() {
         setContactName('');
         setContactPhone('');
         setContactEmail('');
-        setContactUpiId('');
         setContactAvatarSeed(randomAvatarPreset());
         setContactInitialBalance('');
         setContactInitialType('credit');
@@ -823,30 +799,17 @@ export default function Dashboard() {
     e.preventDefault();
     if (!selectedContactId || !contactName.trim() || !contactPhone.trim()) return;
 
-    const editing = contacts.find((c) => c.id === selectedContactId);
-    const trimmedUpi = normalizeUpiId(contactUpiId);
-    if (trimmedUpi && !isValidUpiId(trimmedUpi)) {
-      showToast('Enter a valid UPI ID (e.g. name@oksbi)', 'warn');
-      return;
-    }
-
     try {
-      const payload: Record<string, unknown> = {
-        name: contactName.trim(),
-        phone: contactPhone.trim(),
-        email: contactEmail.trim() || undefined,
-        dueDate: contactDueDate || null,
-        avatarSeed: contactAvatarSeed,
-      };
-      // Don't overwrite linked peer UPI with a blank local edit
-      if (!editing?.upiLocked) {
-        payload.upiId = trimmedUpi || null;
-      }
-
       const res = await fetch(`/api/contacts/${selectedContactId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          name: contactName.trim(),
+          phone: contactPhone.trim(),
+          email: contactEmail.trim() || undefined,
+          dueDate: contactDueDate || null,
+          avatarSeed: contactAvatarSeed,
+        }),
       });
 
       if (res.ok) {
@@ -1304,15 +1267,15 @@ export default function Dashboard() {
     const name = contact.name;
     const amount = `₹${Math.abs(balance).toLocaleString('en-IN')}`;
     const dueLine = dueLabel ? `\nDue: ${dueLabel}` : '';
-    const myUpi = normalizeUpiId(userUpiId);
+    const myMobile = digitsOnly(userPhone).slice(-10);
 
     let text =
       balance > 0
         ? `Hi ${name},\n\nJust reminding you — ${amount} is still left from your side.${dueLine}\n\nSend it whenever you can. Thank you!`
         : `Hi ${name},\n\nJust a quick note — I still have to give you ${amount}.${dueLine}\n\nI'll send it soon. Thanks!`;
 
-    if (balance > 0 && myUpi) {
-      text += `\n\nUPI: ${myUpi}`;
+    if (balance > 0 && myMobile.length === 10 && !myMobile.startsWith('00000')) {
+      text += `\n\nPay on UPI to my number: ${myMobile}`;
     }
 
     if (shareUrl) {
@@ -1326,7 +1289,6 @@ export default function Dashboard() {
     setContactName(contact.name);
     setContactPhone(contact.phone);
     setContactEmail(contact.email || '');
-    setContactUpiId(contact.upiId || '');
     setContactDueDate(contact.dueDate || '');
     setContactAvatarSeed(
       (contact.avatarSeed as AvatarPresetId) || presetFromFallback(contact.id)
@@ -1350,10 +1312,10 @@ export default function Dashboard() {
     }
 
     const amount = Math.abs(balance);
-    const pa = normalizeUpiId(contact.upiId || '');
+    const pa = resolveUpiPayee({ phone: contact.phone, upiId: contact.upiId });
     if (!pa) {
-      showToast('Add their UPI ID first', 'warn');
-      if (contact.role !== 'peer' && !contact.upiLocked) {
+      showToast('Add their mobile number to pay on UPI', 'warn');
+      if (contact.role !== 'peer') {
         openContactChat(contact.id);
         openEditContactFor(contact);
       }
@@ -1367,12 +1329,18 @@ export default function Dashboard() {
       tn: `Udharwale · ${userName || 'Settle'}`,
     });
     if (!url) {
-      showToast('Could not open UPI — check their UPI ID', 'error');
+      showToast('Could not open UPI — check their mobile number', 'error');
       return;
     }
 
     window.location.href = url;
-    showToast('After paying, tap Settle to record it', 'info');
+    const viaMobile = Boolean(phoneToUpiPa(contact.phone || ''));
+    showToast(
+      viaMobile
+        ? 'Opening UPI with their mobile number — tap Settle after paying'
+        : 'After paying, tap Settle to record it',
+      'info'
+    );
   };
 
   const buildLedgerMessage = (option: 'all' | 'gave' | 'got', shareUrl?: string) => {
@@ -3134,11 +3102,11 @@ export default function Dashboard() {
                               border: '1px solid color-mix(in srgb, var(--primary) 28%, transparent)',
                             }}
                           >
-                            {selectedContact.upiId
+                            {phoneToUpiPa(selectedContact.phone || '')
                               ? 'Pay via UPI'
-                              : selectedContact.role === 'peer' || selectedContact.upiLocked
-                                ? 'No UPI on file'
-                                : 'Add UPI to pay'}
+                              : selectedContact.role === 'peer'
+                                ? 'No mobile to pay'
+                                : 'Add phone to pay'}
                           </button>
                         ) : null}
                       </div>
@@ -3209,7 +3177,9 @@ export default function Dashboard() {
                               className="w-full text-left px-3 py-3 rounded-xl text-sm font-semibold"
                               style={{ color: 'var(--text-primary)' }}
                             >
-                              {selectedContact.upiId ? 'Pay via UPI' : 'Add UPI to pay'}
+                              {phoneToUpiPa(selectedContact.phone || '')
+                                ? 'Pay via UPI'
+                                : 'Add phone to pay'}
                             </button>
                           ) : null}
                           {contactBal !== 0 && selectedContact.role !== 'peer' ? (
@@ -3352,7 +3322,6 @@ export default function Dashboard() {
                 userName={userName}
                 userEmail={userEmail}
                 userPhone={userPhone}
-                userUpiId={userUpiId || undefined}
                 userId={userEmail || userPhone || userName}
                 avatarSeed={userAvatarSeed || undefined}
                 contactCount={ledgerSummary.contactCount}
@@ -3558,29 +3527,15 @@ export default function Dashboard() {
                 <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Phone Number *</label>
                 <input type="tel" required value={contactPhone} onChange={e => setContactPhone(e.target.value)}
                   className="input-field" placeholder="+91 98765 43210" />
+                <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                  Also used for one-tap Pay via UPI when you owe them.
+                </p>
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Email (optional)</label>
                 <input type="email" value={contactEmail} onChange={e => setContactEmail(e.target.value)}
                   className="input-field" placeholder="friend@email.com" />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>UPI ID (optional)</label>
-                <input
-                  type="text"
-                  value={contactUpiId}
-                  onChange={(e) => setContactUpiId(e.target.value)}
-                  className="input-field"
-                  placeholder="name@oksbi"
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                  spellCheck={false}
-                />
-                <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                  Needed for one-tap Pay via UPI when you owe them.
-                </p>
               </div>
 
               <div className="space-y-1.5">
@@ -3911,45 +3866,14 @@ export default function Dashboard() {
                   <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Phone <span className="text-rose-500">*</span></label>
                   <input type="tel" required value={contactPhone} onChange={e => setContactPhone(e.target.value)}
                     className="input-field w-full" placeholder="e.g. +91 98765 43210" />
+                  <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    Used for WhatsApp reminders and Pay via UPI.
+                  </p>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Email <span style={{ opacity: 0.5 }}>(Optional)</span></label>
                   <input type="email" value={contactEmail} onChange={e => setContactEmail(e.target.value)}
                     className="input-field w-full" placeholder="e.g. rahul@example.com" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-                    UPI ID <span style={{ opacity: 0.5 }}>(Optional)</span>
-                  </label>
-                  {selectedContact?.upiLocked ? (
-                    <div
-                      className="rounded-xl px-3 py-2.5"
-                      style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-soft)' }}
-                    >
-                      <p className="text-sm font-semibold break-all" style={{ color: 'var(--text-primary)' }}>
-                        {selectedContact.upiId || 'Not set on their account'}
-                      </p>
-                      <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>
-                        This friend is on Udharwale — their account UPI is used for pay.
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      <input
-                        type="text"
-                        value={contactUpiId}
-                        onChange={(e) => setContactUpiId(e.target.value)}
-                        className="input-field w-full"
-                        placeholder="name@oksbi"
-                        autoCapitalize="off"
-                        autoCorrect="off"
-                        spellCheck={false}
-                      />
-                      <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                        Used for Pay via UPI when you owe this friend.
-                      </p>
-                    </>
-                  )}
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
@@ -4034,23 +3958,7 @@ export default function Dashboard() {
                 <input type="tel" required value={profilePhone} onChange={(e) => setProfilePhone(e.target.value)}
                   className="input-field rounded-2xl" placeholder="9876543210" />
                 <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                  Used to find chats others already started with you.
-                </p>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Your UPI ID</label>
-                <input
-                  type="text"
-                  value={profileUpiId}
-                  onChange={(e) => setProfileUpiId(e.target.value)}
-                  className="input-field rounded-2xl"
-                  placeholder="name@oksbi"
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                  spellCheck={false}
-                />
-                <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                  Added to WhatsApp reminders so friends can pay you faster.
+                  Used to find shared chats — and shared in reminders so friends can pay you on UPI.
                 </p>
               </div>
               <div className="space-y-1.5">

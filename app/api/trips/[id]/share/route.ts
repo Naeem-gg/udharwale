@@ -1,10 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
 import { connectToDatabase } from '@/lib/db';
 import Trip from '@/models/Trip';
 import { getAuthenticatedUserId } from '@/lib/session';
+import { buildShareToken, isLegacyShareToken, tripSharePath } from '@/lib/share-slug';
 
 export const dynamic = 'force-dynamic';
+
+function appOrigin(req: NextRequest) {
+  const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '');
+  if (fromEnv) return fromEnv;
+  const host = req.headers.get('host') || 'localhost:3000';
+  const proto = req.headers.get('x-forwarded-proto') || 'http';
+  return `${proto}://${host}`;
+}
+
+async function allocateTripShareToken(name: string): Promise<string> {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const candidate = buildShareToken(name);
+    const taken = await Trip.findOne({ shareToken: candidate }).select('_id').lean();
+    if (!taken) return candidate;
+  }
+  return buildShareToken(name) + Math.random().toString(36).slice(2, 5);
+}
 
 export async function POST(
   req: NextRequest,
@@ -24,14 +41,12 @@ export async function POST(
       return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
     }
 
-    if (!trip.shareToken) {
-      trip.shareToken = 'trip_' + crypto.randomBytes(12).toString('hex');
+    if (!trip.shareToken || isLegacyShareToken(trip.shareToken)) {
+      trip.shareToken = await allocateTripShareToken(trip.name);
       await trip.save();
     }
 
-    const host = req.headers.get('host') || 'localhost:3000';
-    const proto = req.headers.get('x-forwarded-proto') || 'http';
-    const shareUrl = `${proto}://${host}/share/trip/${trip.shareToken}`;
+    const shareUrl = `${appOrigin(req)}${tripSharePath(trip.shareToken)}`;
 
     return NextResponse.json({
       shareToken: trip.shareToken,
@@ -45,4 +60,3 @@ export async function POST(
     );
   }
 }
-

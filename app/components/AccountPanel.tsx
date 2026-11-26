@@ -14,7 +14,6 @@ type Props = {
   userName: string;
   userEmail: string;
   userPhone: string;
-  userUpiId?: string;
   userId?: string;
   avatarSeed?: string;
   contactCount: number;
@@ -134,7 +133,6 @@ export default function AccountPanel({
   userName,
   userEmail,
   userPhone,
-  userUpiId,
   userId,
   avatarSeed,
   contactCount,
@@ -267,9 +265,6 @@ export default function AccountPanel({
                 </p>
                 <p className="mt-0.5 text-sm" style={{ color: 'var(--text-muted)' }}>
                   {userPhone || 'No phone on file'}
-                </p>
-                <p className="mt-0.5 text-sm" style={{ color: 'var(--text-muted)' }}>
-                  {userUpiId ? `UPI · ${userUpiId}` : 'No UPI ID yet'}
                 </p>
 
                 <div
