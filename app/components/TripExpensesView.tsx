@@ -65,6 +65,8 @@ function persistTrips(trips: Trip[]) {
 interface TripExpensesViewProps {
   contacts: Contact[];
   userName?: string;
+  userAvatarSeed?: string;
+  onOpenAccount?: () => void;
   onRecordToLedger?: (contactId: string, amount: number, type: 'gave' | 'got', remark: string) => Promise<void>;
   showToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
@@ -72,18 +74,14 @@ interface TripExpensesViewProps {
 export default function TripExpensesView({
   contacts,
   userName = 'You',
+  userAvatarSeed,
+  onOpenAccount,
   onRecordToLedger,
   showToast = () => {},
 }: TripExpensesViewProps) {
-  // Trips State (warm-start from cache)
-  const [trips, setTrips] = useState<Trip[]>(() => {
-    const cached = readTripsCache<Trip>(resolveTripUserKey() || undefined) || [];
-    return cached.filter((t) => !String(t.id || '').startsWith('trip_demo_'));
-  });
-  const [isLoadingTrips, setIsLoadingTrips] = useState(() => {
-    const cached = readTripsCache<Trip>(resolveTripUserKey() || undefined) || [];
-    return cached.filter((t) => !String(t.id || '').startsWith('trip_demo_')).length === 0;
-  });
+  // Trips State (SSR-safe; hydrate cache after mount)
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [isLoadingTrips, setIsLoadingTrips] = useState(true);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   const [activeTab, setActiveTab] = useState<'expenses' | 'settlement'>('settlement');
@@ -111,7 +109,7 @@ export default function TripExpensesView({
   // New Trip Form State
   const [newTripName, setNewTripName] = useState('');
   const [newTripDestination, setNewTripDestination] = useState('');
-  const [newTripStartDate, setNewTripStartDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [newTripStartDate, setNewTripStartDate] = useState('');
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
   const [customParticipantNames, setCustomParticipantNames] = useState<string>('');
 
@@ -119,7 +117,7 @@ export default function TripExpensesView({
   const [expTitle, setExpTitle] = useState('');
   const [expCategory, setExpCategory] = useState<ExpenseCategory>('food');
   const [expAmount, setExpAmount] = useState('');
-  const [expDate, setExpDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [expDate, setExpDate] = useState('');
   const [expNotes, setExpNotes] = useState('');
   const [payerMode, setPayerMode] = useState<'single' | 'multiple'>('single');
   const [singlePayerId, setSinglePayerId] = useState<string>('');
@@ -127,11 +125,22 @@ export default function TripExpensesView({
   const [splitMode, setSplitMode] = useState<'all' | 'custom'>('all');
   const [selectedBeneficiaries, setSelectedBeneficiaries] = useState<string[]>([]);
 
-  // Load Trips on mount — show cache immediately, replace when API returns
+  // Load Trips on mount — hydrate cache after mount, replace when API returns
   useEffect(() => {
     let cancelled = false;
+    const today = new Date().toISOString().split('T')[0];
+    setNewTripStartDate(today);
+    setExpDate(today);
 
-    const refresh = (showLoader = trips.length === 0) => {
+    const cached = (readTripsCache<Trip>(resolveTripUserKey() || undefined) || []).filter(
+      (t) => !String(t.id || '').startsWith('trip_demo_')
+    );
+    if (cached.length > 0) {
+      setTrips(cached);
+      setIsLoadingTrips(false);
+    }
+
+    const refresh = (showLoader = cached.length === 0) => {
       if (showLoader) setIsLoadingTrips(true);
       fetch('/api/trips')
         .then((res) => {
@@ -151,14 +160,13 @@ export default function TripExpensesView({
         });
     };
 
-    refresh(trips.length === 0);
+    refresh(cached.length === 0);
     const onSampleCleared = () => refresh(false);
     window.addEventListener('udharwale:sample-cleared', onSampleCleared);
     return () => {
       cancelled = true;
       window.removeEventListener('udharwale:sample-cleared', onSampleCleared);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Selected Trip — null on list view
@@ -768,11 +776,28 @@ export default function TripExpensesView({
             className="px-4 pt-3 pb-3 shrink-0 flex items-center justify-between gap-3"
             style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-soft)' }}
           >
-            <div>
-              <h1 className="text-xl font-bold leading-none">Trips</h1>
-              <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>
-                {trips.length} trip{trips.length === 1 ? '' : 's'}
-              </p>
+            <div className="flex items-center gap-3 min-w-0">
+              {onOpenAccount ? (
+                <button
+                  type="button"
+                  onClick={onOpenAccount}
+                  className="shrink-0 rounded-full"
+                  aria-label="Open account"
+                  title="Account"
+                >
+                  <PersonAvatar
+                    name={userName}
+                    seed={userAvatarSeed || userName || 'you'}
+                    size="md"
+                  />
+                </button>
+              ) : null}
+              <div className="min-w-0">
+                <h1 className="text-xl font-bold leading-none">Trips</h1>
+                <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>
+                  {trips.length} trip{trips.length === 1 ? '' : 's'}
+                </p>
+              </div>
             </div>
             <button
               type="button"

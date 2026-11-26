@@ -1,27 +1,22 @@
 'use client';
 
 import { useMemo } from 'react';
+import Avatar from 'boring-avatars';
 import { cn } from '@/lib/utils';
 
-/** Muted ink accents — soft wash backgrounds, never cartoon faces. */
-const ACCENTS = [
-  '#0f766e',
-  '#115e59',
-  '#0e7490',
-  '#1e3a5f',
-  '#3d4f47',
-  '#5c4033',
-  '#4a5568',
-  '#7c4a3a',
-  '#365314',
-  '#334155',
-  '#0f4c5c',
-  '#4c1d3d',
-  '#3f3f46',
-  '#064e3b',
-  '#1e293b',
-  '#78350f',
+/** Brand-aligned palettes — tiny SVG via boring-avatars (~20KB). */
+const PALETTES = [
+  ['#0f766e', '#14b8a6', '#99f6e4', '#134e4a', '#f4f1ec'],
+  ['#115e59', '#2dd4bf', '#ccfbf1', '#0f3d3a', '#ebe6df'],
+  ['#0e7490', '#22d3ee', '#cffafe', '#164e63', '#f4f1ec'],
+  ['#3d4f47', '#5f6f68', '#dce8e4', '#14201c', '#fffcf7'],
+  ['#1e3a5f', '#3b82f6', '#bfdbfe', '#0f172a', '#f1f5f9'],
+  ['#5c4033', '#a16207', '#fde68a', '#292524', '#faf7f2'],
+  ['#064e3b', '#059669', '#a7f3d0', '#022c22', '#f0fdf4'],
+  ['#334155', '#64748b', '#e2e8f0', '#0f172a', '#f8fafc'],
 ] as const;
+
+const VARIANTS = ['beam', 'marble', 'ring', 'pixel', 'bauhaus', 'sunset'] as const;
 
 function hashSeed(seed: string) {
   let h = 2166136261;
@@ -30,10 +25,6 @@ function hashSeed(seed: string) {
     h = Math.imul(h, 16777619);
   }
   return h >>> 0;
-}
-
-function pickAccent(seed: string) {
-  return ACCENTS[hashSeed(seed.toLowerCase()) % ACCENTS.length];
 }
 
 function initialsFrom(name: string) {
@@ -64,52 +55,86 @@ const SIZE_TEXT: Record<Size, string> = {
 
 type Props = {
   name: string;
-  /** Stable id preferred so renames keep the same tone */
+  /** Stable id preferred so renames keep the same look */
   seed?: string;
   size?: Size;
   className?: string;
-  /** @deprecated All avatars are initials now — kept for call-site compatibility */
+  /** Force initials-only circle */
   initialsOnly?: boolean;
   ring?: boolean;
   title?: string;
 };
 
+function lookFromSeed(key: string) {
+  const h = hashSeed(key.toLowerCase());
+  return {
+    palette: PALETTES[h % PALETTES.length],
+    variant: VARIANTS[(h >>> 3) % VARIANTS.length],
+    accent: PALETTES[h % PALETTES.length][0],
+  };
+}
+
 /**
- * Deterministic initials avatar from name/seed — muted wash, no network.
+ * Lightweight deterministic avatar (boring-avatars) from name/seed.
  */
 export default function PersonAvatar({
   name,
   seed,
   size = 'md',
   className,
+  initialsOnly = false,
   ring = false,
   title,
 }: Props) {
   const key = (seed || name || '?').trim() || '?';
   const px = SIZE_PX[size];
-  const accent = useMemo(() => pickAccent(key), [key]);
-  const initials = initialsFrom(name);
+  const look = useMemo(() => lookFromSeed(key), [key]);
+
+  if (initialsOnly) {
+    return (
+      <div
+        className={cn(
+          'rounded-full shrink-0 flex items-center justify-center font-semibold select-none',
+          SIZE_TEXT[size],
+          className
+        )}
+        style={{
+          width: px,
+          height: px,
+          color: look.accent,
+          background: `color-mix(in srgb, ${look.accent} 16%, var(--bg-raised))`,
+          boxShadow: ring
+            ? `0 0 0 2px var(--bg-base), 0 0 0 3.5px var(--primary)`
+            : `inset 0 0 0 1px color-mix(in srgb, ${look.accent} 22%, transparent)`,
+        }}
+        title={title || name}
+        aria-label={name}
+      >
+        {initialsFrom(name)}
+      </div>
+    );
+  }
 
   return (
     <div
-      className={cn(
-        'rounded-full shrink-0 flex items-center justify-center font-semibold select-none',
-        SIZE_TEXT[size],
-        className
-      )}
+      className={cn('rounded-full shrink-0 overflow-hidden leading-none', className)}
       style={{
         width: px,
         height: px,
-        color: accent,
-        background: `radial-gradient(circle at 32% 28%, color-mix(in srgb, ${accent} 10%, var(--bg-surface)) 0%, color-mix(in srgb, ${accent} 18%, var(--bg-raised)) 100%)`,
         boxShadow: ring
           ? `0 0 0 2px var(--bg-base), 0 0 0 3.5px var(--primary)`
-          : `inset 0 0 0 1px color-mix(in srgb, ${accent} 22%, transparent)`,
+          : undefined,
       }}
       title={title || name}
       aria-label={name}
     >
-      <span style={{ fontFeatureSettings: '"ss01"' }}>{initials}</span>
+      <Avatar
+        size={px}
+        name={key}
+        variant={look.variant}
+        colors={[...look.palette]}
+        title={false}
+      />
     </div>
   );
 }
@@ -128,7 +153,7 @@ export function avatarToneClass(name: string) {
 }
 
 export function getAvatarAccent(seed: string) {
-  return pickAccent((seed || '?').trim() || '?');
+  return lookFromSeed((seed || '?').trim() || '?').accent;
 }
 
 export function getInitials(name: string) {

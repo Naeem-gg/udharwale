@@ -8,6 +8,9 @@ dependencies:
   '@hookform/resolvers':
     specifier: ^7.0.8
     version: 7.0.8(react-hook-form@7.92.0)(zod@4.6.7)
+  boring-avatars:
+    specifier: ^2.0.4
+    version: 2.0.4(react-dom@19.3.1)(react@19.3.1)
   framer-motion:
     specifier: ^14.14.0
     version: 14.14.0(react-dom@19.3.1)(react@19.3.1)
@@ -1725,6 +1728,16 @@ packages:
     resolution: {integrity: sha512-Q9buOYhr2ggrEZpImICecZTJHCCd8yXkRUokFlUEQ8uiD6oP82F4W4jWnhOHZYV+wlvrC51V7Wy0ULyWjil5Wg==}
     engines: {node: '>=6.0.0'}
     hasBin: true
+
+  /boring-avatars@2.0.4(react-dom@19.3.1)(react@19.3.1):
+    resolution: {integrity: sha512-xhZO/w/6aFmRfkaWohcl2NfyIy87gK5SBbys8kctZeTGF1Apjpv/10pfUuv+YEfVPkESU/h2Y6tt/Dwp+bIZPw==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+    dependencies:
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    dev: false
 
   /brace-expansion@1.1.22:
     resolution: {integrity: sha512-CKLDTuSsN0+r1ThM0WkzzBI7dnPI6xEGfa/JnVYIK9JNBA1N1NyPwXVHor//NKD/y3sDxp764sZdLhFK7pH8XQ==}

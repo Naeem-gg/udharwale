@@ -21,12 +21,14 @@ export function FriendsListSkeleton({ rows = 6 }: { rows?: number }) {
         style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-soft)' }}
       >
         <div className="flex items-center justify-between gap-3">
-          <div className="space-y-2 flex-1 min-w-0">
-            <Bone className="h-6 w-28 rounded-lg" />
-            <Bone className="h-2.5 w-40 rounded-full" />
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <Bone className="h-11 w-11 rounded-full shrink-0" />
+            <div className="space-y-2 flex-1 min-w-0">
+              <Bone className="h-6 w-28 rounded-lg" />
+              <Bone className="h-2.5 w-36 rounded-full" />
+            </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Bone className="h-9 w-16 rounded-xl" />
             <Bone className="h-10 w-10 rounded-xl" />
             <Bone className="h-9 w-9 rounded-full" />
           </div>

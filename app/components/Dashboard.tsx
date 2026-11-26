@@ -81,36 +81,25 @@ const getStoredCompactLedgerView = () => {
 export default function Dashboard() {
   const { theme, toggleTheme } = useTheme();
 
-  // --- Persistent State (warm-start from local cache, then refresh from API) ---
-  const [contacts, setContacts] = useState<Contact[]>(() => {
-    const session = readSessionCache();
-    if (!session) return [];
-    return readContactsCache<Contact>(session.userKey) || [];
-  });
-  const [userName, setUserName] = useState<string>(() => readSessionCache()?.name || '');
-  const [userEmail, setUserEmail] = useState<string>(() => readSessionCache()?.email || '');
-  const [userPhone, setUserPhone] = useState<string>(() => readSessionCache()?.phone || '');
-  const [userAvatarSeed, setUserAvatarSeed] = useState<string>(
-    () => readSessionCache()?.avatarSeed || ''
-  );
+  // --- Persistent State (SSR-safe empty start; hydrate cache after mount) ---
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [userName, setUserName] = useState('');
+  const [userEmail, setUserEmail] = useState('');
+  const [userPhone, setUserPhone] = useState('');
+  const [userAvatarSeed, setUserAvatarSeed] = useState('');
   const [historyTx, setHistoryTx] = useState<Transaction | null>(null);
   const [claimedOnce, setClaimedOnce] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [profileName, setProfileName] = useState('');
   const [profilePhone, setProfilePhone] = useState('');
-  const [profileAvatarSeed, setProfileAvatarSeed] = useState<AvatarPresetId>(() => randomAvatarPreset());
+  const [profileAvatarSeed, setProfileAvatarSeed] = useState<AvatarPresetId>('uw-a01');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const userKeyRef = useRef<string>(readSessionCache()?.userKey || '');
-  const contactsRef = useRef<Contact[]>(contacts);
+  const userKeyRef = useRef('');
+  const contactsRef = useRef<Contact[]>([]);
   contactsRef.current = contacts;
 
   // Database connection status: connecting, connected, or error
-  const [dbStatus, setDbStatus] = useState<'connecting' | 'connected' | 'error'>(() => {
-    const session = readSessionCache();
-    if (!session) return 'connecting';
-    const cached = readContactsCache(session.userKey);
-    return cached ? 'connected' : 'connecting';
-  });
+  const [dbStatus, setDbStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // --- UI Navigation State ---
@@ -137,16 +126,16 @@ export default function Dashboard() {
   const [detailTx, setDetailTx] = useState<Transaction | null>(null);
   const [showBalances, setShowBalances] = useState(false);
   const [peekingContactId, setPeekingContactId] = useState<string | null>(null);
-  const [defaultTxMode, setDefaultTxMode] = useState<ModeType>(getStoredDefaultTxMode);
-  const [compactLedgerView, setCompactLedgerView] = useState(getStoredCompactLedgerView);
+  const [defaultTxMode, setDefaultTxMode] = useState<ModeType>('Cash');
+  const [compactLedgerView, setCompactLedgerView] = useState(false);
 
   // --- Add Transaction Form State ---
   const [txAmount, setTxAmount] = useState('');
   const [txType, setTxType] = useState<'gave' | 'got'>('gave');
   const [txRemark, setTxRemark] = useState('');
-  const [txMode, setTxMode] = useState<ModeType>(getStoredDefaultTxMode);
+  const [txMode, setTxMode] = useState<ModeType>('Cash');
   const [txCategory, setTxCategory] = useState<LedgerCategory>('other');
-  const [txDate, setTxDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [txDate, setTxDate] = useState('');
   const [txDueDate, setTxDueDate] = useState('');
 
   // --- Add Contact Form State ---
@@ -154,7 +143,7 @@ export default function Dashboard() {
   const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [contactDueDate, setContactDueDate] = useState('');
-  const [contactAvatarSeed, setContactAvatarSeed] = useState<AvatarPresetId>(() => randomAvatarPreset());
+  const [contactAvatarSeed, setContactAvatarSeed] = useState<AvatarPresetId>('uw-a01');
   const [contactInitialBalance, setContactInitialBalance] = useState('');
   const [contactInitialType, setContactInitialType] = useState<'credit' | 'debit'>('credit');
   const [isImportingContacts, setIsImportingContacts] = useState(false);
@@ -180,6 +169,7 @@ export default function Dashboard() {
     message: string;
     confirmLabel?: string;
     tone?: 'danger' | 'default';
+    extraActions?: { label: string; onClick: () => void }[];
   } | null>(null);
 
   // --- Fetch Contacts Function (Component Scope for Retry) ---
@@ -228,15 +218,37 @@ export default function Dashboard() {
     }
   };
 
-  // --- Load Initial Data (show cache immediately, refresh in background) ---
+  // --- Load Initial Data (hydrate cache after mount, then refresh from API) ---
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-
     let cancelled = false;
+
+    // Restore prefs + warm cache only on the client (avoids SSR hydration mismatch)
+    setDefaultTxMode(getStoredDefaultTxMode());
+    setCompactLedgerView(getStoredCompactLedgerView());
+    setTxMode(getStoredDefaultTxMode());
+    setTxDate(new Date().toISOString().split('T')[0]);
+    setContactAvatarSeed(randomAvatarPreset());
+    setProfileAvatarSeed(randomAvatarPreset());
     setIsMobileDevice(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent));
     setContactsSupported(
       'contacts' in navigator && typeof (navigator as any).contacts?.select === 'function'
     );
+
+    const session = readSessionCache();
+    if (session) {
+      userKeyRef.current = session.userKey;
+      setUserName(session.name);
+      setUserEmail(session.email);
+      setUserPhone(session.phone || '');
+      setUserAvatarSeed(session.avatarSeed || '');
+      const cached = readContactsCache<Contact>(session.userKey);
+      if (cached?.length) {
+        setContacts(cached);
+        contactsRef.current = cached;
+        setDbStatus('connected');
+        setIsRefreshing(true);
+      }
+    }
 
     const bootstrap = async () => {
       try {
@@ -267,13 +279,8 @@ export default function Dashboard() {
 
         if (previousKey && previousKey !== key) {
           setContacts([]);
+          contactsRef.current = [];
           setDbStatus('connecting');
-        } else if (!previousKey) {
-          const cached = readContactsCache<Contact>(key);
-          if (cached?.length) {
-            setContacts(cached);
-            setDbStatus('connected');
-          }
         }
 
         await loadContacts({ silent: true });
@@ -283,8 +290,10 @@ export default function Dashboard() {
         }
       } catch (err) {
         console.error('Session authentication check failed:', err);
-        if (!cancelled && contacts.length === 0 && !userName) {
+        if (!cancelled && contactsRef.current.length === 0 && !userKeyRef.current) {
           window.location.href = '/login?next=/dashboard';
+        } else {
+          setIsRefreshing(false);
         }
       }
     };
@@ -1446,6 +1455,7 @@ export default function Dashboard() {
     message: string;
     confirmLabel?: string;
     tone?: 'danger' | 'default';
+    extraActions?: { label: string; onClick: () => void }[];
   }) => {
     setConfirmDialog(options);
     return new Promise<boolean>((resolve) => {
@@ -1525,7 +1535,60 @@ export default function Dashboard() {
       rows.map((row) => row.map(escapeCsv).join(',')).join('\n'),
       'text/csv'
     );
-    showToast('Ledger exported as CSV', 'success');
+    showToast('Ledger downloaded for Excel (.csv)', 'success');
+  };
+
+  const handleExportTxt = () => {
+    if (contacts.length === 0) {
+      showToast('Nothing to download yet.', 'warn');
+      return;
+    }
+
+    const lines: string[] = [
+      `${SITE_CREDIT_LINE} — Full ledger export`,
+      `Exported: ${new Date().toLocaleString('en-IN')}`,
+      `User: ${userName || 'Unknown'}${userEmail ? ` <${userEmail}>` : ''}`,
+      `Contacts: ${contacts.length}`,
+      '',
+    ];
+
+    contacts.forEach((contact, index) => {
+      const balance = getContactBalance(contact);
+      lines.push(`${index + 1}. ${contact.name}`);
+      lines.push(`   Phone: ${contact.phone || '—'}`);
+      if (contact.email) lines.push(`   Email: ${contact.email}`);
+      lines.push(
+        `   Balance: ${
+          balance === 0
+            ? 'Settled'
+            : balance > 0
+              ? `Owes you ₹${Math.abs(balance).toLocaleString('en-IN')}`
+              : `You owe ₹${Math.abs(balance).toLocaleString('en-IN')}`
+        }`
+      );
+      if (contact.transactions.length === 0) {
+        lines.push('   Transactions: none');
+      } else {
+        lines.push('   Transactions:');
+        contact.transactions.forEach((tx) => {
+          const category =
+            LEDGER_CATEGORY_CONFIG[
+              tx.category && LEDGER_CATEGORIES.includes(tx.category) ? tx.category : 'other'
+            ].label;
+          lines.push(
+            `   - ${tx.date} | ${tx.type === 'gave' ? 'Gave' : 'Got'} ₹${Number(tx.amount).toLocaleString('en-IN')} | ${tx.mode} | ${category} | ${tx.remark || '—'}`
+          );
+        });
+      }
+      lines.push('');
+    });
+
+    downloadTextFile(
+      `udharwale-ledger-${new Date().toISOString().slice(0, 10)}.txt`,
+      lines.join('\n'),
+      'text/plain'
+    );
+    showToast('Ledger downloaded as text (.txt)', 'success');
   };
 
   const handleCopyLedgerSummary = async () => {
@@ -1865,6 +1928,7 @@ export default function Dashboard() {
           contact={profileContact}
           balance={getContactBalance(profileContact)}
           showBalances={showBalances}
+          onToggleBalances={() => setShowBalances((v) => !v)}
           onClose={closeContactProfile}
           onMessage={() => {
             const id = profileContact.id;
@@ -2020,6 +2084,7 @@ export default function Dashboard() {
           message={confirmDialog.message}
           confirmLabel={confirmDialog.confirmLabel}
           tone={confirmDialog.tone}
+          extraActions={confirmDialog.extraActions}
           onCancel={() => closeConfirmDialog(false)}
           onConfirm={() => closeConfirmDialog(true)}
         />
@@ -2366,25 +2431,34 @@ export default function Dashboard() {
                 {/* App bar */}
                 <div className="px-4 pt-3 pb-2 shrink-0" style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-soft)' }}>
                   <div className="flex items-center justify-between gap-3 mb-3">
-                    <div className="min-w-0">
-                      <h1 className="text-xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>Friends</h1>
-                      <p className="text-[11px] mt-1 truncate" style={{ color: 'var(--text-muted)' }}>
-                        {isRefreshing || dbStatus === 'connecting'
-                          ? 'Updating…'
-                          : dbStatus === 'error'
-                            ? 'Offline copy'
-                            : 'Synced'}
-                        {' · '}
-                        {userName || 'You'}
-                      </p>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => goToTab('settings')}
+                        className="shrink-0 rounded-full"
+                        aria-label="Open account"
+                        title="Account"
+                      >
+                        <PersonAvatar
+                          name={userName || 'You'}
+                          seed={userAvatarSeed || userEmail || userPhone || userName || 'you'}
+                          size="md"
+                        />
+                      </button>
+                      <div className="min-w-0">
+                        <h1 className="text-xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>Friends</h1>
+                        <p className="text-[11px] mt-1 truncate" style={{ color: 'var(--text-muted)' }}>
+                          {isRefreshing || dbStatus === 'connecting'
+                            ? 'Updating…'
+                            : dbStatus === 'error'
+                              ? 'Offline copy'
+                              : 'Synced'}
+                          {' · '}
+                          {userName || 'You'}
+                        </p>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <button onClick={() => goToTab('trips')}
-                        className="h-9 px-3 rounded-xl flex items-center gap-1.5 text-xs font-semibold transition-all text-primary"
-                        style={{ background: 'var(--accent)', border: '1px solid transparent' }}
-                        title="Trip expenses">
-                        <span>Trips</span>
-                      </button>
                       <button onClick={() => setShowBalances(!showBalances)}
                         className="w-10 h-10 rounded-xl flex items-center justify-center"
                         style={{ background: showBalances ? 'var(--accent)' : 'var(--bg-raised)', border: '1px solid var(--border-soft)', color: showBalances ? 'var(--primary)' : 'var(--text-muted)' }}
@@ -3104,6 +3178,8 @@ export default function Dashboard() {
               <TripExpensesView
                 contacts={contacts}
                 userName={userName || 'You'}
+                userAvatarSeed={userAvatarSeed || undefined}
+                onOpenAccount={() => goToTab('settings')}
                 onRecordToLedger={handleRecordTripSettlement}
                 showToast={showToast}
               />
@@ -3117,7 +3193,10 @@ export default function Dashboard() {
                 totalCredit={stats.totalCredit}
                 totalDebit={stats.totalDebit}
                 showBalances={showBalances}
+                userName={userName || 'You'}
+                userAvatarSeed={userAvatarSeed || undefined}
                 onToggleBalances={() => setShowBalances((v) => !v)}
+                onOpenAccount={() => goToTab('settings')}
                 onOpenContact={(id) => openContactChat(id)}
                 onOpenTrip={(tripId) => {
                   pushDashboardNav({ tab: 'trips', tripId, contactId: null });
@@ -3149,6 +3228,7 @@ export default function Dashboard() {
                 compactLedgerView={compactLedgerView}
                 hasContacts={contacts.length > 0}
                 restoreInputRef={restoreInputRef}
+                onBack={() => goToTab('ledgers')}
                 onEditProfile={openEditProfile}
                 onLogout={handleLogout}
                 onToggleTheme={toggleTheme}
@@ -3174,9 +3254,20 @@ export default function Dashboard() {
                 onWipeData={async () => {
                   const confirmed = await confirmAction({
                     title: 'Wipe all data?',
-                    message: 'This will permanently delete ALL your contacts and transactions. This cannot be undone.',
+                    message:
+                      'This permanently deletes all contacts and transactions. Download a local copy first if you may need it later.',
                     confirmLabel: 'Wipe All Data',
                     tone: 'danger',
+                    extraActions: [
+                      {
+                        label: 'Download Excel (.csv)',
+                        onClick: () => handleExportCsv(),
+                      },
+                      {
+                        label: 'Download text (.txt)',
+                        onClick: () => handleExportTxt(),
+                      },
+                    ],
                   });
                   if (confirmed) await handleWipeData();
                 }}
@@ -3185,8 +3276,8 @@ export default function Dashboard() {
 
           </main>
 
-          {/* App bottom nav — in-flow so nothing sits below it */}
-          {!isChatOpen && (
+          {/* App bottom nav — hidden on chat & account */}
+          {!isChatOpen && activeTab !== 'settings' && (
             <nav
               className="z-40 flex h-16 shrink-0 items-stretch"
               style={{ background: 'var(--bg-glass)', backdropFilter: 'blur(20px)', borderTop: '1px solid var(--border-soft)' }}
@@ -3205,11 +3296,6 @@ export default function Dashboard() {
                 {
                   tab: 'activity' as const, label: 'Activity', icon: (
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'activity' ? 2.5 : 2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  )
-                },
-                {
-                  tab: 'settings' as const, label: 'Account', icon: (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'settings' ? 2.5 : 2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   )
                 },
               ] as const).map(({ tab, label, icon }) => (
@@ -3318,7 +3404,7 @@ export default function Dashboard() {
                 onChange={setContactAvatarSeed}
                 columns={4}
                 size="sm"
-                label="Colour"
+                label="Avatar"
                 hint="Only you see this — they can pick their own if they join Udharwale."
               />
 
@@ -3645,7 +3731,7 @@ export default function Dashboard() {
                       size="md"
                     />
                     <p className="text-xs leading-snug" style={{ color: 'var(--text-muted)' }}>
-                      This friend is on Udharwale — their account colour is shown. You can&apos;t change it for them.
+                      This friend is on Udharwale — their account avatar is shown. You can&apos;t change it for them.
                     </p>
                   </div>
                 ) : (
@@ -3655,7 +3741,7 @@ export default function Dashboard() {
                     onChange={setContactAvatarSeed}
                     columns={4}
                     size="sm"
-                    label="Colour"
+                    label="Avatar"
                     hint="Local look for this friend — only on your ledger."
                   />
                 )}
@@ -3744,8 +3830,8 @@ export default function Dashboard() {
                 onChange={setProfileAvatarSeed}
                 columns={4}
                 size="sm"
-                label="Your colour"
-                hint="Friends who link with you will see this tone."
+                label="Your avatar"
+                hint="Friends who link with you will see this look."
               />
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Display name</label>

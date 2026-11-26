@@ -19,7 +19,7 @@ export default function AvatarPicker({
   onChange,
   columns = 4,
   size = 'md',
-  label = 'Choose colour',
+  label = 'Choose avatar',
   hint,
 }: Props) {
   const grid =
@@ -37,7 +37,7 @@ export default function AvatarPicker({
           {hint}
         </p>
       ) : null}
-      <div className={`grid ${grid} gap-2.5`}>
+      <div className={`grid ${grid} gap-2.5 justify-items-center`}>
         {AVATAR_PRESETS.map((preset) => {
           const selected = value === preset;
           return (
@@ -45,8 +45,9 @@ export default function AvatarPicker({
               key={preset}
               type="button"
               onClick={() => onChange(preset)}
-              className="rounded-full p-0.5 transition-transform active:scale-95"
+              className="rounded-full p-0.5 inline-flex items-center justify-center shrink-0 transition-transform active:scale-95"
               style={{
+                width: 'fit-content',
                 boxShadow: selected
                   ? '0 0 0 2px var(--primary)'
                   : '0 0 0 1px var(--border-soft)',
@@ -54,7 +55,7 @@ export default function AvatarPicker({
                   ? 'color-mix(in srgb, var(--primary) 10%, transparent)'
                   : 'transparent',
               }}
-              aria-label={`Colour ${preset}`}
+              aria-label={`Avatar ${preset}`}
               aria-pressed={selected}
             >
               <PersonAvatar name={name || 'You'} seed={preset} size={size} />

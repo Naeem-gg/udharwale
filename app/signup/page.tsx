@@ -135,8 +135,8 @@ function SignupForm() {
               <div className="flex items-center gap-3 rounded-xl border border-[var(--border-soft)] bg-[var(--bg-raised)] p-3">
                 <PersonAvatar name={name || 'You'} seed={avatarSeed} size="lg" />
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-[var(--text-primary)]">Your colour</p>
-                  <p className="text-[11px] text-muted-foreground">Pick a tone — you can change it later in Account.</p>
+                  <p className="text-sm font-semibold text-[var(--text-primary)]">Your avatar</p>
+                  <p className="text-[11px] text-muted-foreground">Pick a look — you can change it later in Account.</p>
                 </div>
               </div>
 
@@ -146,7 +146,7 @@ function SignupForm() {
                 onChange={setAvatarSeed}
                 columns={4}
                 size="sm"
-                label="Choose colour"
+                label="Choose avatar"
               />
 
               <div className="space-y-1.5">

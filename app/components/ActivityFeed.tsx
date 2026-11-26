@@ -28,6 +28,7 @@ import {
 } from '@/lib/activity-feed';
 import { readSessionCache, readTripsCache } from '@/lib/client-cache';
 import { ActivityFeedSkeleton } from './Skeleton';
+import PersonAvatar from './PersonAvatar';
 
 type Props = {
   contacts: Contact[];
@@ -35,7 +36,10 @@ type Props = {
   totalCredit: number;
   totalDebit: number;
   showBalances: boolean;
+  userName?: string;
+  userAvatarSeed?: string;
   onToggleBalances: () => void;
+  onOpenAccount?: () => void;
   onOpenContact: (contactId: string) => void;
   onOpenTrip: (tripId: string) => void;
 };
@@ -86,23 +90,27 @@ export default function ActivityFeed({
   totalCredit,
   totalDebit,
   showBalances,
+  userName = 'You',
+  userAvatarSeed,
   onToggleBalances,
+  onOpenAccount,
   onOpenContact,
   onOpenTrip,
 }: Props) {
   const [filter, setFilter] = useState<ActivityFilter>('all');
-  const [trips, setTrips] = useState<Trip[]>(() => {
-    const key = readSessionCache()?.userKey;
-    return readTripsCache<Trip>(key) || [];
-  });
-  const [loadingTrips, setLoadingTrips] = useState(() => {
-    const key = readSessionCache()?.userKey;
-    return !(readTripsCache<Trip>(key)?.length);
-  });
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [loadingTrips, setLoadingTrips] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    const load = (showSpinner = trips.length === 0) => {
+    const key = readSessionCache()?.userKey;
+    const cached = readTripsCache<Trip>(key) || [];
+    if (cached.length > 0) {
+      setTrips(cached);
+      setLoadingTrips(false);
+    }
+
+    const load = (showSpinner = cached.length === 0) => {
       if (showSpinner) setLoadingTrips(true);
       fetch('/api/trips')
         .then((res) => (res.ok ? res.json() : []))
@@ -110,20 +118,19 @@ export default function ActivityFeed({
           if (!cancelled && Array.isArray(data)) setTrips(data);
         })
         .catch(() => {
-          if (!cancelled && trips.length === 0) setTrips([]);
+          if (!cancelled && cached.length === 0) setTrips([]);
         })
         .finally(() => {
           if (!cancelled) setLoadingTrips(false);
         });
     };
-    load(trips.length === 0);
+    load(cached.length === 0);
     const onSampleCleared = () => load(false);
     window.addEventListener('udharwale:sample-cleared', onSampleCleared);
     return () => {
       cancelled = true;
       window.removeEventListener('udharwale:sample-cleared', onSampleCleared);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const feed = useMemo(() => buildActivityFeed(contacts, trips), [contacts, trips]);
@@ -142,13 +149,30 @@ export default function ActivityFeed({
   return (
     <div className="flex-1 overflow-y-auto scrollbar-thin">
       <div className="px-4 pt-4 pb-2 space-y-4">
-        <div className="px-1">
-          <h1 className="text-xl font-bold leading-none" style={{ color: 'var(--text-primary)' }}>
-            Activity
-          </h1>
-          <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>
-            Balances and recent account actions
-          </p>
+        <div className="px-1 flex items-center gap-3">
+          {onOpenAccount ? (
+            <button
+              type="button"
+              onClick={onOpenAccount}
+              className="shrink-0 rounded-full"
+              aria-label="Open account"
+              title="Account"
+            >
+              <PersonAvatar
+                name={userName}
+                seed={userAvatarSeed || userName || 'you'}
+                size="md"
+              />
+            </button>
+          ) : null}
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold leading-none" style={{ color: 'var(--text-primary)' }}>
+              Activity
+            </h1>
+            <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>
+              Balances and recent account actions
+            </p>
+          </div>
         </div>
 
         <div
