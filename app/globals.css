@@ -583,3 +583,76 @@ html.dark .input-field {
   background-size: 200% 100%;
   animation: shimmer 1.6s ease-in-out infinite;
 }
+
+/* ===================== BILL SPLIT ===================== */
+@keyframes uw-orb {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(14px, -18px, 0) scale(1.08); }
+}
+
+@keyframes uw-float {
+  0%, 100% { transform: translateY(0) rotate(-1.5deg); }
+  50% { transform: translateY(-8px) rotate(1.5deg); }
+}
+
+@keyframes uw-shine {
+  0% { transform: translateX(-140%); }
+  100% { transform: translateX(140%); }
+}
+
+@keyframes uw-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+@keyframes uw-pop {
+  0% { opacity: 0; transform: scale(0.6); }
+  70% { transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.uw-orb {
+  animation: uw-orb 8s ease-in-out infinite;
+  filter: blur(10px);
+}
+
+.uw-orb-delay {
+  animation-delay: -3.5s;
+}
+
+.uw-float {
+  animation: uw-float 4.8s ease-in-out infinite;
+}
+
+.uw-pop {
+  animation: uw-pop 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.uw-shake {
+  animation: uw-shake 0.36s ease;
+}
+
+.uw-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.uw-shine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 32%, rgba(255, 255, 255, 0.38) 50%, transparent 68%);
+  animation: uw-shine 2.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .uw-orb,
+  .uw-float,
+  .uw-pop,
+  .uw-shake,
+  .uw-shine::after {
+    animation: none;
+  }
+}

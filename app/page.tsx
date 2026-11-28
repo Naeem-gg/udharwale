@@ -71,6 +71,9 @@ export default async function LandingPage() {
                 </>
               )}
             </div>
+            <Link href="/split" className="mt-4 text-sm font-bold text-primary">
+              Split a dinner bill
+            </Link>
           </main>
 
           <footer className="space-y-3 border-t border-[var(--border-soft)] pt-5 text-center text-[11px] text-muted-foreground">

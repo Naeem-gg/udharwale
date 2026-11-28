@@ -1,6 +1,6 @@
 /** Helpers to keep /dashboard nested screens on the browser history stack. */
 
-export type DashboardTab = 'ledgers' | 'trips' | 'activity' | 'insights' | 'settings';
+export type DashboardTab = 'ledgers' | 'trips' | 'split' | 'activity' | 'insights' | 'settings';
 
 export type DashboardNavState = {
   tab: DashboardTab;
@@ -15,7 +15,8 @@ export function readDashboardNav(search = typeof window !== 'undefined' ? window
   const tab: DashboardTab =
     tabParam === 'insights'
       ? 'activity'
-      : tabParam === 'trips' ||
+      :     tabParam === 'trips' ||
+          tabParam === 'split' ||
           tabParam === 'activity' ||
           tabParam === 'settings' ||
           tabParam === 'ledgers'

@@ -12,6 +12,7 @@ import {
   LEDGER_CATEGORY_CONFIG,
 } from './types';
 import TripExpensesView from './TripExpensesView';
+import BillSplitView from './BillSplitView';
 import { SITE_CREDIT_LINE } from '@/lib/seo';
 import { Button } from '@/components/ui/button';
 import { useTheme } from '@/app/theme-provider';
@@ -2504,12 +2505,12 @@ export default function Dashboard() {
           <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
 
             {/* Cold-start skeleton — skipped when local cache is warm */}
-            {showBootSkeleton && activeTab !== 'settings' && activeTab !== 'trips' && (
+            {showBootSkeleton && activeTab !== 'settings' && activeTab !== 'trips' && activeTab !== 'split' && (
               <FriendsListSkeleton />
             )}
 
             {/* Error state */}
-            {showBootError && (
+            {showBootError && activeTab !== 'split' && (
               <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-6">
                 <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-sm font-semibold"
                   style={{ background: 'rgba(194,59,74,0.08)', border: '1px solid rgba(194,59,74,0.15)', color: 'var(--rose)' }}>Offline</div>
@@ -3270,6 +3271,13 @@ export default function Dashboard() {
               );
             })()}
 
+            {/* ── BILL SPLIT TAB ─────────────────────────────── */}
+            {activeTab === 'split' && (
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <BillSplitView />
+              </div>
+            )}
+
             {/* ── TRIP EXPENSES TAB ──────────────────────────── */}
             {activeTab === 'trips' && (
               <TripExpensesView
@@ -3400,6 +3408,14 @@ export default function Dashboard() {
                 {
                   tab: 'trips' as const, label: 'Trips', icon: (
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'trips' ? 2.5 : 2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  )
+                },
+                {
+                  tab: 'split' as const, label: 'Split', icon: (
+                    <>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'split' ? 2.5 : 2} d="M4 3h12l4 4v14H4V3z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={activeTab === 'split' ? 2.5 : 2} d="M16 3v4h4M8 11h8M8 15h5" />
+                    </>
                   )
                 },
                 {

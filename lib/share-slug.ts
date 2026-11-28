@@ -8,6 +8,7 @@ const RESERVED = new Set([
   'login',
   'signup',
   'dashboard',
+  'split',
   'c',
   't',
   'you',

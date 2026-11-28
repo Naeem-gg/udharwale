@@ -103,4 +103,4 @@ export interface BalanceReminder {
   daysUntil: number;
 }
 
-export type ActiveTab = 'ledgers' | 'trips' | 'activity' | 'insights' | 'settings';
+export type ActiveTab = 'ledgers' | 'trips' | 'split' | 'activity' | 'insights' | 'settings';
